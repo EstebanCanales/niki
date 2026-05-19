@@ -1,0 +1,4 @@
+{
+  "ignorePatterns": ["next-env.d.ts", ".next/**", "out/**", "node_modules/**", "src-tauri/target/**"],
+  "extends": ["next/core-web-vitals", "next/typescript"]
+}

@@ -1,0 +1,940 @@
+import SwiftUI
+
+enum NikiSidebarLayout {
+    static let width: CGFloat = 600
+    static let horizontalInset: CGFloat = 14
+    static let verticalInset: CGFloat = 10
+    static let contentPadding: CGFloat = 18
+    static let cornerRadius: CGFloat = 32
+    static let innerCornerRadius: CGFloat = 27
+}
+
+private let nikiGridColorPresets: [(label: String, value: String)] = [
+    ("Blue", "#5ea2ff"),
+    ("Ice", "#91c4ff"),
+    ("Cyan", "#63d7ff"),
+    ("Mint", "#67e0be"),
+    ("Rose", "#f08aa8"),
+    ("Gold", "#f2c56f"),
+]
+
+struct NikiSidebarPanels: View {
+    let selection: DockItem
+
+    var body: some View {
+        Group {
+            switch selection {
+            case .chat:
+                NikiChatSidebar()
+            case .tasks:
+                NikiTasksSidebar()
+            case .widgets:
+                EmptyView()
+            case .voice:
+                Color.clear
+            case .settings:
+                NikiSettingsSidebar()
+            }
+        }
+    }
+}
+
+private struct SidebarShell<Content: View>: View {
+    let eyebrow: String
+    let title: String
+    let content: Content
+
+    init(eyebrow: String, title: String, @ViewBuilder content: () -> Content) {
+        self.eyebrow = eyebrow
+        self.title = title
+        self.content = content()
+    }
+
+    var body: some View {
+        NikiGlassPanel(
+            cornerRadius: NikiSidebarLayout.cornerRadius,
+            outerBorderOpacity: 0.12,
+            blurBackground: true
+        ) {
+            NikiInnerPanel(cornerRadius: NikiSidebarLayout.innerCornerRadius) {
+                VStack(spacing: 0) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text(eyebrow)
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(Color.white.opacity(0.72))
+                        Text(title)
+                            .font(.system(size: 28, weight: .bold))
+                            .foregroundStyle(.white)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, NikiSidebarLayout.contentPadding)
+                    .padding(.top, NikiSidebarLayout.contentPadding)
+                    .padding(.bottom, 12)
+
+                    Rectangle()
+                        .fill(Color.white.opacity(0.08))
+                        .frame(height: 1)
+
+                    VStack(alignment: .leading, spacing: 16) {
+                        content
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .padding(NikiSidebarLayout.contentPadding)
+                }
+            }
+            .padding(3)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+private struct SidebarCard<Content: View>: View {
+    let content: Content
+
+    init(@ViewBuilder content: () -> Content) {
+        self.content = content()
+    }
+
+    var body: some View {
+        content
+            .padding(14)
+            .background {
+                NikiCardSurface {
+                    Color.clear
+                }
+            }
+    }
+}
+
+private struct NikiTasksSidebar: View {
+    @EnvironmentObject private var appModel: NikiAppModel
+    @State private var selectedDayKey: String = ""
+
+    private var visibleItems: [NikiWorkItem] {
+        guard !selectedDayKey.isEmpty else { return appModel.tasks }
+        let filtered = appModel.tasks.filter { dayKey($0.dueAt) == selectedDayKey || $0.dueAt == nil }
+        return filtered.isEmpty ? appModel.tasks : filtered
+    }
+
+    private var todayItems: [NikiWorkItem] {
+        visibleItems.filter { $0.status == .open && isToday($0.dueAt) }
+    }
+
+    private var upcomingItems: [NikiWorkItem] {
+        visibleItems.filter { $0.status == .open && !isToday($0.dueAt) }
+    }
+
+    private var doneItems: [NikiWorkItem] {
+        visibleItems.filter { $0.status != .open }
+    }
+
+    private var calendarBuckets: [(key: String, count: Int)] {
+        let grouped = Dictionary(grouping: appModel.tasks.filter { dayKey($0.dueAt) != "" }, by: { dayKey($0.dueAt) })
+        return grouped.map { ($0.key, $0.value.count) }.sorted { $0.key < $1.key }
+    }
+
+    var body: some View {
+        SidebarShell(eyebrow: "Tasks", title: "Work queue") {
+            VStack(spacing: 14) {
+                taskMetrics
+                createTaskBar
+                filterBar
+
+                if !appModel.taskError.isEmpty {
+                    errorBanner(appModel.taskError)
+                }
+
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        if appModel.tasksLoading {
+                            loadingCard
+                        }
+
+                        if !todayItems.isEmpty {
+                            taskSection("Today", items: todayItems, symbol: "sun.max")
+                        }
+                        if !upcomingItems.isEmpty {
+                            taskSection("Upcoming", items: upcomingItems, symbol: "calendar")
+                        }
+                        if !doneItems.isEmpty {
+                            taskSection("Done", items: doneItems, symbol: "checkmark.seal")
+                        }
+                        if visibleItems.isEmpty && !appModel.tasksLoading {
+                            emptyTasks
+                        }
+                    }
+                    .padding(.bottom, 4)
+                }
+                .scrollIndicators(.never)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        }
+        .task {
+            await appModel.refreshTasks()
+        }
+    }
+
+    private var taskMetrics: some View {
+        HStack(spacing: 10) {
+            metricCard("Open", value: "\(appModel.tasks.filter { $0.status == .open }.count)", color: Color.white.opacity(0.78))
+            metricCard("Today", value: "\(todayItems.count)", color: Color.orange.opacity(0.88))
+            metricCard("Soon", value: "\(upcomingItems.count)", color: Color.cyan.opacity(0.84))
+            metricCard("Done", value: "\(doneItems.count)", color: Color.green.opacity(0.84))
+        }
+    }
+
+    private func metricCard(_ label: String, value: String, color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(value)
+                .font(.system(size: 18, weight: .bold))
+                .foregroundStyle(color)
+            Text(label)
+                .font(.system(size: 10, weight: .bold))
+                .tracking(1.4)
+                .foregroundStyle(Color.white.opacity(0.34))
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color.white.opacity(0.035))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(Color.white.opacity(0.075), lineWidth: 1)
+                )
+        )
+    }
+
+    private var createTaskBar: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "plus")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(Color.white.opacity(0.36))
+
+            TextField("Create task...", text: $appModel.taskDraft)
+                .textFieldStyle(.plain)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(.white)
+                .onSubmit {
+                    Task { await appModel.createTask() }
+                }
+
+            Button {
+                Task { await appModel.createTask() }
+            } label: {
+                Image(systemName: "arrow.up")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(Color.white.opacity(0.82))
+                    .frame(width: 32, height: 32)
+                    .background(Circle().fill(Color.white.opacity(0.085)))
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 12)
+        .frame(height: 48)
+        .background(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .fill(Color.white.opacity(0.03))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                )
+        )
+    }
+
+    @ViewBuilder
+    private var filterBar: some View {
+        if !calendarBuckets.isEmpty || !appModel.tasks.isEmpty {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    calendarChip("All", count: appModel.tasks.count, selected: selectedDayKey.isEmpty) {
+                        selectedDayKey = ""
+                    }
+                    ForEach(calendarBuckets, id: \.key) { bucket in
+                        calendarChip(shortDate(bucket.key), count: bucket.count, selected: selectedDayKey == bucket.key) {
+                            selectedDayKey = bucket.key
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func calendarChip(_ label: String, count: Int, selected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text("\(label) · \(count)")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Color.white.opacity(0.76))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(
+                    Capsule(style: .continuous)
+                        .fill(selected ? Color.white.opacity(0.08) : Color.white.opacity(0.03))
+                        .overlay(
+                            Capsule(style: .continuous)
+                                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                        )
+                )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func taskSection(_ title: String, items: [NikiWorkItem], symbol: String) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: symbol)
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(Color.white.opacity(0.38))
+                Text(title)
+                    .font(.system(size: 12, weight: .bold))
+                    .tracking(1.6)
+                    .foregroundStyle(Color.white.opacity(0.46))
+                Text("\(items.count)")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(Color.white.opacity(0.30))
+                Spacer()
+            }
+
+            VStack(spacing: 10) {
+                ForEach(items) { item in
+                    taskCard(item)
+                }
+            }
+        }
+    }
+
+    private func taskCard(_ item: NikiWorkItem) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
+                Button {
+                    Task { await appModel.toggleTask(item) }
+                } label: {
+                    Image(systemName: item.status == .open ? "circle" : "checkmark.circle.fill")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(item.status == .open ? Color.white.opacity(0.34) : Color.green.opacity(0.9))
+                        .frame(width: 28, height: 28)
+                }
+                .buttonStyle(.plain)
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(item.title)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(item.status == .open ? Color.white.opacity(0.92) : Color.white.opacity(0.56))
+                        .lineLimit(3)
+                        .strikethrough(item.status != .open, color: Color.white.opacity(0.28))
+
+                    HStack(spacing: 8) {
+                        tag(item.category, symbol: "folder", color: Color.white.opacity(0.42))
+                        tag(item.priority.rawValue.capitalized, symbol: "flag", color: priorityColor(item.priority))
+                        if let due = formatDue(item.dueAt) {
+                            tag(due, symbol: "calendar", color: Color.cyan.opacity(0.72))
+                        }
+                    }
+                }
+
+                Spacer(minLength: 8)
+
+                HStack(spacing: 6) {
+                    if item.proposalStatus == .proposed {
+                        taskIconButton("checkmark.seal", tint: Color.green.opacity(0.82)) {
+                            Task { await appModel.approveTask(item) }
+                        }
+                        taskIconButton("xmark", tint: Color.orange.opacity(0.82)) {
+                            Task { await appModel.deleteTask(item) }
+                        }
+                    } else {
+                        taskIconButton(item.status == .open ? "checkmark" : "arrow.uturn.backward", tint: Color.white.opacity(0.76)) {
+                            Task { await appModel.toggleTask(item) }
+                        }
+                    }
+                    taskIconButton("trash", tint: Color.red.opacity(0.72)) {
+                        Task { await appModel.deleteTask(item) }
+                    }
+                }
+            }
+
+            if let notes = item.notes?.trimmingCharacters(in: .whitespacesAndNewlines), !notes.isEmpty {
+                Text(notes)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Color.white.opacity(0.45))
+                    .lineLimit(2)
+                    .padding(.leading, 40)
+            }
+
+            if !item.subtasks.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(item.subtasks) { subtask in
+                        Button {
+                            Task { await appModel.toggleSubtask(item: item, subtask: subtask) }
+                        } label: {
+                            HStack(spacing: 9) {
+                                Image(systemName: subtask.done ? "checkmark.circle.fill" : "circle")
+                                    .foregroundStyle(subtask.done ? Color.green.opacity(0.78) : Color.white.opacity(0.30))
+                                Text(subtask.title)
+                                    .font(.system(size: 12, weight: .medium))
+                                    .foregroundStyle(Color.white.opacity(subtask.done ? 0.42 : 0.70))
+                                    .strikethrough(subtask.done, color: Color.white.opacity(0.24))
+                                Spacer()
+                            }
+                            .padding(.leading, 40)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .fill(Color.white.opacity(item.status == .open ? 0.035 : 0.022))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .stroke(Color.white.opacity(item.proposalStatus == .proposed ? 0.16 : 0.075), lineWidth: 1)
+                )
+        )
+    }
+
+    private func tag(_ label: String, symbol: String, color: Color) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: symbol)
+                .font(.system(size: 9, weight: .bold))
+            Text(label)
+                .font(.system(size: 10, weight: .bold))
+                .lineLimit(1)
+        }
+        .foregroundStyle(color)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(Capsule(style: .continuous).fill(Color.white.opacity(0.045)))
+    }
+
+    private func taskIconButton(_ symbol: String, tint: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(tint)
+                .frame(width: 30, height: 30)
+                .background(
+                    Circle()
+                        .fill(Color.white.opacity(0.052))
+                        .overlay(Circle().stroke(Color.white.opacity(0.065), lineWidth: 1))
+                )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func errorBanner(_ message: String) -> some View {
+        Text(message)
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(Color.red.opacity(0.78))
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(Color.red.opacity(0.08))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .stroke(Color.red.opacity(0.12), lineWidth: 1)
+                    )
+            )
+    }
+
+    private var loadingCard: some View {
+        HStack(spacing: 10) {
+            ProgressView()
+                .controlSize(.small)
+                .tint(Color.white.opacity(0.64))
+            Text("Loading tasks...")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Color.white.opacity(0.54))
+            Spacer()
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(Color.white.opacity(0.03))
+        )
+    }
+
+private var emptyTasks: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("No tasks yet.")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(Color.white.opacity(0.72))
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .fill(Color.white.opacity(0.03))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .stroke(Color.white.opacity(0.075), lineWidth: 1)
+                )
+        )
+    }
+
+    private func priorityColor(_ priority: NikiWorkItemPriority) -> Color {
+        switch priority {
+        case .high:
+            return Color.red.opacity(0.78)
+        case .medium:
+            return Color.orange.opacity(0.76)
+        case .low:
+            return Color.green.opacity(0.72)
+        }
+    }
+
+    private func isToday(_ iso: String?) -> Bool {
+        guard let iso else { return false }
+        guard let date = ISO8601DateFormatter().date(from: iso) else { return false }
+        return Calendar.current.isDateInToday(date)
+    }
+
+    private func dayKey(_ iso: String?) -> String {
+        guard let iso, let date = ISO8601DateFormatter().date(from: iso) else { return "" }
+        let components = Calendar.current.dateComponents([.year, .month, .day], from: date)
+        guard let year = components.year, let month = components.month, let day = components.day else { return "" }
+        return String(format: "%04d-%02d-%02d", year, month, day)
+    }
+
+    private func formatDue(_ iso: String?) -> String? {
+        guard let iso, let date = ISO8601DateFormatter().date(from: iso) else { return nil }
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter.string(from: date)
+    }
+
+    private func shortDate(_ key: String) -> String {
+        key.replacingOccurrences(of: "-", with: "/")
+    }
+}
+
+private struct NikiWidgetsSidebar: View {
+    var body: some View {
+        SidebarShell(eyebrow: "Widgets", title: "Inactive") {
+            SidebarCard {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Widgets stay off until a widget maps to real app behavior already used in Niki.")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(Color.white.opacity(0.8))
+                    Text("Spotify and notch-specific surfaces are out for this phase.")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Color.white.opacity(0.45))
+                }
+            }
+        }
+    }
+}
+
+private struct NikiSettingsSidebar: View {
+    @EnvironmentObject private var appModel: NikiAppModel
+    @State private var healthStatus: String = "idle"
+    @State private var healthMessage: String = ""
+    @State private var modelInfo: String = ""
+
+    private let ttsOptions: [(value: String, label: String)] = [
+        ("es_AR-daniela", "Daniela · ES (AR)"),
+        ("es_ES-davefx", "Dave · ES (ES)"),
+        ("es_ES-sharvard", "Sharvard · ES (ES)"),
+        ("es_ES-mls_10246", "MLS 10246 · ES (ES)"),
+        ("es_ES-mls_9972", "MLS 9972 · ES (ES)"),
+        ("en_US-amy", "Amy · EN (US)"),
+        ("en_GB-aru", "Aru · EN (GB)"),
+        ("en_GB-cori", "Cori · EN (GB)"),
+        ("en_GB-semaine", "Semaine · EN (GB)")
+    ]
+
+    var body: some View {
+        SidebarShell(eyebrow: "Settings", title: "Preferences") {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    settingsSection("Profile") {
+                        field("Display name", text: $appModel.displayName)
+                    }
+
+                    settingsSection("Niki persona") {
+                        VStack(spacing: 12) {
+                            field("Assistant name", text: $appModel.personaProfile.assistantName)
+                            dualRow(
+                                picker("Tone", selection: $appModel.personaProfile.tone),
+                                picker("Brevity", selection: $appModel.personaProfile.brevity)
+                            )
+                            picker("Response style", selection: $appModel.personaProfile.responseStyle)
+                            textArea("Operational rules", text: $appModel.personaProfile.operationalRules, height: 88)
+                            textArea("Forbidden behaviors", text: $appModel.personaProfile.forbiddenBehaviors, height: 88)
+                        }
+                    }
+
+                    settingsSection("Backend · HTTP") {
+                        VStack(spacing: 12) {
+                            field("Base URL", text: $appModel.backendBaseURL)
+                            field("API Key", text: $appModel.backendAPIKey, secure: true)
+                            HStack(spacing: 10) {
+                                actionButton(healthStatus == "checking" ? "Checking..." : "Test connection") {
+                                    Task { await checkConnection() }
+                                }
+                                actionButton(appModel.settingsSaved ? "Saved ✓" : "Save") {
+                                    Task { await appModel.saveSettings() }
+                                }
+                            }
+                            if healthStatus != "idle" {
+                                statusLine
+                            }
+                        }
+                    }
+
+                    settingsSection("Niki Notch bridge") {
+                        VStack(alignment: .leading, spacing: 12) {
+                            HStack(spacing: 10) {
+                                bridgeStatusDot
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(appModel.notchBridgeStatus.isEmpty ? "Ready to sync with NikiNotch." : appModel.notchBridgeStatus)
+                                        .font(.system(size: 13, weight: .semibold))
+                                        .foregroundStyle(Color.white.opacity(0.76))
+                                        .lineLimit(2)
+                                    Text("Desktop writes backend URL, API key, and user id into the notch config.")
+                                        .font(.system(size: 11, weight: .medium))
+                                        .foregroundStyle(Color.white.opacity(0.34))
+                                        .lineLimit(2)
+                                }
+                            }
+                            .padding(12)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(
+                                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                    .fill(Color.white.opacity(0.035))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                            .stroke(Color.white.opacity(0.07), lineWidth: 1)
+                                    )
+                            )
+
+                            infoPill("Config file", value: "~/.niki/notch-config.json")
+                            dualRow(
+                                infoPill("Backend", value: appModel.backendBaseURL.isEmpty ? "http://127.0.0.1:8000" : appModel.backendBaseURL),
+                                infoPill("User", value: appModel.userID.isEmpty ? "user-demo" : appModel.userID)
+                            )
+                            toggleRow(
+                                "Show / close notch",
+                                isOn: Binding(
+                                    get: { appModel.notchVisible },
+                                    set: { appModel.setNotchVisible($0) }
+                                )
+                            )
+                            HStack(spacing: 8) {
+                                actionButton("Sync config") {
+                                    appModel.syncNotchBridge()
+                                }
+                                actionButton("Open Notch") {
+                                    appModel.openNotchApp()
+                                }
+                            }
+                            HStack(spacing: 8) {
+                                actionButton("Open Settings") {
+                                    appModel.openNotchSettings()
+                                }
+                                actionButton("Restart Notch", secondary: true) {
+                                    appModel.restartNotchApp()
+                                }
+                            }
+                        }
+                    }
+
+                    settingsSection("Grid cells") {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Cell color")
+                                .font(.system(size: 11, weight: .semibold))
+                                .tracking(1.6)
+                                .foregroundStyle(Color.white.opacity(0.36))
+                            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                                ForEach(nikiGridColorPresets, id: \.value) { preset in
+                                    let active = appModel.orbAccentHex.lowercased() == preset.value.lowercased()
+                                    Button {
+                                        appModel.orbAccentHex = preset.value
+                                    } label: {
+                                        HStack(spacing: 8) {
+                                            Circle()
+                                                .fill(Color(hex: preset.value))
+                                                .frame(width: 12, height: 12)
+                                            Text(preset.label)
+                                                .font(.system(size: 12, weight: .semibold))
+                                                .foregroundStyle(Color.white.opacity(0.76))
+                                            Spacer()
+                                        }
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 10)
+                                        .background(
+                                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                                .fill(active ? Color.white.opacity(0.08) : Color.white.opacity(0.04))
+                                                .overlay(
+                                                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                                        .stroke(Color.white.opacity(active ? 0.14 : 0.08), lineWidth: 1)
+                                                )
+                                        )
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                        }
+                    }
+
+                    settingsSection("Runtime · Hermes") {
+                        VStack(spacing: 12) {
+                            field("API Server URL", text: $appModel.runtimeAPIURL)
+                            field("Runtime API Key", text: $appModel.runtimeAPIKey, secure: true)
+                            field("Model", text: $appModel.runtimeModel)
+                            field("Context override", text: $appModel.runtimeContextLengthOverride)
+                            picker("Compatibility mode", selection: $appModel.runtimeCompatibilityMode)
+                            toggleRow("Diagnostics mode", isOn: $appModel.runtimeDiagnosticsEnabled)
+                            infoPill("Runtime source", value: "Hermes via backend")
+                            infoPill("Live runtime", value: appModel.runtimeConnected ? "Connected" : "Offline")
+                        }
+                    }
+
+                    settingsSection("Voice") {
+                        VStack(spacing: 12) {
+                            voicePicker
+                            toggleRow("Auto voice", isOn: $appModel.autoVoice)
+                            HStack(spacing: 10) {
+                                actionButton(appModel.speaking ? "Speaking..." : "Test voice") {
+                                    Task { await appModel.testVoiceSample() }
+                                }
+                                if !appModel.voiceTranscript.isEmpty {
+                                    Text(appModel.voiceTranscript)
+                                        .font(.system(size: 12, weight: .medium))
+                                        .foregroundStyle(Color.white.opacity(0.42))
+                                        .lineLimit(1)
+                                }
+                            }
+                        }
+                    }
+
+                    if !appModel.settingsError.isEmpty {
+                        Text(appModel.settingsError)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(Color.red.opacity(0.78))
+                    }
+
+                    actionButton("Logout", secondary: true) {
+                        appModel.logout()
+                    }
+                }
+            }
+        }
+        .task {
+            await appModel.refreshSettingsData()
+        }
+    }
+
+    private var voicePicker: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("TTS Voice")
+                .font(.system(size: 11, weight: .semibold))
+                .tracking(1.6)
+                .foregroundStyle(Color.white.opacity(0.36))
+            Picker("TTS Voice", selection: $appModel.ttsVoice) {
+                ForEach(ttsOptions, id: \.value) { option in
+                    Text(option.label).tag(option.value)
+                }
+            }
+            .pickerStyle(.menu)
+            .tint(.white)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(Color.white.opacity(0.04))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                    )
+            )
+        }
+    }
+
+    private var statusLine: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(healthStatus == "ready" ? "Connected" : healthMessage)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(healthStatus == "ready" ? Color.green.opacity(0.82) : Color.red.opacity(0.82))
+            if !modelInfo.isEmpty {
+                Text(modelInfo)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(Color.white.opacity(0.34))
+            }
+        }
+    }
+
+    private var bridgeStatusDot: some View {
+        Circle()
+            .fill(appModel.notchBridgeStatus.lowercased().contains("failed") || appModel.notchBridgeStatus.lowercased().contains("not found") ? Color.orange.opacity(0.9) : Color.green.opacity(0.82))
+            .frame(width: 9, height: 9)
+            .shadow(color: Color.white.opacity(0.12), radius: 5)
+    }
+
+    private func checkConnection() async {
+        healthStatus = "checking"
+        healthMessage = ""
+        modelInfo = ""
+        do {
+            let health = try await appModel.client.healthz()
+            let runtime = try await appModel.client.runtimeStatus()
+            healthStatus = "ready"
+            healthMessage = "chat: on · runtime: \(runtime.state)"
+            modelInfo = "model: \(runtime.resolvedModel.isEmpty ? (health.defaultModel ?? "n/a") : runtime.resolvedModel) · provider: Hermes"
+        } catch {
+            healthStatus = "down"
+            healthMessage = error.localizedDescription
+        }
+    }
+
+    private func settingsSection<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+        SidebarCard {
+            VStack(alignment: .leading, spacing: 14) {
+                Text(title)
+                    .font(.system(size: 12, weight: .semibold))
+                    .tracking(1.8)
+                    .foregroundStyle(Color.white.opacity(0.5))
+                content()
+            }
+        }
+    }
+
+    private func field(_ title: String, text: Binding<String>, secure: Bool = false) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.system(size: 11, weight: .semibold))
+                .tracking(1.6)
+                .foregroundStyle(Color.white.opacity(0.36))
+            Group {
+                if secure {
+                    SecureField("", text: text)
+                } else {
+                    TextField("", text: text)
+                }
+            }
+            .textFieldStyle(.plain)
+            .font(.system(size: 13, weight: .medium))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(Color.white.opacity(0.04))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                    )
+            )
+        }
+    }
+
+    private func textArea(_ title: String, text: Binding<String>, height: CGFloat) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.system(size: 11, weight: .semibold))
+                .tracking(1.6)
+                .foregroundStyle(Color.white.opacity(0.36))
+            TextEditor(text: text)
+                .scrollContentBackground(.hidden)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(.white)
+                .frame(height: height)
+                .padding(8)
+                .background(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(Color.white.opacity(0.04))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                        )
+                )
+        }
+    }
+
+    private func picker<T: Hashable & CaseIterable & RawRepresentable>(_ title: String, selection: Binding<T>) -> some View where T.RawValue == String {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.system(size: 11, weight: .semibold))
+                .tracking(1.6)
+                .foregroundStyle(Color.white.opacity(0.36))
+            Picker(title, selection: selection) {
+                ForEach(Array(T.allCases), id: \.self) { value in
+                    Text(value.rawValue.replacingOccurrences(of: "_", with: " ").capitalized).tag(value)
+                }
+            }
+            .pickerStyle(.segmented)
+        }
+    }
+
+    private func toggleRow(_ title: String, isOn: Binding<Bool>) -> some View {
+        Toggle(isOn: isOn) {
+            Text(title)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Color.white.opacity(0.76))
+        }
+        .toggleStyle(.switch)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color.white.opacity(0.04))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                )
+        )
+    }
+
+    private func infoPill(_ label: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(label)
+                .font(.system(size: 11, weight: .semibold))
+                .tracking(1.6)
+                .foregroundStyle(Color.white.opacity(0.36))
+            Text(value)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(Color.white.opacity(0.76))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(Color.white.opacity(0.04))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                        )
+                )
+        }
+    }
+
+    private func dualRow<Left: View, Right: View>(_ left: Left, _ right: Right) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            left
+            right
+        }
+    }
+
+    private func actionButton(_ title: String, secondary: Bool = false, action: @escaping () -> Void) -> some View {
+        Button(title, action: action)
+            .buttonStyle(.plain)
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(Color.white.opacity(0.82))
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(Color.white.opacity(secondary ? 0.05 : 0.08))
+                    .overlay(
+                        Capsule(style: .continuous)
+                            .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                    )
+            )
+    }
+}

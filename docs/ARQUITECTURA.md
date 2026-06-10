@@ -59,9 +59,23 @@ Responsabilidades:
 - Consumir respuestas del backend.
 - Leer configuracion local desde `~/.niki/notch-config.json`.
 
+### Agente local y control de la computadora
+
+Ubicacion: `backend/src/modules/runtime/groq-agent.service.ts` y
+`backend/src/modules/computer/`.
+
+Responsabilidades:
+
+- Ejecutar un agente local con Groq (function-calling) sin depender de Hermes.
+- Exponer herramientas que controlan la Mac: shell, AppleScript/JXA, capturas, mouse,
+  teclado, apps, archivos, portapapeles y sistema.
+- Aplicar una capa de seguridad: niveles de riesgo, modos (`open`/`guarded`/`locked`),
+  denylist de comandos destructivos, limites de rutas, timeouts y auditoria.
+- Un helper nativo en Swift (`native/niki-input`, CGEvent) ejecuta mouse y teclado.
+
 ### Hermes Runtime
 
-Servicio externo/local esperado por el backend.
+Servicio externo/local, proveedor alterno del backend.
 
 Responsabilidades:
 
@@ -97,6 +111,16 @@ flowchart LR
 5. Hermes responde en streaming.
 6. El backend reenvia el stream al cliente.
 7. El cliente renderiza la respuesta y actualiza el estado visual.
+
+## Flujo de control de la computadora (agente local)
+
+1. El cliente envia un turno por `POST /chat/stream`.
+2. El backend selecciona el proveedor: `groq-local` si `GROQ_API_KEY` esta presente.
+3. El agente (Groq) decide y solicita herramientas (function-calling).
+4. `ComputerControlService` valida riesgo/modo y ejecuta la accion en la Mac.
+5. El resultado vuelve al modelo, que continua hasta resolver la tarea.
+6. El texto se transmite por SSE y los eventos de herramienta por `/runtime/events`.
+7. Cada accion queda auditada y disponible en `GET /computer/recent`.
 
 ## Flujo de tareas
 

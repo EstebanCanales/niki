@@ -42,6 +42,11 @@ authorization: Bearer <ACCESS_TOKEN>
 | `DELETE` | `/v1/work-items/:id` | Elimina una tarea. |
 | `POST` | `/voice/transcribe` | Transcribe audio a texto. |
 | `POST` | `/voice/synthesize` | Convierte texto a audio. |
+| `GET` | `/computer/capabilities` | Lista capacidades, config y permisos de control. |
+| `GET` | `/computer/config` | Consulta modo y config del control de la computadora. |
+| `POST` | `/computer/config` | Cambia el modo (`open`/`guarded`/`locked`). |
+| `GET` | `/computer/recent` | Últimas acciones ejecutadas (auditoría). |
+| `POST` | `/computer/action` | Ejecuta una acción de control de la computadora. |
 
 ## Autenticacion
 
@@ -99,11 +104,85 @@ Respuesta esperada:
 }
 ```
 
+## Control de la computadora
+
+Niki incluye un **agente local** (Groq con function-calling) cuyas herramientas controlan
+la Mac donde corre el backend. Se selecciona automáticamente cuando `GROQ_API_KEY` está
+configurada (`provider=groq-local`). El agente actúa desde `/chat/stream`; también se puede
+invocar cada capacidad directamente.
+
+Capacidades (23): `shell_exec`, `applescript_run`, `screen_capture`, `screen_info`,
+`mouse_move`, `mouse_click`, `mouse_drag`, `mouse_scroll`, `keyboard_type`, `keyboard_key`,
+`clipboard_read`, `clipboard_write`, `app_launch`, `app_activate`, `app_quit`, `app_list`,
+`fs_read`, `fs_write`, `fs_list`, `open_url`, `notify`, `system_volume`, `system_info`.
+
+### Modelo de seguridad
+
+El control de la computadora es una capacidad intencional y potente; el modelo de
+seguridad es por capas y **honesto** sobre sus límites:
+
+- **Guard de Origin (anti drive-by):** como el backend usa CORS abierto en localhost,
+  cualquier web podría disparar acciones vía `fetch`. `/chat/stream`, `/computer/action`
+  y `/computer/config` rechazan peticiones con `Origin` web externo (403). Clientes
+  nativos (Tauri, curl, app macOS) no envían `Origin` o usan `localhost`/`tauri:`. Se
+  amplía con `NIKI_ALLOWED_ORIGINS`.
+- **Modos:** `locked` (solo lectura — límite real), `guarded` (alto riesgo exige
+  `confirm: true`), `open` (todo salvo denylist).
+- **Niveles de riesgo** por capacidad (`low`/`medium`/`high`).
+- **Denylist de catástrofes** (siempre activa): normaliza el comando (comillas,
+  backslashes, espacios) y bloquea borrados recursivos de rutas críticas, formateo de
+  disco, apagado/reinicio, fork bombs, deshabilitar SIP/Gatekeeper, etc. Es un
+  *speed-bump* de defensa en profundidad, **no un sandbox**: un shell con sustitución de
+  comandos no puede acotarse por completo.
+- **AppleScript:** se bloquea `with administrator privileges` (sin escalación silenciosa
+  a root).
+- **Escritura de archivos** restringida a raíces permitidas (home, tmp, proyecto);
+  timeouts, truncado de salida y **auditoría** de cada acción (`GET /computer/recent`).
+- **Recomendado:** define `WRAPPER_API_KEY` para exigir `x-niki-api-key` en todos los
+  endpoints. El backend escucha solo en `127.0.0.1`.
+
+El gate `confirm` en `guarded` es una guardia de cooperación del agente; los límites
+duros son `locked`, la denylist de catástrofes, el bind a localhost y el guard de Origin.
+
+### POST `/computer/action`
+
+Entrada:
+
+```json
+{
+  "action": "shell_exec",
+  "params": { "command": "echo hola", "confirm": true }
+}
+```
+
+Respuesta esperada (ejemplo):
+
+```json
+{ "ok": true, "exitCode": 0, "stdout": "hola\n", "stderr": "" }
+```
+
+Si una acción de alto riesgo se envía sin `confirm` en modo `guarded`:
+
+```json
+{ "ok": false, "requiresConfirmation": true, "error": "...high-risk; resend with confirm=true" }
+```
+
+### POST `/computer/config`
+
+```json
+{ "mode": "open" }
+```
+
+Requisitos de macOS en runtime: permiso de **Accesibilidad** (mouse/teclado) y **Grabación
+de pantalla** (`screen_capture`).
+
 ## Chat
 
 ### POST `/chat/stream`
 
-Envia un mensaje al runtime Hermes y devuelve una respuesta en streaming.
+Envia un mensaje al agente (local Groq o, alternativamente, Hermes) y devuelve la respuesta
+en streaming. Con el agente local, Niki puede ejecutar acciones de control de la computadora
+durante el turno.
 
 Entrada:
 

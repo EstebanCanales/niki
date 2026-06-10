@@ -11,13 +11,15 @@ El objetivo es construir un centro de control personal para un agente de IA que 
 - Usar entrada y salida de voz mediante transcripcion y sintesis.
 - Mostrar una experiencia nativa en macOS mediante una app de escritorio.
 - Conectar la app principal con NikiNotch para acceso rapido desde la barra superior.
+- **Controlar la computadora**: un agente local (Groq) ejecuta acciones reales en la Mac
+  (shell, AppleScript, mouse, teclado, capturas, apps, archivos) con una capa de seguridad.
 
 ## Tecnologias utilizadas
 
 - **Frontend web:** Next.js 15, React 19, TypeScript, Tailwind CSS.
 - **Desktop web:** Tauri 2, Rust.
 - **Backend:** NestJS, TypeScript, Node.js.
-- **Runtime IA:** Hermes API Server, consumido por el backend mediante HTTP/SSE.
+- **Runtime IA:** agente local con Groq (function-calling + control de la computadora) y, como alterno, Hermes API Server vía HTTP/SSE.
 - **App macOS nativa:** SwiftUI, AppKit, AVFoundation.
 - **Notch macOS:** SwiftUI sobre la base de Boring Notch, adaptado como NikiNotch.
 - **Persistencia local:** estado en memoria y archivo JSON local para work items.

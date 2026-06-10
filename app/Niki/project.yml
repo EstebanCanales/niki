@@ -27,7 +27,7 @@ packages:
     exactVersion: "0.2.0"
   Pow:
     url: https://github.com/EmergeTools/Pow
-    exactVersion: "1.0.5"
+    exactVersion: "1.0.6"
   SkyLightWindow:
     url: https://github.com/Lakr233/SkyLightWindow
     exactVersion: "1.0.0"
@@ -76,6 +76,8 @@ targets:
         CODE_SIGN_ENTITLEMENTS: Sources/Notch/Niki.entitlements
         FRAMEWORK_SEARCH_PATHS: "$(inherited) $(PROJECT_DIR)/mediaremote-adapter"
     dependencies:
+      - package: AsyncXPCConnection
+        product: AsyncXPCConnection
       - package: Defaults
       - package: KeyboardShortcuts
       - package: LaunchAtLoginModern

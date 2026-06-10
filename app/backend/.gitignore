@@ -1,0 +1,10 @@
+# Build output
+dist/
+*.tsbuildinfo
+
+# Helper nativo compilado on-demand (la fuente vive en native/niki-input/)
+native/bin/
+
+# Entorno local
+.niki/
+node_modules/

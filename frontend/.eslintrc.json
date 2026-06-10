@@ -1,4 +1,0 @@
-{
-  "ignorePatterns": ["next-env.d.ts", ".next/**", "out/**", "node_modules/**"],
-  "extends": ["next/core-web-vitals", "next/typescript"]
-}

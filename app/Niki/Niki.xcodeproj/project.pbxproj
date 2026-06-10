@@ -10,7 +10,7 @@
 		00177CEF0FAE85EDFECCC9C7 /* niki.m4a in Resources */ = {isa = PBXBuildFile; fileRef = A67103B23B48D16C8A008854 /* niki.m4a */; };
 		011DEB302834CA42D0E5AD76 /* HelloAnimation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FE285B80A548E2BF381424B /* HelloAnimation.swift */; };
 		019171D620559498F951C4AC /* Logger.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFA36D2455DA517636F4CE1B /* Logger.swift */; };
-		052CE7A9687926713DFE3924 /* KeyboardShortcuts in Frameworks */ = {isa = PBXBuildFile; productRef = 654E0F79616A51A4B87ADEF6 /* KeyboardShortcuts */; };
+		052CE7A9687926713DFE3924 /* Defaults in Frameworks */ = {isa = PBXBuildFile; productRef = 3DADDDE92054DD30D83A1E56 /* Defaults */; };
 		0549F8AD8DEC306B64E038A5 /* MusicManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E66DCF04A0060FD5E53EBED /* MusicManager.swift */; };
 		06B967B7B30D93244E5AEC2E /* NotchHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDF9D5E28CC90BC8752ED127 /* NotchHomeView.swift */; };
 		0763339AF3C76E484DF90866 /* ShelfActionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE12E36C2C9CEACBE589DED7 /* ShelfActionService.swift */; };
@@ -19,7 +19,7 @@
 		0A1C01FE3CDA630CCCDD0536 /* XPCHelperClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = E15665C742C338143D49CD3F /* XPCHelperClient.swift */; };
 		0C1E275648AFAF94C02346E2 /* BatteryActivityManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2CD77907C0377D399C50937D /* BatteryActivityManager.swift */; };
 		0FE1F0C8BCEAE294D8564B4F /* CalendarModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BE147211A434056ACD19106 /* CalendarModel.swift */; };
-		10B57F046DB5BF8565992499 /* LaunchAtLogin in Frameworks */ = {isa = PBXBuildFile; productRef = 01B488E8339775F1F30AFE43 /* LaunchAtLogin */; };
+		10B57F046DB5BF8565992499 /* KeyboardShortcuts in Frameworks */ = {isa = PBXBuildFile; productRef = 654E0F79616A51A4B87ADEF6 /* KeyboardShortcuts */; };
 		11BECC09B0F62E6354383540 /* NSImage+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E234750126E3B227D8BD17E /* NSImage+Extensions.swift */; };
 		135EF40A8E3EA0849620645C /* Color+AccentColor.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2B411354A946E78A528A284 /* Color+AccentColor.swift */; };
 		14D382F9443BE3267D1E8364 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C6763FE21B6DB5C476A7EE3 /* main.swift */; };
@@ -61,11 +61,12 @@
 		5574BA0F3C3702590ECCB496 /* generic.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4301C25B2747265ACE623D4 /* generic.swift */; };
 		55FC2C21F843D44A5657469E /* NikiAppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48935EDDF4509211FA2BD161 /* NikiAppDelegate.swift */; };
 		566E8F794F35A46F10FD2137 /* NikiXPCHelperProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = F32168B6481EBED37545B51C /* NikiXPCHelperProtocol.swift */; };
-		577D3788DBE10F847B6D44F8 /* MacroVisionKit in Frameworks */ = {isa = PBXBuildFile; productRef = 8173227B491E8D1550242347 /* MacroVisionKit */; };
+		574DF5783A751E85E9A345FE /* NikiNotchContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F0C44FE268AFFF1C3A058DC /* NikiNotchContentView.swift */; };
+		577D3788DBE10F847B6D44F8 /* Lottie in Frameworks */ = {isa = PBXBuildFile; productRef = 63EBB76B921F74134BFBEE63 /* Lottie */; };
 		5D0FF82A1F5ACE571FD599B1 /* DragPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46417E987603C9A73BD84438 /* DragPreviewView.swift */; };
 		5D427EAEF4F4488290EF6DB6 /* AsyncXPCConnection in Frameworks */ = {isa = PBXBuildFile; productRef = 254996E9E9BF934D66461FFE /* AsyncXPCConnection */; };
 		5ECAB16EFBE6C0F30E05A6CA /* HoverButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A2554850695F47D8963BB00 /* HoverButton.swift */; };
-		5FE501D0973DF52AF0D76424 /* Defaults in Frameworks */ = {isa = PBXBuildFile; productRef = 3DADDDE92054DD30D83A1E56 /* Defaults */; };
+		5FE501D0973DF52AF0D76424 /* AsyncXPCConnection in Frameworks */ = {isa = PBXBuildFile; productRef = C0766279081787143F3349AE /* AsyncXPCConnection */; };
 		5FFC47F1771707A176C619D6 /* ShelfPersistenceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2130A1B84975566783D8E5AA /* ShelfPersistenceService.swift */; };
 		61327D3346C200252C6269BB /* NikiXPCHelper.xpc in CopyFiles */ = {isa = PBXBuildFile; fileRef = 784E1BCB8EF8688F0D16E836 /* NikiXPCHelper.xpc */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		6356F1E8DEB9793A7E4922A5 /* FullscreenMediaDetection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75864FF7811BAC291D757F9C /* FullscreenMediaDetection.swift */; };
@@ -74,15 +75,14 @@
 		6642E4BE90FBF23C7C763980 /* ApplicationRelauncher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7097FE91B253C12E2F21194F /* ApplicationRelauncher.swift */; };
 		6A8CD345EAF4384D9EE57AD5 /* OpenNotchHUD.swift in Sources */ = {isa = PBXBuildFile; fileRef = B33F1D2AE25A99F129BF2F0A /* OpenNotchHUD.swift */; };
 		6B339114DEDA5FC3916AAD43 /* CGSSpace.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB6C645056A5748BF2984C74 /* CGSSpace.swift */; };
-		6BA38FBB32077B301A8370DA /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1EBE525D62D0E078C8DDE61F /* ContentView.swift */; };
-		6C67F4E3DFB8D746FFD0A56A /* SwiftSyntax in Frameworks */ = {isa = PBXBuildFile; productRef = 049A56A5029AEBE476CE3F92 /* SwiftSyntax */; };
+		6C67F4E3DFB8D746FFD0A56A /* Collections in Frameworks */ = {isa = PBXBuildFile; productRef = 3FF93EC194652753DBF4BA1D /* Collections */; };
 		6DB695A22698BC9FF9778550 /* CalendarManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74B292D5861628CF838C779B /* CalendarManager.swift */; };
 		6E8C56627841C4155CC342EE /* DragDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = E23F0CEBEAC276F08F68A41D /* DragDetector.swift */; };
 		700BE6CF8094E70239C7A3DB /* TipStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96A419CC6DEF2F5EA79E5790 /* TipStore.swift */; };
 		70590DCCEA82AC78BCA12DCB /* SoftwareUpdater.swift in Sources */ = {isa = PBXBuildFile; fileRef = 768819DECC6BBCE6AC3D8BBB /* SoftwareUpdater.swift */; };
-		70B056BD9E68DD13773504AC /* Lottie in Frameworks */ = {isa = PBXBuildFile; productRef = 63EBB76B921F74134BFBEE63 /* Lottie */; };
+		70B056BD9E68DD13773504AC /* LaunchAtLogin in Frameworks */ = {isa = PBXBuildFile; productRef = 01B488E8339775F1F30AFE43 /* LaunchAtLogin */; };
 		72DD4B37848E47C4DA8CAB8E /* NikiApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0CAD431A875FC74E92CD9B2B /* NikiApp.swift */; };
-		75BDF23095DC29D299611D73 /* Pow in Frameworks */ = {isa = PBXBuildFile; productRef = E072F4D5013FCCE80940CD5D /* Pow */; };
+		75BDF23095DC29D299611D73 /* MacroVisionKit in Frameworks */ = {isa = PBXBuildFile; productRef = 8173227B491E8D1550242347 /* MacroVisionKit */; };
 		7609D8B0F021EBC6A2AB29C2 /* NikiModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5308EA3E44C1FDCDB2960E6 /* NikiModels.swift */; };
 		763CEDDC7AF78A583D5F6170 /* NikiXPCHelperProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D25C97EE7C4669CE4222B3A /* NikiXPCHelperProtocol.swift */; };
 		7A0C17638E37424340FC4FB3 /* MediaRemoteAdapter.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B1DEC69D9F75347887336E28 /* MediaRemoteAdapter.framework */; };
@@ -90,7 +90,7 @@
 		7EA34349557851AE74609C97 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = C5B5121DBF4A74C95E4FE4C7 /* Preview Assets.xcassets */; };
 		7FC75FBDB9297F588C797963 /* ImageProcessingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26B6BA77A5D5F76273BA0AA6 /* ImageProcessingService.swift */; };
 		801ABAEF584DA5254B3B6344 /* NSItemProvider+LoadHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10282E344BFEEE2FE196E1C1 /* NSItemProvider+LoadHelpers.swift */; };
-		801C74E6E1B4C868C34352AF /* SkyLightWindow in Frameworks */ = {isa = PBXBuildFile; productRef = E704DAEE414F8B320DCC038A /* SkyLightWindow */; };
+		801C74E6E1B4C868C34352AF /* Pow in Frameworks */ = {isa = PBXBuildFile; productRef = E072F4D5013FCCE80940CD5D /* Pow */; };
 		87A26834EA36F20A549DC685 /* YouTubeMusicNetworking.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA0CA95676B67FAF2FA4D3D0 /* YouTubeMusicNetworking.swift */; };
 		87C97CB80B637662D1003E2D /* MouseTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0709D4669C6EEE0499E92A6F /* MouseTracker.swift */; };
 		8A71BE1E4CABD3A8305B3DC6 /* MediaRemoteAdapter.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = B1DEC69D9F75347887336E28 /* MediaRemoteAdapter.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
@@ -104,11 +104,10 @@
 		9795EEC9C7C5A4638D84AA79 /* NikiExtrasMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = B710520BDE21018E48EC6D49 /* NikiExtrasMenu.swift */; };
 		9F10CBE054245C8CF9FB5168 /* NikiNotchViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D27C615C9FE75E74C2A4CB2 /* NikiNotchViewModel.swift */; };
 		A1949F53FC6D9B7AF1554B95 /* NikiAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83105CD2582B4B46B6E986EF /* NikiAPIClient.swift */; };
-		A583A957136E511BE61064A6 /* NikiShellView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BABEEFF1E122F3DC29C516A /* NikiShellView.swift */; };
 		A618C1103BF0AAE28764DF8A /* NSMenu+AssociatedObject.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80E311639EDDD29B51948704 /* NSMenu+AssociatedObject.swift */; };
 		A6CBE7C0ED413F7BDD926888 /* NikiNotchHeader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15D0FC5EDE38C972051BC149 /* NikiNotchHeader.swift */; };
 		A719132F5A16A0547E59F93E /* NikiNotchCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = D100502F51B2FF27EB5F399A /* NikiNotchCoordinator.swift */; };
-		A826FCC9CAD43AD201128B38 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = D589E442B362F86F4283E675 /* Sparkle */; };
+		A826FCC9CAD43AD201128B38 /* SkyLightWindow in Frameworks */ = {isa = PBXBuildFile; productRef = E704DAEE414F8B320DCC038A /* SkyLightWindow */; };
 		AA26860FD711A35FAFA36C40 /* WhatsNewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E01BC2981CDCFF50D8F2915 /* WhatsNewView.swift */; };
 		AA7673E59A06FEBCD751011E /* TabSelectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C34949DAB533C6FA4D02BB5F /* TabSelectionView.swift */; };
 		ABA15C8F124458397B2D3BE1 /* AudioPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4462F885FD1646DADD8F331A /* AudioPlayer.swift */; };
@@ -124,6 +123,7 @@
 		B416257CBA006C29C6B87FF7 /* BrightnessManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9190B2F66D895100ECC70F7 /* BrightnessManager.swift */; };
 		B5AF79AC8F3CD14DA3CCFAAB /* CalendarServiceProviding.swift in Sources */ = {isa = PBXBuildFile; fileRef = B68CCB3D8DAB4C259FAF9435 /* CalendarServiceProviding.swift */; };
 		B6646F39431F2239B4908BE3 /* ThumbnailService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D315AE60DCCD642C888CAD7 /* ThumbnailService.swift */; };
+		B6B3D0141CA9822498706FD4 /* SwiftUIIntrospect in Frameworks */ = {isa = PBXBuildFile; productRef = 1F6C4D1065B8AB146032E233 /* SwiftUIIntrospect */; };
 		B78A2E71D88ED3F1D708247D /* NSScreen+UUID.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B44362D670C10091BCF9774 /* NSScreen+UUID.swift */; };
 		B7EAA90D3CEC7F3CC1C26F34 /* NikiBattery.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2F6FE711DBAA204E29022F3 /* NikiBattery.swift */; };
 		B9251F9065A0AEB8D480E44F /* ShelfItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = E61562FF7C67942E4B47B800 /* ShelfItem.swift */; };
@@ -136,9 +136,10 @@
 		C7E49EB2345D68F9EE19E401 /* NikiNotchSkyLightWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D5C3FD608526EC062ADC86B /* NikiNotchSkyLightWindow.swift */; };
 		C965CF9FE2E197C4453DDC01 /* MusicControllerSelectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0FC3682B39E67C2552B98A2 /* MusicControllerSelectionView.swift */; };
 		CFA4F8BC5AD9FB5A2AC0FC43 /* NikiComposerTextView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29B8530291FA300E8C29C327 /* NikiComposerTextView.swift */; };
-		D1061EF42A78F3A3FE75F0BF /* SwiftUIIntrospect in Frameworks */ = {isa = PBXBuildFile; productRef = 1F6C4D1065B8AB146032E233 /* SwiftUIIntrospect */; };
+		D1061EF42A78F3A3FE75F0BF /* SwiftSyntax in Frameworks */ = {isa = PBXBuildFile; productRef = 049A56A5029AEBE476CE3F92 /* SwiftSyntax */; };
 		D209BF0C75DA4538F38E8E7B /* ShelfSelectionModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD689EFEF54E69D509B16B43 /* ShelfSelectionModel.swift */; };
 		D334C2D84F1AFFCF8EA38D5E /* EmptyState.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1559CC508A24AEEAF72A5C0 /* EmptyState.swift */; };
+		D61085D06D139E6E95038AE0 /* NikiNotchShellView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DFDB3627630D181E327D06C5 /* NikiNotchShellView.swift */; };
 		D62398ABDDB9921441FA9042 /* AppIcons.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4D76C63F4B913325CBB79F6 /* AppIcons.swift */; };
 		D6A5DC841A321BA55644580F /* AppleMusicController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E24012B9CB9FDB160623F264 /* AppleMusicController.swift */; };
 		D76EC88EB756A137F5D2FC4C /* YouTubeMusicModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2D9747C5BB586305B967E44 /* YouTubeMusicModels.swift */; };
@@ -157,7 +158,7 @@
 		ECE24B8F41D470F710E95D7F /* BatteryStatusViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 855C7F394340ED906826A16D /* BatteryStatusViewModel.swift */; };
 		EF6672ED59D08D3F0F8B40F0 /* Button+Bouncing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7884DEE36FAB6387D41FBC29 /* Button+Bouncing.swift */; };
 		EFABCF937580B1A71B37E4FC /* visualizer.metal in Sources */ = {isa = PBXBuildFile; fileRef = 1277D118EB3D88260565B0B0 /* visualizer.metal */; };
-		EFCDB387871CF1F3E67C531F /* Collections in Frameworks */ = {isa = PBXBuildFile; productRef = 3FF93EC194652753DBF4BA1D /* Collections */; };
+		EFCDB387871CF1F3E67C531F /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = D589E442B362F86F4283E675 /* Sparkle */; };
 		F34F5F0EA4D085288CF837D6 /* NikiShellView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C28B33AA1D2BC039AF2CCF64 /* NikiShellView.swift */; };
 		F6349F6D82CC22FB7CC65FF1 /* ActionBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7C672DCEBA243D3530F8BE9 /* ActionBar.swift */; };
 		F6AEE009905CA8F725D4F8A8 /* FileShareView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2AB416E92F4A15FE46DCEDD0 /* FileShareView.swift */; };
@@ -216,7 +217,6 @@
 		18FD7F764A5C6CC4125376FC /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		1972CA47A909C41193AB89DB /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		1B3EBCEB7C345047FB0B7546 /* MarqueeTextView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarqueeTextView.swift; sourceTree = "<group>"; };
-		1EBE525D62D0E078C8DDE61F /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		2130A1B84975566783D8E5AA /* ShelfPersistenceService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShelfPersistenceService.swift; sourceTree = "<group>"; };
 		22A37C1675C13C9590C486F8 /* ShelfItemViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShelfItemViewModel.swift; sourceTree = "<group>"; };
 		26B6BA77A5D5F76273BA0AA6 /* ImageProcessingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageProcessingService.swift; sourceTree = "<group>"; };
@@ -232,6 +232,7 @@
 		342AC6FCAAD0138A124D25A5 /* PermissionsRequestView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionsRequestView.swift; sourceTree = "<group>"; };
 		3D25C97EE7C4669CE4222B3A /* NikiXPCHelperProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NikiXPCHelperProtocol.swift; sourceTree = "<group>"; };
 		3E234750126E3B227D8BD17E /* NSImage+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NSImage+Extensions.swift"; sourceTree = "<group>"; };
+		3F0C44FE268AFFF1C3A058DC /* NikiNotchContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NikiNotchContentView.swift; sourceTree = "<group>"; };
 		42F22F53A77A95EFDD76627A /* Clipboard+Content.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Clipboard+Content.swift"; sourceTree = "<group>"; };
 		4462F885FD1646DADD8F331A /* AudioPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlayer.swift; sourceTree = "<group>"; };
 		45BAC5B01D72ED35607F1597 /* WebcamManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebcamManager.swift; sourceTree = "<group>"; };
@@ -291,7 +292,6 @@
 		988C1F74F8D15B9ADEE53452 /* EditPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditPanelView.swift; sourceTree = "<group>"; };
 		99921465E0A88F9959CD1965 /* ProgressIndicator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProgressIndicator.swift; sourceTree = "<group>"; };
 		9BAA6F6FB23107E50F05D91E /* MusicControlButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicControlButton.swift; sourceTree = "<group>"; };
-		9BABEEFF1E122F3DC29C516A /* NikiShellView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NikiShellView.swift; sourceTree = "<group>"; };
 		9D5C3FD608526EC062ADC86B /* NikiNotchSkyLightWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NikiNotchSkyLightWindow.swift; sourceTree = "<group>"; };
 		9F6CC37C14F57D0E24C067FD /* SharingStateManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharingStateManager.swift; sourceTree = "<group>"; };
 		A2F6FE711DBAA204E29022F3 /* NikiBattery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NikiBattery.swift; sourceTree = "<group>"; };
@@ -338,6 +338,7 @@
 		D733A87879E968096D4F2E5C /* InlineHUD.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InlineHUD.swift; sourceTree = "<group>"; };
 		DB2391E14D7769E2304DA2B3 /* ShelfStateViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShelfStateViewModel.swift; sourceTree = "<group>"; };
 		DD96273504BC09FB456F9EDD /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		DFDB3627630D181E327D06C5 /* NikiNotchShellView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NikiNotchShellView.swift; sourceTree = "<group>"; };
 		E0FC3682B39E67C2552B98A2 /* MusicControllerSelectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicControllerSelectionView.swift; sourceTree = "<group>"; };
 		E15665C742C338143D49CD3F /* XPCHelperClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = XPCHelperClient.swift; sourceTree = "<group>"; };
 		E1F0433BA91FDEACD6E956CB /* YouTubeMusicAuthentication.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouTubeMusicAuthentication.swift; sourceTree = "<group>"; };
@@ -363,17 +364,18 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				5FE501D0973DF52AF0D76424 /* Defaults in Frameworks */,
-				052CE7A9687926713DFE3924 /* KeyboardShortcuts in Frameworks */,
-				10B57F046DB5BF8565992499 /* LaunchAtLogin in Frameworks */,
-				70B056BD9E68DD13773504AC /* Lottie in Frameworks */,
-				577D3788DBE10F847B6D44F8 /* MacroVisionKit in Frameworks */,
-				75BDF23095DC29D299611D73 /* Pow in Frameworks */,
-				801C74E6E1B4C868C34352AF /* SkyLightWindow in Frameworks */,
-				A826FCC9CAD43AD201128B38 /* Sparkle in Frameworks */,
-				EFCDB387871CF1F3E67C531F /* Collections in Frameworks */,
-				6C67F4E3DFB8D746FFD0A56A /* SwiftSyntax in Frameworks */,
-				D1061EF42A78F3A3FE75F0BF /* SwiftUIIntrospect in Frameworks */,
+				5FE501D0973DF52AF0D76424 /* AsyncXPCConnection in Frameworks */,
+				052CE7A9687926713DFE3924 /* Defaults in Frameworks */,
+				10B57F046DB5BF8565992499 /* KeyboardShortcuts in Frameworks */,
+				70B056BD9E68DD13773504AC /* LaunchAtLogin in Frameworks */,
+				577D3788DBE10F847B6D44F8 /* Lottie in Frameworks */,
+				75BDF23095DC29D299611D73 /* MacroVisionKit in Frameworks */,
+				801C74E6E1B4C868C34352AF /* Pow in Frameworks */,
+				A826FCC9CAD43AD201128B38 /* SkyLightWindow in Frameworks */,
+				EFCDB387871CF1F3E67C531F /* Sparkle in Frameworks */,
+				6C67F4E3DFB8D746FFD0A56A /* Collections in Frameworks */,
+				D1061EF42A78F3A3FE75F0BF /* SwiftSyntax in Frameworks */,
+				B6B3D0141CA9822498706FD4 /* SwiftUIIntrospect in Frameworks */,
 				7A0C17638E37424340FC4FB3 /* MediaRemoteAdapter.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -626,13 +628,13 @@
 				5D389E7603FC2E1437E4CF5B /* utils */,
 				46D4BA846CFC8F4306E85D1F /* XPCHelperClient */,
 				1972CA47A909C41193AB89DB /* Assets.xcassets */,
-				1EBE525D62D0E078C8DDE61F /* ContentView.swift */,
 				4D8B051BD037587A28A363E9 /* Info.plist */,
 				A76CEBD108A5DF79B49512E5 /* Localizable.xcstrings */,
 				4EFE1C4764B4F8CE1E08FF7C /* Niki.entitlements */,
 				A67103B23B48D16C8A008854 /* niki.m4a */,
+				3F0C44FE268AFFF1C3A058DC /* NikiNotchContentView.swift */,
 				D100502F51B2FF27EB5F399A /* NikiNotchCoordinator.swift */,
-				9BABEEFF1E122F3DC29C516A /* NikiShellView.swift */,
+				DFDB3627630D181E327D06C5 /* NikiNotchShellView.swift */,
 			);
 			path = Notch;
 			sourceTree = "<group>";
@@ -938,6 +940,7 @@
 			);
 			name = Niki;
 			packageProductDependencies = (
+				C0766279081787143F3349AE /* AsyncXPCConnection */,
 				3DADDDE92054DD30D83A1E56 /* Defaults */,
 				654E0F79616A51A4B87ADEF6 /* KeyboardShortcuts */,
 				01B488E8339775F1F30AFE43 /* LaunchAtLogin */,
@@ -1064,7 +1067,6 @@
 				135EF40A8E3EA0849620645C /* Color+AccentColor.swift in Sources */,
 				553CFEE8B6F997E10587782F /* ConditionalModifier.swift in Sources */,
 				DD0D4EAB5EF3EB431CD43274 /* Constants.swift in Sources */,
-				6BA38FBB32077B301A8370DA /* ContentView.swift in Sources */,
 				8C7933F0E8287AF3706AEF9B /* ContentView.swift in Sources */,
 				FFCE051A47658C5F868CA4A9 /* DataTypes+Extensions.swift in Sources */,
 				E716E43C2BB5160D4C831860 /* DockItem.swift in Sources */,
@@ -1116,13 +1118,14 @@
 				9795EEC9C7C5A4638D84AA79 /* NikiExtrasMenu.swift in Sources */,
 				C15BDBA6192C1D490FAC6CD9 /* NikiGlass.swift in Sources */,
 				7609D8B0F021EBC6A2AB29C2 /* NikiModels.swift in Sources */,
+				574DF5783A751E85E9A345FE /* NikiNotchContentView.swift in Sources */,
 				A719132F5A16A0547E59F93E /* NikiNotchCoordinator.swift in Sources */,
 				A6CBE7C0ED413F7BDD926888 /* NikiNotchHeader.swift in Sources */,
+				D61085D06D139E6E95038AE0 /* NikiNotchShellView.swift in Sources */,
 				C7E49EB2345D68F9EE19E401 /* NikiNotchSkyLightWindow.swift in Sources */,
 				9F10CBE054245C8CF9FB5168 /* NikiNotchViewModel.swift in Sources */,
 				8F6F0918A99C5309A236ABDF /* NikiNotchWindow.swift in Sources */,
 				47904010DA5A4AB8AC1713FA /* NikiOrbView.swift in Sources */,
-				A583A957136E511BE61064A6 /* NikiShellView.swift in Sources */,
 				F34F5F0EA4D085288CF837D6 /* NikiShellView.swift in Sources */,
 				EA2198EA299A81ADEC4FC96C /* NikiSidebarPanels.swift in Sources */,
 				763CEDDC7AF78A583D5F6170 /* NikiXPCHelperProtocol.swift in Sources */,
@@ -1542,7 +1545,7 @@
 			repositoryURL = "https://github.com/EmergeTools/Pow";
 			requirement = {
 				kind = exactVersion;
-				version = 1.0.5;
+				version = 1.0.6;
 			};
 		};
 		EA75EC55151200162504CA92 /* XCRemoteSwiftPackageReference "SkyLightWindow" */ = {
@@ -1600,6 +1603,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 7F36B4A90145D34A6D2BA48F /* XCRemoteSwiftPackageReference "MacroVisionKit" */;
 			productName = MacroVisionKit;
+		};
+		C0766279081787143F3349AE /* AsyncXPCConnection */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = ADB6EF068E1253C34E95B69E /* XCRemoteSwiftPackageReference "AsyncXPCConnection" */;
+			productName = AsyncXPCConnection;
 		};
 		D589E442B362F86F4283E675 /* Sparkle */ = {
 			isa = XCSwiftPackageProductDependency;

@@ -4,7 +4,7 @@
 
 Niki utiliza una arquitectura **cliente-servidor** con separacion por capas:
 
-- **Clientes:** frontend Tauri/Next.js, app nativa macOS y NikiNotch.
+- **Clientes:** app macOS Niki (proceso único que gestiona ventana principal + overlay del notch).
 - **Backend:** API NestJS que actua como BFF y wrapper del runtime.
 - **Runtime de IA:** Hermes API Server, consumido por el backend.
 - **Persistencia local:** memoria del proceso y archivo JSON para datos locales.
@@ -13,20 +13,9 @@ Tambien se aplica una organizacion modular en backend, similar a una arquitectur
 
 ## Componentes principales
 
-### Frontend web y Tauri
-
-Ubicacion: `frontend/`
-
-Responsabilidades:
-
-- Renderizar la experiencia principal de Niki.
-- Consumir la API wrapper del backend.
-- Mostrar chat, tareas, settings y estado del runtime.
-- En modo Tauri, empaquetar la app web como aplicacion de escritorio.
-
 ### Backend
 
-Ubicacion: `backend/`
+Ubicacion: `app/backend/`
 
 Responsabilidades:
 
@@ -37,32 +26,24 @@ Responsabilidades:
 - Gestionar work items, memoria, actividades y voz.
 - Mantener estado local del sistema.
 
-### App nativa macOS
+### App macOS (Niki)
 
-Ubicacion: `macOs-app/`
+Ubicacion: `app/Niki/` — proceso unico que unifica la ventana principal y el overlay del notch.
+
+- Sources del notch: `app/Niki/Sources/Notch/`
+- Sources del escritorio: `app/Niki/Sources/Desktop/`
 
 Responsabilidades:
 
-- Ofrecer una experiencia nativa en SwiftUI.
+- Ofrecer experiencia nativa en SwiftUI.
 - Gestionar chat, tareas, voz y settings desde macOS.
-- Sincronizar configuracion local con NikiNotch.
-- Abrir y cerrar NikiNotch como companion app.
-
-### NikiNotch
-
-Ubicacion: `NikiNotch/`
-
-Responsabilidades:
-
-- Mostrar una interfaz rapida en el notch.
-- Enviar prompts al backend.
-- Consumir respuestas del backend.
-- Leer configuracion local desde `~/.niki/notch-config.json`.
+- Mostrar interfaz rapida en el notch del Mac.
+- Enviar prompts al backend y consumir respuestas.
 
 ### Agente local y control de la computadora
 
-Ubicacion: `backend/src/modules/runtime/groq-agent.service.ts` y
-`backend/src/modules/computer/`.
+Ubicacion: `app/backend/src/modules/runtime/groq-agent.service.ts` y
+`app/backend/src/modules/computer/`.
 
 Responsabilidades:
 
@@ -87,13 +68,9 @@ Responsabilidades:
 
 ```mermaid
 flowchart LR
-    User["Usuario"] --> Desktop["Niki Desktop macOS"]
-    User --> Tauri["Frontend Tauri/Next.js"]
-    User --> Notch["NikiNotch"]
+    User["Usuario"] --> Niki["App Niki macOS\n(ventana + notch)"]
 
-    Desktop -->|HTTP /chat /tasks /voice| Backend["Backend NestJS"]
-    Tauri -->|HTTP + SSE| Backend
-    Notch -->|HTTP notch/debug + consume| Backend
+    Niki -->|HTTP /chat /tasks /voice /notch| Backend["Backend NestJS"]
 
     Backend -->|HTTP /v1/runs| Hermes["Hermes API Server"]
     Hermes -->|Run events| Backend
@@ -104,7 +81,7 @@ flowchart LR
 
 ## Flujo de chat
 
-1. El usuario escribe un mensaje en la app web, app nativa o notch.
+1. El usuario escribe un mensaje en la ventana principal o en el overlay del notch.
 2. El cliente envia la solicitud al backend.
 3. El backend valida autorizacion.
 4. El backend envia el prompt a Hermes mediante `/chat/stream`.
@@ -129,11 +106,12 @@ flowchart LR
 3. El usuario puede crear, editar, completar o eliminar tareas.
 4. El backend persiste los cambios en `.niki/local-db.json`.
 
-## Flujo de NikiNotch
+## Flujo del overlay del notch
 
-1. Niki Desktop escribe `~/.niki/notch-config.json`.
-2. Niki Desktop abre NikiNotch.
-3. NikiNotch lee la configuracion local.
-4. Los prompts del notch se envian a `POST /notch/debug`.
-5. La app consume solicitudes con `POST /notch/consume`.
+El overlay del notch forma parte del mismo proceso que la ventana principal (app Niki).
+
+1. El usuario activa el overlay desde el notch.
+2. La app Niki (proceso unico) gestiona la interaccion directamente.
+3. Los prompts del notch se envian a `POST /notch/debug`.
+4. La app consume solicitudes con `POST /notch/consume`.
 

@@ -4,74 +4,25 @@
 //
 
 import AppKit
-import AVFoundation
 import Foundation
 import Defaults
 import SwiftUI
 import UniformTypeIdentifiers
 
-private struct NikiNotchRequest: Codable {
-    let text: String
-    let files: [NikiNotchFile]
-    let createdAt: String
-}
-
-private struct NikiNotchBackendConfig: Codable {
-    let baseUrl: String
-    let apiKey: String
-    let userId: String
-}
-
-private struct NikiNotchResponsePayload: Codable {
-    let text: String
-    let state: String
-    let sessionId: String
-    let updatedAt: String
-}
-
-private struct NikiNotchVoiceTranscriptionResponse: Codable {
-    let ok: Bool
-    let text: String?
-    let error: String?
-    let language: String?
-    let duration: Int?
-}
-
-private struct NikiNotchFile: Codable, Hashable, Identifiable {
-    let name: String
-    let path: String
-    let kind: String
-
-    var id: String {
-        "\(kind):\(path):\(name)"
-    }
-}
 
 @MainActor
 struct NikiNotchContentView: View {
     @EnvironmentObject var vm: NikiNotchViewModel
+    @EnvironmentObject var appModel: NikiAppModel
     @ObservedObject private var coordinator = NikiNotchCoordinator.shared
     @Namespace private var albumArtNamespace
     @FocusState private var promptFocused: Bool
     @State private var hoverTask: Task<Void, Never>?
     @State private var isHovering = false
     @State private var prompt = ""
-    @State private var submitState = "Ready"
-    @State private var droppedFiles: [NikiNotchFile] = []
-    @State private var activeResponseText = ""
-    @State private var activeResponseState = ""
-    @State private var activeResponseUpdatedAt = ""
-    @State private var voiceRecorder: AVAudioRecorder?
-    @State private var voiceRecordingURL: URL?
-    @State private var isVoiceRecording = false
-    @State private var isVoiceProcessing = false
 
     private let openAnimation = Animation.spring(response: 0.42, dampingFraction: 0.82, blendDuration: 0)
     private let closeAnimation = Animation.spring(response: 0.45, dampingFraction: 1.0, blendDuration: 0)
-
-    private var hasActiveResponse: Bool {
-        !activeResponseText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
 
     private var tabContentHeight: CGFloat {
         switch coordinator.currentView {
@@ -85,18 +36,14 @@ struct NikiNotchContentView: View {
     }
 
     private var openSurfaceHeight: CGFloat {
-        let baseHeight: CGFloat = coordinator.currentView == .utils ? 258 : 270
-        return hasActiveResponse ? openNotchSize.height : baseHeight
+        coordinator.currentView == .utils ? 258 : 270
     }
 
     private var missionStateLabel: String {
-        if isVoiceProcessing { return "Transcribing" }
-        if isVoiceRecording { return "Listening" }
-        if activeResponseState == "streaming" { return "Streaming" }
-        if submitState == "Sent" { return "Sent" }
-        if submitState == "Error" || submitState == "Voice error" || submitState == "Mic denied" {
-            return submitState
-        }
+        if appModel.voiceProcessing { return "Transcribing" }
+        if appModel.voiceRecording { return "Listening" }
+        if appModel.chatBusy { return "Thinking" }
+        if !appModel.voiceError.isEmpty { return "Error" }
         return "Ready"
     }
 
@@ -116,17 +63,9 @@ struct NikiNotchContentView: View {
                     VStack(spacing: 9) {
                         NotchTopBar(
                             state: missionStateLabel,
-                            fileCount: droppedFiles.count,
-                            hasResponse: hasActiveResponse,
-                            voiceActive: isVoiceRecording || isVoiceProcessing
+                            fileCount: appModel.chatAttachments.count,
+                            voiceActive: appModel.voiceRecording || appModel.voiceProcessing
                         )
-
-                        if hasActiveResponse {
-                            ActiveResponsePanel(
-                                text: activeResponseText,
-                                state: activeResponseState
-                            )
-                        }
 
                         tabContent
                             .frame(
@@ -144,8 +83,7 @@ struct NikiNotchContentView: View {
                 } else {
                     ClosedNotchHandle(
                         state: missionStateLabel,
-                        voiceActive: isVoiceRecording || isVoiceProcessing,
-                        hasResponse: hasActiveResponse
+                        voiceActive: appModel.voiceRecording || appModel.voiceProcessing
                     )
                     .padding(.top, 8)
                     .transition(.opacity)
@@ -170,12 +108,6 @@ struct NikiNotchContentView: View {
         .environmentObject(vm)
         .onAppear {
             notchDebugLog("content appeared")
-        }
-        .task {
-            while !Task.isCancelled {
-                await refreshIncomingResponse()
-                try? await Task.sleep(for: .milliseconds(350))
-            }
         }
     }
 
@@ -213,28 +145,21 @@ struct NikiNotchContentView: View {
 
                 ChatControls(
                     prompt: $prompt,
-                    submitState: submitState,
-                    droppedFiles: $droppedFiles,
-                    voiceRecording: isVoiceRecording,
-                    voiceProcessing: isVoiceProcessing,
+                    submitState: missionStateLabel,
+                    droppedFiles: appModel.chatAttachments,
+                    voiceRecording: appModel.voiceRecording,
+                    voiceProcessing: appModel.voiceProcessing,
                     promptFocused: _promptFocused,
                     onSubmit: submitPrompt,
-                    onVoice: {
-                        Task { await toggleVoiceDictation() }
-                    },
-                    onShowUtils: {
-                        coordinator.currentView = .utils
-                    },
-                    onShowShelf: {
-                        coordinator.currentView = .shelf
-                    },
+                    onVoice: { toggleVoiceDictation() },
+                    onShowUtils: { coordinator.currentView = .utils },
+                    onShowShelf: { coordinator.currentView = .shelf },
                     onClear: {
                         prompt = ""
-                        droppedFiles = []
-                        activeResponseText = ""
-                        activeResponseState = ""
-                        activeResponseUpdatedAt = ""
-                        submitState = "Ready"
+                        appModel.chatAttachments = []
+                    },
+                    onDropFiles: { providers in
+                        attachProviders(providers)
                     }
                 )
                 .frame(maxWidth: .infinity, minHeight: tabContentHeight, maxHeight: tabContentHeight, alignment: .top)
@@ -258,269 +183,46 @@ struct NikiNotchContentView: View {
 
     private func submitPrompt() {
         let text = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty || !droppedFiles.isEmpty else { return }
-        notchDebugLog("submit requested textChars=\(text.count) files=\(droppedFiles.count)")
-
-        do {
-            let path = try notchRequestPath()
-            try FileManager.default.createDirectory(
-                at: path.deletingLastPathComponent(),
-                withIntermediateDirectories: true
-            )
-            let request = NikiNotchRequest(
-                text: text,
-                files: droppedFiles,
-                createdAt: ISO8601DateFormatter().string(from: Date())
-            )
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.sortedKeys]
-            let data = try encoder.encode(request)
-            try data.write(to: path, options: .atomic)
-            notchDebugLog("wrote request path=\(path.path) bytes=\(data.count)")
-            Task {
-                await postDebugRequest(request)
-            }
-            activeResponseText = ""
-            activeResponseState = ""
-            activeResponseUpdatedAt = ""
-            prompt = ""
-            droppedFiles = []
-            submitState = "Sent"
-            activateNiki()
-
-            Task { @MainActor in
-                try? await Task.sleep(for: .milliseconds(1200))
-                submitState = "Ready"
-            }
-        } catch {
-            notchDebugLog("submit error \(error.localizedDescription)")
-            submitState = "Error"
-        }
+        guard !text.isEmpty || !appModel.chatAttachments.isEmpty else { return }
+        appModel.chatInput = text
+        prompt = ""
+        Task { await appModel.sendCurrentChat() }
     }
 
-    private func activateNiki() {
-        if let app = NSRunningApplication.runningApplications(withBundleIdentifier: "com.niki.desktop").first {
-            app.activate(options: [.activateAllWindows])
-        }
-    }
-
-    private func notchRequestPath() throws -> URL {
-        FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".niki/notch-request.json")
-    }
-
-    private func notchConfigPath() -> URL {
-        FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".niki/notch-config.json")
-    }
-
-    private func notchResponsePath() -> URL {
-        FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".niki/notch-response.json")
-    }
-
-    private func loadBackendConfig() -> NikiNotchBackendConfig {
-        let fallback = NikiNotchBackendConfig(
-            baseUrl: "http://127.0.0.1:8000",
-            apiKey: "",
-            userId: "user-demo"
-        )
-
-        do {
-            let data = try Data(contentsOf: notchConfigPath())
-            let decoded = try JSONDecoder().decode(NikiNotchBackendConfig.self, from: data)
-            let normalizedBaseUrl = decoded.baseUrl.trimmingCharacters(in: .whitespacesAndNewlines)
-            let normalizedUserId = decoded.userId.trimmingCharacters(in: .whitespacesAndNewlines)
-            notchDebugLog("loaded backend config baseUrl=\(normalizedBaseUrl) apiKeyChars=\(decoded.apiKey.count) userId=\(normalizedUserId)")
-            return NikiNotchBackendConfig(
-                baseUrl: normalizedBaseUrl.isEmpty ? fallback.baseUrl : normalizedBaseUrl,
-                apiKey: decoded.apiKey,
-                userId: normalizedUserId.isEmpty ? fallback.userId : normalizedUserId
-            )
-        } catch {
-            notchDebugLog("backend config fallback \(error.localizedDescription)")
-            return fallback
-        }
-    }
-
-    private func postDebugRequest(_ request: NikiNotchRequest) async {
-        let config = loadBackendConfig()
-        let baseUrl = config.baseUrl.replacingOccurrences(of: "/+$", with: "", options: .regularExpression)
-        guard let url = URL(string: "\(baseUrl)/notch/debug") else {
-            notchDebugLog("debug post invalid url baseUrl=\(config.baseUrl)")
-            return
-        }
-
-        do {
-            var urlRequest = URLRequest(url: url)
-            urlRequest.httpMethod = "POST"
-            urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            if !config.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                urlRequest.setValue(config.apiKey, forHTTPHeaderField: "x-niki-api-key")
-            }
-            if !config.userId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                urlRequest.setValue(config.userId, forHTTPHeaderField: "x-niki-user-id")
-            }
-            let data = try JSONEncoder().encode(request)
-            urlRequest.httpBody = data
-            notchDebugLog("posting debug request url=\(url.absoluteString) textChars=\(request.text.count) files=\(request.files.count) userId=\(config.userId)")
-            let (responseData, response) = try await URLSession.shared.data(for: urlRequest)
-            let status = (response as? HTTPURLResponse)?.statusCode ?? -1
-            let body = String(data: responseData, encoding: .utf8) ?? ""
-            notchDebugLog("debug response status=\(status) body=\(String(body.prefix(220)))")
-        } catch {
-            notchDebugLog("debug post error \(error.localizedDescription)")
-        }
-    }
-
-    private func toggleVoiceDictation() async {
-        if isVoiceProcessing { return }
-        if isVoiceRecording {
-            await stopVoiceDictationAndTranscribe()
+    private func toggleVoiceDictation() {
+        if appModel.voiceRecording {
+            Task { await appModel.stopVoiceRecordingAndTranscribe() }
         } else {
-            await startVoiceDictation()
+            Task { await appModel.startVoiceRecording() }
         }
     }
 
-    private func startVoiceDictation() async {
-        notchDebugLog("voice dictation start requested")
-        let granted = await AVCaptureDevice.requestAccess(for: .audio)
-        guard granted else {
-            submitState = "Mic denied"
-            notchDebugLog("voice dictation microphone denied")
-            return
-        }
-
-        do {
-            let url = FileManager.default.temporaryDirectory
-                .appendingPathComponent("niki-notch-\(UUID().uuidString).wav")
-            let settings: [String: Any] = [
-                AVFormatIDKey: Int(kAudioFormatLinearPCM),
-                AVSampleRateKey: 44_100,
-                AVNumberOfChannelsKey: 1,
-                AVLinearPCMBitDepthKey: 16,
-                AVLinearPCMIsBigEndianKey: false,
-                AVLinearPCMIsFloatKey: false
-            ]
-            let recorder = try AVAudioRecorder(url: url, settings: settings)
-            recorder.prepareToRecord()
-            recorder.record()
-            voiceRecorder = recorder
-            voiceRecordingURL = url
-            isVoiceRecording = true
-            submitState = "Listening"
-            notchDebugLog("voice dictation recording url=\(url.path)")
-        } catch {
-            submitState = "Voice error"
-            notchDebugLog("voice dictation start error \(error.localizedDescription)")
-        }
-    }
-
-    private func stopVoiceDictationAndTranscribe() async {
-        notchDebugLog("voice dictation stop requested")
-        voiceRecorder?.stop()
-        voiceRecorder = nil
-        isVoiceRecording = false
-        isVoiceProcessing = true
-        submitState = "Transcribing"
-        try? await Task.sleep(for: .milliseconds(220))
-
-        defer {
-            isVoiceProcessing = false
-        }
-
-        guard let url = voiceRecordingURL else {
-            submitState = "Ready"
-            notchDebugLog("voice dictation missing file")
-            return
-        }
-
-        do {
-            let data = try Data(contentsOf: url)
-            let response = try await transcribeNotchAudio(data)
-            try? FileManager.default.removeItem(at: url)
-            voiceRecordingURL = nil
-
-            guard response.ok,
-                  let text = response.text?.trimmingCharacters(in: .whitespacesAndNewlines),
-                  !text.isEmpty else {
-                submitState = "Voice error"
-                notchDebugLog("voice dictation failed \(response.error ?? "empty transcript")")
-                return
+    private func attachProviders(_ providers: [NSItemProvider]) {
+        for provider in providers {
+            if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
+                provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
+                    self.appendDroppedItem(item)
+                }
+            } else if provider.hasItemConformingToTypeIdentifier(UTType.url.identifier) {
+                provider.loadItem(forTypeIdentifier: UTType.url.identifier, options: nil) { item, _ in
+                    self.appendDroppedItem(item)
+                }
             }
-
-            if prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                prompt = text
-            } else {
-                prompt += " \(text)"
-            }
-            submitState = "Ready"
-            promptFocused = true
-            notchDebugLog("voice dictation transcript chars=\(text.count)")
-        } catch {
-            submitState = "Voice error"
-            notchDebugLog("voice dictation transcribe error \(error.localizedDescription)")
         }
     }
 
-    private func transcribeNotchAudio(_ data: Data) async throws -> NikiNotchVoiceTranscriptionResponse {
-        let config = loadBackendConfig()
-        let baseUrl = config.baseUrl.replacingOccurrences(of: "/+$", with: "", options: .regularExpression)
-        guard let url = URL(string: "\(baseUrl)/voice/transcribe") else {
-            throw URLError(.badURL)
-        }
+    private func appendDroppedItem(_ item: NSSecureCoding?) {
+        let url: URL?
+        if let u = item as? URL { url = u }
+        else if let data = item as? Data, let raw = String(data: data, encoding: .utf8) {
+            url = URL(string: raw.trimmingCharacters(in: .whitespacesAndNewlines))
+        } else if let raw = item as? String {
+            url = URL(string: raw.trimmingCharacters(in: .whitespacesAndNewlines))
+        } else { url = nil }
 
-        var urlRequest = URLRequest(url: url)
-        urlRequest.httpMethod = "POST"
-        urlRequest.timeoutInterval = 120
-        let boundary = "NikiNotchBoundary-\(UUID().uuidString)"
-        urlRequest.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
-        if !config.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            urlRequest.setValue(config.apiKey, forHTTPHeaderField: "x-niki-api-key")
-        }
-        if !config.userId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            urlRequest.setValue(config.userId, forHTTPHeaderField: "x-niki-user-id")
-        }
-        var body = Data()
-        body.appendMultipartField(name: "language", value: "es", boundary: boundary)
-        body.appendMultipartFile(
-            name: "audio",
-            filename: "niki-notch.wav",
-            mimeType: "audio/wav",
-            data: data,
-            boundary: boundary
-        )
-        body.append("--\(boundary)--\r\n".data(using: .utf8)!)
-        urlRequest.httpBody = body
-
-        notchDebugLog("voice transcribe post bytes=\(data.count) url=\(url.absoluteString)")
-        let (responseData, response) = try await URLSession.shared.data(for: urlRequest)
-        let status = (response as? HTTPURLResponse)?.statusCode ?? -1
-        notchDebugLog("voice transcribe response status=\(status)")
-        guard (200 ..< 300).contains(status) else {
-            let body = String(data: responseData, encoding: .utf8) ?? ""
-            throw NSError(domain: "NikiNotchVoice", code: status, userInfo: [NSLocalizedDescriptionKey: body])
-        }
-        return try JSONDecoder().decode(NikiNotchVoiceTranscriptionResponse.self, from: responseData)
-    }
-
-    private func refreshIncomingResponse() async {
-        let path = notchResponsePath()
-        guard FileManager.default.fileExists(atPath: path.path) else { return }
-
-        do {
-            let data = try Data(contentsOf: path)
-            let payload = try JSONDecoder().decode(NikiNotchResponsePayload.self, from: data)
-            guard payload.updatedAt != activeResponseUpdatedAt else { return }
-            activeResponseUpdatedAt = payload.updatedAt
-            activeResponseText = payload.text
-            activeResponseState = payload.state
-            notchDebugLog("response refreshed state=\(payload.state) chars=\(payload.text.count)")
-            if !payload.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                vm.open()
-            }
-        } catch {
-            notchDebugLog("response refresh error \(error.localizedDescription)")
+        guard let url else { return }
+        DispatchQueue.main.async {
+            self.appModel.appendAttachment(url: url)
         }
     }
 
@@ -550,7 +252,6 @@ struct NikiNotchContentView: View {
 private struct ClosedNotchHandle: View {
     let state: String
     let voiceActive: Bool
-    let hasResponse: Bool
 
     var body: some View {
         HStack(spacing: 8) {
@@ -561,7 +262,7 @@ private struct ClosedNotchHandle: View {
 
             Capsule()
                 .fill(Color.white.opacity(0.16))
-                .frame(width: hasResponse ? 116 : 84, height: 6)
+                .frame(width: 84, height: 6)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
@@ -571,7 +272,6 @@ private struct ClosedNotchHandle: View {
 
     private var indicatorColor: Color {
         if voiceActive { return Color(red: 0.46, green: 0.88, blue: 1) }
-        if state == "Streaming" || hasResponse { return Color(red: 0.68, green: 0.82, blue: 1) }
         return Color.white.opacity(0.56)
     }
 }
@@ -579,7 +279,6 @@ private struct ClosedNotchHandle: View {
 private struct NotchTopBar: View {
     let state: String
     let fileCount: Int
-    let hasResponse: Bool
     let voiceActive: Bool
 
     var body: some View {
@@ -594,10 +293,6 @@ private struct NotchTopBar: View {
                     NikiStatusPill(icon: "paperclip", label: "\(fileCount)", tint: Color.white.opacity(0.80))
                 }
 
-                if hasResponse {
-                    NikiStatusPill(icon: "text.bubble.fill", label: "Reply", tint: Color(red: 0.58, green: 0.77, blue: 1))
-                }
-
                 NikiStatusPill(
                     icon: voiceActive ? "waveform" : "circle.hexagongrid.fill",
                     label: state,
@@ -610,10 +305,8 @@ private struct NotchTopBar: View {
 
     private var statusTint: Color {
         if voiceActive { return Color(red: 0.46, green: 0.88, blue: 1) }
-        if state == "Streaming" { return Color(red: 0.58, green: 0.77, blue: 1) }
-        if state == "Error" || state == "Voice error" || state == "Mic denied" {
-            return Color(red: 1, green: 0.42, blue: 0.42)
-        }
+        if state == "Thinking" { return Color(red: 0.58, green: 0.77, blue: 1) }
+        if state == "Error" { return Color(red: 1, green: 0.42, blue: 0.42) }
         return Color.white.opacity(0.74)
     }
 }
@@ -639,55 +332,6 @@ private struct NikiStatusPill: View {
     }
 }
 
-private struct ActiveResponsePanel: View {
-    let text: String
-    let state: String
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            ZStack {
-                Circle()
-                    .fill(Color(red: 0.48, green: 0.74, blue: 1).opacity(0.13))
-                    .frame(width: 34, height: 34)
-
-                Image(systemName: state == "streaming" ? "ellipsis.message.fill" : "checkmark.message.fill")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(Color.white.opacity(0.78))
-            }
-
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 8) {
-                    Text(state == "streaming" ? "Writing" : "Reply ready")
-                        .font(.system(size: 11, weight: .semibold, design: .rounded))
-                        .foregroundStyle(Color.white.opacity(0.52))
-
-                    if state == "streaming" {
-                        ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle(tint: .white.opacity(0.42)))
-                            .scaleEffect(0.58)
-                    }
-                }
-
-                Text(text)
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(Color.white.opacity(0.84))
-                    .lineLimit(2)
-                    .multilineTextAlignment(.leading)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .background(
-            RoundedRectangle(cornerRadius: 18)
-                .fill(Color.white.opacity(0.04))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 18)
-                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
-                )
-        )
-    }
-}
 
 private struct NotchOrbDot {
     let x: Double
@@ -869,7 +513,7 @@ private struct OrbPanel: View {
 private struct ChatControls: View {
     @Binding var prompt: String
     let submitState: String
-    @Binding var droppedFiles: [NikiNotchFile]
+    let droppedFiles: [NikiChatAttachment]
     let voiceRecording: Bool
     let voiceProcessing: Bool
     @FocusState var promptFocused: Bool
@@ -879,6 +523,7 @@ private struct ChatControls: View {
     let onShowUtils: () -> Void
     let onShowShelf: () -> Void
     let onClear: () -> Void
+    var onDropFiles: (([NSItemProvider]) -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -906,7 +551,7 @@ private struct ChatControls: View {
             of: [.fileURL, .url],
             isTargeted: $dropTargeted
         ) { providers in
-            attachProviders(providers)
+            onDropFiles?(providers)
             return true
         }
     }
@@ -1030,52 +675,6 @@ private struct ChatControls: View {
         return Color.white.opacity(0.46)
     }
 
-    private func attachProviders(_ providers: [NSItemProvider]) {
-        notchDebugLog("capture drop providers=\(providers.count)")
-
-        for provider in providers {
-            if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
-                provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, error in
-                    if let error {
-                        notchDebugLog("capture file drop error \(error.localizedDescription)")
-                        return
-                    }
-                    appendDroppedItem(item)
-                }
-            } else if provider.hasItemConformingToTypeIdentifier(UTType.url.identifier) {
-                provider.loadItem(forTypeIdentifier: UTType.url.identifier, options: nil) { item, error in
-                    if let error {
-                        notchDebugLog("capture url drop error \(error.localizedDescription)")
-                        return
-                    }
-                    appendDroppedItem(item)
-                }
-            }
-        }
-    }
-
-    private func appendDroppedItem(_ item: NSSecureCoding?) {
-        let url: URL?
-        if let item = item as? URL {
-            url = item
-        } else if let data = item as? Data,
-                  let raw = String(data: data, encoding: .utf8) {
-            url = URL(string: raw.trimmingCharacters(in: .whitespacesAndNewlines))
-        } else if let raw = item as? String {
-            url = URL(string: raw.trimmingCharacters(in: .whitespacesAndNewlines))
-        } else {
-            url = nil
-        }
-
-        guard let url else { return }
-        let file = NikiNotchFile(url: url)
-
-        DispatchQueue.main.async {
-            guard !droppedFiles.contains(file) else { return }
-            droppedFiles.append(file)
-            notchDebugLog("capture attached \(file.kind)=\(file.name)")
-        }
-    }
 }
 
 private struct NotchSendButton: View {
@@ -1159,8 +758,6 @@ private struct NikiFileShareView: View {
     @EnvironmentObject private var vm: NikiNotchViewModel
     @StateObject private var quickShare = QuickShareService.shared
     @Default(.quickShareProvider) private var quickShareProvider: String
-    @Binding var droppedFiles: [NikiNotchFile]
-    @Binding var submitState: String
     @State private var hostView: NSView?
     @State private var interactionNonce: UUID = .init()
     @State private var isProcessing = false
@@ -1263,21 +860,10 @@ private struct NikiFileShareView: View {
         defer { isProcessing = false }
         notchDebugLog("drop received providers=\(providers.count)")
         await quickShare.shareDroppedFiles(providers, using: selectedProvider, from: hostView)
-        droppedFiles = []
-        submitState = "Ready"
         notchDebugLog("quick share drop handled provider=\(selectedProvider.id)")
     }
 }
 
-private extension NikiNotchFile {
-    init(url: URL) {
-        self.init(
-            name: url.lastPathComponent.isEmpty ? url.absoluteString : url.lastPathComponent,
-            path: url.isFileURL ? url.path : url.absoluteString,
-            kind: url.isFileURL ? "file" : "url"
-        )
-    }
-}
 
 private struct NikiNSViewHost: NSViewRepresentable {
     @Binding var view: NSView?
@@ -1358,23 +944,9 @@ private func notchDebugLog(_ message: String) {
     }
 }
 
-private extension Data {
-    mutating func appendMultipartField(name: String, value: String, boundary: String) {
-        append("--\(boundary)\r\n".data(using: .utf8)!)
-        append("Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n".data(using: .utf8)!)
-        append("\(value)\r\n".data(using: .utf8)!)
-    }
-
-    mutating func appendMultipartFile(name: String, filename: String, mimeType: String, data: Data, boundary: String) {
-        append("--\(boundary)\r\n".data(using: .utf8)!)
-        append("Content-Disposition: form-data; name=\"\(name)\"; filename=\"\(filename)\"\r\n".data(using: .utf8)!)
-        append("Content-Type: \(mimeType)\r\n\r\n".data(using: .utf8)!)
-        append(data)
-        append("\r\n".data(using: .utf8)!)
-    }
-}
 
 #Preview {
     NikiNotchContentView()
         .environmentObject(NikiNotchViewModel())
+        .environmentObject(NikiAppModel())
 }

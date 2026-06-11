@@ -10,6 +10,7 @@ class NikiAppDelegate: NSObject, NSApplicationDelegate {
     var windows: [String: NSWindow] = [:] // UUID -> NSWindow
     var viewModels: [String: NikiNotchViewModel] = [:] // UUID -> NikiNotchViewModel
     var window: NSWindow?
+    weak var appModel: NikiAppModel?
     let vm: NikiNotchViewModel = .init()
     @ObservedObject var coordinator = NikiNotchCoordinator.shared
     var quickShareService = QuickShareService.shared
@@ -207,9 +208,11 @@ class NikiAppDelegate: NSObject, NSApplicationDelegate {
             window.disableSkyLight()
         }
 
+        let appModelRef = appModel
         window.contentView = NSHostingView(
             rootView: NikiNotchContentView()
                 .environmentObject(viewModel)
+                .environmentObject(appModelRef ?? NikiAppModel())
         )
 
         window.hidesOnDeactivate = false

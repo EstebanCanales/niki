@@ -66,6 +66,7 @@
 		5D0FF82A1F5ACE571FD599B1 /* DragPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46417E987603C9A73BD84438 /* DragPreviewView.swift */; };
 		5D427EAEF4F4488290EF6DB6 /* AsyncXPCConnection in Frameworks */ = {isa = PBXBuildFile; productRef = 254996E9E9BF934D66461FFE /* AsyncXPCConnection */; };
 		5ECAB16EFBE6C0F30E05A6CA /* HoverButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A2554850695F47D8963BB00 /* HoverButton.swift */; };
+		5ED09A1C97AA0B40CFC67BE6 /* NikiOperatorContracts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 173A006572BA66925EF38919 /* NikiOperatorContracts.swift */; };
 		5FE501D0973DF52AF0D76424 /* AsyncXPCConnection in Frameworks */ = {isa = PBXBuildFile; productRef = C0766279081787143F3349AE /* AsyncXPCConnection */; };
 		5FFC47F1771707A176C619D6 /* ShelfPersistenceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2130A1B84975566783D8E5AA /* ShelfPersistenceService.swift */; };
 		5FFEF81897423789B4951001 /* NikiModeIndicator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AD47C6C54E714127A6CFAED /* NikiModeIndicator.swift */; };
@@ -122,6 +123,7 @@
 		B2DE1EBFD39DA4665326DE48 /* PlaybackState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 327D86EFDEBEC20D16224165 /* PlaybackState.swift */; };
 		B3535B301F982C7730C3D43F /* NikiChatSidebar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83671BB29A5DA2D38DE950CA /* NikiChatSidebar.swift */; };
 		B416257CBA006C29C6B87FF7 /* BrightnessManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9190B2F66D895100ECC70F7 /* BrightnessManager.swift */; };
+		B504EB1501927DC3404669ED /* NikiFeatureRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72AE5AB06C1316A84CDDD050 /* NikiFeatureRegistry.swift */; };
 		B5AF79AC8F3CD14DA3CCFAAB /* CalendarServiceProviding.swift in Sources */ = {isa = PBXBuildFile; fileRef = B68CCB3D8DAB4C259FAF9435 /* CalendarServiceProviding.swift */; };
 		B6646F39431F2239B4908BE3 /* ThumbnailService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D315AE60DCCD642C888CAD7 /* ThumbnailService.swift */; };
 		B6B3D0141CA9822498706FD4 /* SwiftUIIntrospect in Frameworks */ = {isa = PBXBuildFile; productRef = 1F6C4D1065B8AB146032E233 /* SwiftUIIntrospect */; };
@@ -216,6 +218,7 @@
 		10282E344BFEEE2FE196E1C1 /* NSItemProvider+LoadHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NSItemProvider+LoadHelpers.swift"; sourceTree = "<group>"; };
 		1277D118EB3D88260565B0B0 /* visualizer.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = visualizer.metal; sourceTree = "<group>"; };
 		15D0FC5EDE38C972051BC149 /* NikiNotchHeader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NikiNotchHeader.swift; sourceTree = "<group>"; };
+		173A006572BA66925EF38919 /* NikiOperatorContracts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NikiOperatorContracts.swift; sourceTree = "<group>"; };
 		18FD7F764A5C6CC4125376FC /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		1972CA47A909C41193AB89DB /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		1B3EBCEB7C345047FB0B7546 /* MarqueeTextView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarqueeTextView.swift; sourceTree = "<group>"; };
@@ -266,6 +269,7 @@
 		6FE285B80A548E2BF381424B /* HelloAnimation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelloAnimation.swift; sourceTree = "<group>"; };
 		7097FE91B253C12E2F21194F /* ApplicationRelauncher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApplicationRelauncher.swift; sourceTree = "<group>"; };
 		7130D55539F031009F4CAAFB /* mediaremote-adapter.pl */ = {isa = PBXFileReference; lastKnownFileType = text.script.perl; path = "mediaremote-adapter.pl"; sourceTree = "<group>"; };
+		72AE5AB06C1316A84CDDD050 /* NikiFeatureRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NikiFeatureRegistry.swift; sourceTree = "<group>"; };
 		74B292D5861628CF838C779B /* CalendarManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarManager.swift; sourceTree = "<group>"; };
 		7555582193A495DEF9AFE3D5 /* Niki.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Niki.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		756BB8CC9FC6CFC7B64F98EF /* QuickLookService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickLookService.swift; sourceTree = "<group>"; };
@@ -607,7 +611,9 @@
 			children = (
 				83105CD2582B4B46B6E986EF /* NikiAPIClient.swift */,
 				50EF5ABF1DC2D51BC2899B80 /* NikiAppModel.swift */,
+				72AE5AB06C1316A84CDDD050 /* NikiFeatureRegistry.swift */,
 				C5308EA3E44C1FDCDB2960E6 /* NikiModels.swift */,
+				173A006572BA66925EF38919 /* NikiOperatorContracts.swift */,
 			);
 			path = Core;
 			sourceTree = "<group>";
@@ -1131,6 +1137,7 @@
 				CFA4F8BC5AD9FB5A2AC0FC43 /* NikiComposerTextView.swift in Sources */,
 				4266831942574F9D0C648916 /* NikiDockView.swift in Sources */,
 				9795EEC9C7C5A4638D84AA79 /* NikiExtrasMenu.swift in Sources */,
+				B504EB1501927DC3404669ED /* NikiFeatureRegistry.swift in Sources */,
 				C15BDBA6192C1D490FAC6CD9 /* NikiGlass.swift in Sources */,
 				5FFEF81897423789B4951001 /* NikiModeIndicator.swift in Sources */,
 				7609D8B0F021EBC6A2AB29C2 /* NikiModels.swift in Sources */,
@@ -1141,6 +1148,7 @@
 				C7E49EB2345D68F9EE19E401 /* NikiNotchSkyLightWindow.swift in Sources */,
 				9F10CBE054245C8CF9FB5168 /* NikiNotchViewModel.swift in Sources */,
 				8F6F0918A99C5309A236ABDF /* NikiNotchWindow.swift in Sources */,
+				5ED09A1C97AA0B40CFC67BE6 /* NikiOperatorContracts.swift in Sources */,
 				47904010DA5A4AB8AC1713FA /* NikiOrbView.swift in Sources */,
 				F34F5F0EA4D085288CF837D6 /* NikiShellView.swift in Sources */,
 				EA2198EA299A81ADEC4FC96C /* NikiSidebarPanels.swift in Sources */,

@@ -17,6 +17,7 @@ struct NikiApp: App {
                 .frame(minWidth: 1240, minHeight: 820)
                 .onAppear {
                     appModel.connectAppDelegate(appDelegate)
+                    appDelegate.appModel = appModel
                     appDelegate.setupNotchWindows()
                 }
         }

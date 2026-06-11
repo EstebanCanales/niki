@@ -2,8 +2,8 @@ import Foundation
 
 enum DockItem: String, CaseIterable, Identifiable {
     case chat
-    case widgets
-    case voice
+    case auto
+    case call
     case settings
 
     var id: String { rawValue }
@@ -11,8 +11,8 @@ enum DockItem: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .chat: return "Chat"
-        case .widgets: return "Widgets"
-        case .voice: return "Voz"
+        case .auto: return "Auto Mode"
+        case .call: return "Call Mode"
         case .settings: return "Settings"
         }
     }
@@ -20,8 +20,8 @@ enum DockItem: String, CaseIterable, Identifiable {
     var symbol: String {
         switch self {
         case .chat: return "message"
-        case .widgets: return "square.grid.2x2"
-        case .voice: return "waveform"
+        case .auto: return "cpu"
+        case .call: return "phone.fill"
         case .settings: return "gearshape.2"
         }
     }

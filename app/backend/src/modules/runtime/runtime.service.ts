@@ -22,6 +22,7 @@ import {
 import { RuntimeStateService } from "../common/runtime-state.service";
 import { ComputerControlService } from "../computer/computer-control.service";
 import { ConversationContextService } from "./conversation-context.service";
+import { HermesProbeCache } from "./hermes-probe-cache";
 import {
   parseHermesRuntimeConfig,
   serializeHermesRuntimeConfig,
@@ -90,6 +91,15 @@ type ResolvedRuntimeConfig = {
     compatibilityMode: "settings" | "default";
     diagnosticsEnabled: "settings" | "default";
   };
+};
+
+type HermesProbeResult = {
+  state: "disconnected" | "degraded" | "ready";
+  health: "offline" | "degraded" | "healthy";
+  detail: string;
+  apiServerUrl: string;
+  resolvedModel: string;
+  latencyMs: number;
 };
 
 function nowIso() {
@@ -276,11 +286,13 @@ export class RuntimeService implements OnModuleDestroy {
   private readonly listeners = new Set<Response>();
   private readonly heartbeatMs = 15_000;
   private readonly hermesConfigFilePath = hermesConfigPath();
+  private readonly hermesProbeCache = new HermesProbeCache<HermesProbeResult>(1_500);
   private heartbeatId?: ReturnType<typeof setInterval>;
   private lastBroadcastState = "";
   private readonly handleHermesConfigWatch = (current: Stats, previous: Stats) => {
     if (current.mtimeMs === previous.mtimeMs && current.size === previous.size) return;
     this.logger.log(`[runtime] detected Hermes config change at ${this.hermesConfigFilePath}`);
+    this.hermesProbeCache.clear();
     this.lastBroadcastState = "";
     void this.broadcastRuntimeHeartbeat();
   };
@@ -399,6 +411,7 @@ export class RuntimeService implements OnModuleDestroy {
           : current.diagnosticsEnabled,
     };
 
+    this.hermesProbeCache.clear();
     this.lastBroadcastState = "";
     this.writeHermesRuntimeConfig(next);
     void this.broadcastRuntimeHeartbeat();
@@ -783,6 +796,18 @@ export class RuntimeService implements OnModuleDestroy {
 
   private async probeHermes() {
     const runtimeConfig = this.resolveRuntimeConfig();
+    const signature = [
+      runtimeConfig.apiServerUrl,
+      runtimeConfig.apiKey,
+      runtimeConfig.model,
+    ].join("|");
+
+    return this.hermesProbeCache.get(signature, async () =>
+      this.probeHermesUncached(runtimeConfig),
+    );
+  }
+
+  private async probeHermesUncached(runtimeConfig: ResolvedRuntimeConfig): Promise<HermesProbeResult> {
     const startedAt = performance.now();
     const apiServerUrl = runtimeConfig.apiServerUrl.trim();
     if (!apiServerUrl) {

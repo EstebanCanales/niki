@@ -6,7 +6,7 @@ struct NikiDockView: View {
     @State private var hoveredItem: DockItem?
     @Namespace private var selectionAnimation
 
-    private let items: [DockItem] = [.chat, .voice, .settings]
+    private let items: [DockItem] = [.chat, .auto, .call, .settings]
 
     var body: some View {
         NikiGlassPanel(cornerRadius: 999, outerBorderOpacity: 0.12, blurBackground: true) {
@@ -15,34 +15,11 @@ struct NikiDockView: View {
                     HStack(spacing: 0) {
                         Button {
                             withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
-                                selection = selection == item ? nil : item
+                                handleTap(item)
                             }
                         } label: {
                             ZStack {
-                                if item == .voice, appModel.companionActive {
-                                    Circle()
-                                        .fill(Color(red: 0.18, green: 0.86, blue: 0.56).opacity(0.9))
-                                        .overlay(
-                                            Circle()
-                                                .strokeBorder(Color.white.opacity(0.14), lineWidth: 1)
-                                        )
-                                } else if item == .voice, appModel.autoVoice {
-                                    Circle()
-                                        .fill(Color(red: 0.18, green: 0.46, blue: 1).opacity(0.95))
-                                        .overlay(
-                                            Circle()
-                                                .strokeBorder(Color.white.opacity(0.14), lineWidth: 1)
-                                        )
-                                } else if isActive(item) {
-                                    Circle()
-                                        .fill(Color.white.opacity(0.08))
-                                        .overlay(
-                                            Circle()
-                                                .strokeBorder(Color.white.opacity(0.06), lineWidth: 1)
-                                        )
-                                        .matchedGeometryEffect(id: "dock-selection", in: selectionAnimation)
-                                }
-
+                                modeBackground(for: item)
                                 Image(systemName: item.symbol)
                                     .font(.system(size: 14, weight: .semibold))
                                     .foregroundStyle(iconColor(for: item))
@@ -91,21 +68,54 @@ struct NikiDockView: View {
         }
     }
 
+    private func handleTap(_ item: DockItem) {
+        switch item {
+        case .auto:
+            appModel.activateAutoMode()
+            selection = appModel.activeMode == .auto ? item : nil
+        case .call:
+            appModel.activateCallMode()
+            selection = appModel.activeMode == .call ? item : nil
+        default:
+            selection = selection == item ? nil : item
+        }
+    }
+
+    @ViewBuilder
+    private func modeBackground(for item: DockItem) -> some View {
+        if item == .auto, appModel.activeMode == .auto {
+            Circle()
+                .fill(Color(red: 0.18, green: 0.86, blue: 0.56).opacity(0.9))
+                .overlay(Circle().strokeBorder(Color.white.opacity(0.14), lineWidth: 1))
+        } else if item == .call, appModel.activeMode == .call {
+            Circle()
+                .fill(Color(red: 0.18, green: 0.46, blue: 1).opacity(0.95))
+                .overlay(Circle().strokeBorder(Color.white.opacity(0.14), lineWidth: 1))
+        } else if isActive(item) {
+            Circle()
+                .fill(Color.white.opacity(0.08))
+                .overlay(Circle().strokeBorder(Color.white.opacity(0.06), lineWidth: 1))
+                .matchedGeometryEffect(id: "dock-selection", in: selectionAnimation)
+        }
+    }
+
     private func shouldShowSeparator(after item: DockItem) -> Bool {
-        item == .voice
+        item == .call
     }
 
     private func buttonBackground(for item: DockItem) -> some View {
-        let active = item == .voice ? false : isActive(item)
+        let isModeButton = item == .auto || item == .call
+        let modeActive = (item == .auto && appModel.activeMode == .auto) || (item == .call && appModel.activeMode == .call)
+        let active = isModeButton ? false : isActive(item)
         let hovered = hoveredItem == item
 
         return Circle()
             .fill(backgroundColor(active: active, hovered: hovered))
             .overlay(
                 Circle()
-                    .strokeBorder(active ? Color.white.opacity(0.06) : Color.clear, lineWidth: 1)
+                    .strokeBorder((active || modeActive) ? Color.white.opacity(0.06) : Color.clear, lineWidth: 1)
             )
-            .opacity(active ? 0.001 : 1)
+            .opacity((active || modeActive) ? 0.001 : 1)
     }
 
     private func backgroundColor(active: Bool, hovered: Bool) -> Color {
@@ -115,21 +125,21 @@ struct NikiDockView: View {
     }
 
     private func iconColor(for item: DockItem) -> Color {
-        let active = isActive(item)
-        let hovered = hoveredItem == item
-        if active { return Color.white.opacity(0.9) }
-        if hovered { return Color.white.opacity(0.8) }
-        return Color.white.opacity(0.5)
+        switch item {
+        case .auto where appModel.activeMode == .auto:
+            return .white
+        case .call where appModel.activeMode == .call:
+            return .white
+        default:
+            let active = isActive(item)
+            let hovered = hoveredItem == item
+            if active { return Color.white.opacity(0.9) }
+            if hovered { return Color.white.opacity(0.8) }
+            return Color.white.opacity(0.5)
+        }
     }
 
     private func isActive(_ item: DockItem) -> Bool {
         return selection == item
-    }
-}
-
-private extension Array {
-    subscript(safe index: Int) -> Element? {
-        guard indices.contains(index) else { return nil }
-        return self[index]
     }
 }

@@ -26,9 +26,9 @@ struct NikiSidebarPanels: View {
             switch selection {
             case .chat:
                 NikiChatSidebar()
-            case .widgets:
-                EmptyView()
-            case .voice:
+            case .auto:
+                NikiVoicePanel()
+            case .call:
                 NikiVoicePanel()
             case .settings:
                 NikiSettingsSidebar()

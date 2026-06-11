@@ -1,5 +1,11 @@
 import Foundation
 
+enum NikiActiveMode {
+    case none
+    case auto  // agente loop continuo: escucha → piensa → habla → repite
+    case call  // conversación 1:1: usuario habla, Niki responde automáticamente
+}
+
 enum NikiBootStage {
     case loading
     case setup

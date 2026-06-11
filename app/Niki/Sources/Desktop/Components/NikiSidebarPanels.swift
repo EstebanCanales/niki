@@ -534,11 +534,7 @@ struct NikiVoicePanel: View {
                         }
                         Spacer()
                         Button {
-                            if appModel.companionActive {
-                                appModel.stopCompanion()
-                            } else {
-                                appModel.startCompanion()
-                            }
+                            appModel.activateAutoMode()
                         } label: {
                             ZStack {
                                 Capsule()

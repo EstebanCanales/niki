@@ -50,8 +50,11 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
     @Published var autoVoice = false
     @Published var ttsVoice = "es_AR-daniela"
     @Published var speaking = false
-    @Published var companionActive = false
+    @Published var activeMode: NikiActiveMode = .none
     @Published var audioLevel: Float = 0
+
+    var companionActive: Bool { activeMode == .auto }
+    var callModeActive: Bool { activeMode == .call }
 
     @Published var personaProfile: NikiPersonaProfile = .default
     @Published var settingsSaved = false
@@ -431,6 +434,9 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
             agentState = .idle
             runtimeSummary = text
             recordedFileURL = nil
+            if callModeActive {
+                await sendCurrentChat()
+            }
         } catch {
             voiceError = error.localizedDescription
         }
@@ -663,17 +669,13 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
 
     // MARK: - Companion mode
 
-    func toggleCompanion() {
-        if companionActive {
-            stopCompanion()
-        } else {
-            startCompanion()
+    func activateAutoMode() {
+        guard activeMode != .auto else {
+            deactivateMode()
+            return
         }
-    }
-
-    func startCompanion() {
-        guard !companionActive else { return }
-        companionActive = true
+        deactivateMode()
+        activeMode = .auto
         autoVoice = true
         voiceError = ""
         companionTask?.cancel()
@@ -682,8 +684,20 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
         }
     }
 
-    func stopCompanion() {
-        companionActive = false
+    func activateCallMode() {
+        guard activeMode != .call else {
+            deactivateMode()
+            return
+        }
+        deactivateMode()
+        activeMode = .call
+        autoVoice = true
+        voiceError = ""
+    }
+
+    func deactivateMode() {
+        activeMode = .none
+        autoVoice = false
         companionTask?.cancel()
         companionTask = nil
         recorder?.stop()
@@ -698,10 +712,10 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
 
     // Loop principal: escucha → STT → agente → TTS → escucha
     private func companionLoop() async {
-        while companionActive && !Task.isCancelled {
+        while activeMode == .auto && !Task.isCancelled {
             // --- Fase 1: Escuchar con VAD ---
             let audioData = await recordWithVAD()
-            guard companionActive, !Task.isCancelled else { break }
+            guard activeMode == .auto, !Task.isCancelled else { break }
             guard let data = audioData else {
                 // Sin audio suficiente (silencio puro) → volver a escuchar
                 continue
@@ -726,7 +740,7 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
                 continue
             }
 
-            guard companionActive, !Task.isCancelled else { break }
+            guard activeMode == .auto, !Task.isCancelled else { break }
             voiceTranscript = transcription
             runtimeSummary = transcription
 
@@ -737,13 +751,13 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
             // --- Fase 4: Esperar que Niki hable (autoVoice = true) ---
             // Esperamos hasta que speaking=true (TTS comenzó) y luego hasta que termina
             var waited = 0
-            while waited < 120 && companionActive && !Task.isCancelled {
+            while waited < 120 && activeMode == .auto && !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 100_000_000)  // 100ms
                 waited += 1
                 if speaking { break }  // TTS comenzó
             }
             // Ahora esperar que speaking=false (TTS terminó)
-            while speaking && companionActive && !Task.isCancelled {
+            while speaking && activeMode == .auto && !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 100_000_000)
             }
 
@@ -758,10 +772,10 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
         let granted = await AVCaptureDevice.requestAccess(for: .audio)
         guard granted else {
             voiceError = "Permiso de micrófono denegado."
-            companionActive = false
+            activeMode = .none
             return nil
         }
-        guard companionActive, !Task.isCancelled else { return nil }
+        guard activeMode == .auto, !Task.isCancelled else { return nil }
 
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("niki-\(UUID().uuidString).wav")
         let settings: [String: Any] = [
@@ -796,7 +810,7 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
         var lastSoundTime = Date()
         var hasHeardVoice = false
 
-        while voiceRecording, companionActive, !Task.isCancelled {
+        while voiceRecording, activeMode == .auto, !Task.isCancelled {
             try? await Task.sleep(nanoseconds: 100_000_000)  // 100ms
 
             guard let rec = recorder else { break }

@@ -15,11 +15,7 @@ struct NikiDockView: View {
                     HStack(spacing: 0) {
                         Button {
                             withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
-                                if item == .voice {
-                                    appModel.toggleCompanion()
-                                } else {
-                                    selection = selection == item ? nil : item
-                                }
+                                selection = selection == item ? nil : item
                             }
                         } label: {
                             ZStack {

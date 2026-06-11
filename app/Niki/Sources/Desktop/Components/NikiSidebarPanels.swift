@@ -26,8 +26,6 @@ struct NikiSidebarPanels: View {
             switch selection {
             case .chat:
                 NikiChatSidebar()
-            case .tasks:
-                NikiTasksSidebar()
             case .widgets:
                 EmptyView()
             case .voice:
@@ -106,6 +104,7 @@ private struct SidebarCard<Content: View>: View {
     }
 }
 
+#if false
 private struct NikiTasksSidebar: View {
     @EnvironmentObject private var appModel: NikiAppModel
     @State private var selectedDayKey: String = ""
@@ -512,6 +511,7 @@ private var emptyTasks: some View {
         key.replacingOccurrences(of: "-", with: "/")
     }
 }
+#endif
 
 // MARK: - Voice Panel
 
@@ -888,6 +888,7 @@ private struct NikiSettingsSidebar: View {
                             picker("Compatibility mode", selection: $appModel.runtimeCompatibilityMode)
                             toggleRow("Diagnostics mode", isOn: $appModel.runtimeDiagnosticsEnabled)
                             infoPill("Runtime source", value: "Hermes via backend")
+                            infoPill("Config file", value: "~/.hermes/config.yaml")
                             infoPill("Live runtime", value: appModel.runtimeConnected ? "Connected" : "Offline")
                         }
                     }

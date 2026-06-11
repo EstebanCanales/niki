@@ -1,13 +1,10 @@
 import {
   Body,
   Controller,
-  Delete,
   Get,
   HttpCode,
   Inject,
   Logger,
-  Patch,
-  Param,
   Post,
   Query,
   Req,
@@ -71,7 +68,6 @@ export class WrapperController {
       contextLengthOverride?: number | string | null;
       compatibilityMode?: string;
       diagnosticsEnabled?: boolean;
-      provider?: string;
     },
   ) {
     this.wrapperService.assertAuthorized(req);
@@ -194,88 +190,6 @@ export class WrapperController {
   activities(@Req() req: Request) {
     this.wrapperService.assertAuthorized(req);
     return this.wrapperService.activities(req);
-  }
-
-  @Get("v1/memory")
-  listMemory(@Req() req: Request) {
-    this.wrapperService.assertAuthorized(req);
-    return this.wrapperService.listMemory(req);
-  }
-
-  @Post("v1/memory")
-  @HttpCode(200)
-  setMemory(
-    @Body() body: { key: string; value: string; ttl?: number },
-    @Req() req: Request,
-  ) {
-    this.wrapperService.assertAuthorized(req);
-    return this.wrapperService.setMemory(body.key, body.value, body.ttl, req);
-  }
-
-  @Delete("v1/memory/:key")
-  deleteMemory(@Param("key") key: string, @Req() req: Request) {
-    this.wrapperService.assertAuthorized(req);
-    return this.wrapperService.deleteMemory(key, req);
-  }
-
-  @Get("v1/work-items")
-  listWorkItems(
-    @Req() req: Request,
-    @Query() query: { kind?: string; status?: string; search?: string },
-  ) {
-    this.wrapperService.assertAuthorized(req);
-    return this.wrapperService.listWorkItems(req, query);
-  }
-
-  @Post("v1/work-items")
-  @HttpCode(200)
-  createWorkItem(
-    @Req() req: Request,
-    @Body()
-    body: {
-      kind?: string;
-      title?: string;
-      notes?: string;
-      category?: string;
-      status?: string;
-      priority?: string;
-      dueAt?: string;
-      subtasks?: Array<{ id?: string; title?: string; done?: boolean }>;
-      proposalStatus?: string;
-      sourceSessionId?: string;
-      source?: string;
-    },
-  ) {
-    this.wrapperService.assertAuthorized(req);
-    return this.wrapperService.createWorkItem(req, body);
-  }
-
-  @Patch("v1/work-items/:id")
-  @HttpCode(200)
-  updateWorkItem(
-    @Req() req: Request,
-    @Param("id") id: string,
-    @Body()
-    body: {
-      kind?: string;
-      title?: string;
-      notes?: string;
-      category?: string;
-      status?: string;
-      priority?: string;
-      dueAt?: string;
-      subtasks?: Array<{ id?: string; title?: string; done?: boolean }>;
-      proposalStatus?: string;
-    },
-  ) {
-    this.wrapperService.assertAuthorized(req);
-    return this.wrapperService.updateWorkItem(req, id, body);
-  }
-
-  @Delete("v1/work-items/:id")
-  deleteWorkItem(@Req() req: Request, @Param("id") id: string) {
-    this.wrapperService.assertAuthorized(req);
-    return this.wrapperService.deleteWorkItem(req, id);
   }
 
   @Post("voice/transcribe")

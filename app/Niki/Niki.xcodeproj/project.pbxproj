@@ -131,6 +131,7 @@
 		BC3316CCA07636AFA64B2236 /* AnimatedFace.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB712DBE1C65A48ABEE92B62 /* AnimatedFace.swift */; };
 		BEC2B336E0FDA5EEAC9C5DCD /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 1972CA47A909C41193AB89DB /* Assets.xcassets */; };
 		C15BDBA6192C1D490FAC6CD9 /* NikiGlass.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C8722DB5B6608A806A5BB23 /* NikiGlass.swift */; };
+		C2905DF5004C97DF52732F4F /* mediaremote-adapter.pl in Resources */ = {isa = PBXBuildFile; fileRef = 7130D55539F031009F4CAAFB /* mediaremote-adapter.pl */; };
 		C437876CAF2F3E164406A2DD /* QuickShareService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83B537A2F4AE861420466AAF /* QuickShareService.swift */; };
 		C6F79EF073ED6CC374EBBC22 /* matters.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53531615C5235387557BB271 /* matters.swift */; };
 		C7E49EB2345D68F9EE19E401 /* NikiNotchSkyLightWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D5C3FD608526EC062ADC86B /* NikiNotchSkyLightWindow.swift */; };
@@ -263,6 +264,7 @@
 		6BE147211A434056ACD19106 /* CalendarModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarModel.swift; sourceTree = "<group>"; };
 		6FE285B80A548E2BF381424B /* HelloAnimation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelloAnimation.swift; sourceTree = "<group>"; };
 		7097FE91B253C12E2F21194F /* ApplicationRelauncher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApplicationRelauncher.swift; sourceTree = "<group>"; };
+		7130D55539F031009F4CAAFB /* mediaremote-adapter.pl */ = {isa = PBXFileReference; lastKnownFileType = text.script.perl; path = "mediaremote-adapter.pl"; sourceTree = "<group>"; };
 		74B292D5861628CF838C779B /* CalendarManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarManager.swift; sourceTree = "<group>"; };
 		7555582193A495DEF9AFE3D5 /* Niki.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Niki.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		756BB8CC9FC6CFC7B64F98EF /* QuickLookService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickLookService.swift; sourceTree = "<group>"; };
@@ -563,6 +565,7 @@
 		70E0E5A99D9394FD89F64E6A = {
 			isa = PBXGroup;
 			children = (
+				ADAB6AC091462252004E4AB2 /* mediaremote-adapter */,
 				33633BFD0B2C73A4570CDB97 /* NikiXPCHelper */,
 				90FDFEC359DA3EBA16EE5A2B /* Sources */,
 				2467DD35208848D7F472BCAC /* Frameworks */,
@@ -788,6 +791,14 @@
 				18FD7F764A5C6CC4125376FC /* ContentView.swift */,
 			);
 			path = Desktop;
+			sourceTree = "<group>";
+		};
+		ADAB6AC091462252004E4AB2 /* mediaremote-adapter */ = {
+			isa = PBXGroup;
+			children = (
+				7130D55539F031009F4CAAFB /* mediaremote-adapter.pl */,
+			);
+			path = "mediaremote-adapter";
 			sourceTree = "<group>";
 		};
 		B160805F009C5B33D7065CC0 /* Shell */ = {
@@ -1033,6 +1044,7 @@
 				BEC2B336E0FDA5EEAC9C5DCD /* Assets.xcassets in Resources */,
 				E45B6ED9D1964E4CDD70E6DC /* Localizable.xcstrings in Resources */,
 				7EA34349557851AE74609C97 /* Preview Assets.xcassets in Resources */,
+				C2905DF5004C97DF52732F4F /* mediaremote-adapter.pl in Resources */,
 				00177CEF0FAE85EDFECCC9C7 /* niki.m4a in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

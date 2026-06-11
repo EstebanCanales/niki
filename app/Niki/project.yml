@@ -60,6 +60,8 @@ targets:
       - path: Sources
         excludes:
           - "**/.DS_Store"
+      - path: mediaremote-adapter/mediaremote-adapter.pl
+        buildPhase: resources
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.niki.app

@@ -43,11 +43,6 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
     @Published var chatBusy = false
     @Published var chatError: String = ""
 
-    @Published var tasks: [NikiWorkItem] = []
-    @Published var tasksLoading = false
-    @Published var taskDraft: String = ""
-    @Published var taskError: String = ""
-
     @Published var voiceRecording = false
     @Published var voiceProcessing = false
     @Published var voiceError: String = ""
@@ -63,7 +58,6 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
     @Published var settingsError: String = ""
     @Published var notchBridgeStatus: String = ""
     @Published var notchVisible = true
-    @Published var memoryEntries: [NikiMemoryEntry] = []
     @Published var orbAccentHex: String = "#5ea2ff"
 
     private var recorder: AVAudioRecorder?
@@ -376,58 +370,6 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
         chatAttachments.removeAll { $0.id == attachment.id }
     }
 
-    func refreshTasks() async {
-        tasksLoading = true
-        taskError = ""
-        do {
-            tasks = try await client.listWorkItems().sorted(by: { $0.updatedAt > $1.updatedAt })
-        } catch {
-            taskError = error.localizedDescription
-        }
-        tasksLoading = false
-    }
-
-    func createTask() async {
-        let title = taskDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-        if title.isEmpty { return }
-        do {
-            let created = try await client.createWorkItem(title: title)
-            tasks.insert(created, at: 0)
-            taskDraft = ""
-        } catch {
-            taskError = error.localizedDescription
-        }
-    }
-
-    func toggleTask(_ item: NikiWorkItem) async {
-        var next = item
-        next.status = item.status == .open ? .done : .open
-        await saveTask(next)
-    }
-
-    func approveTask(_ item: NikiWorkItem) async {
-        var next = item
-        next.proposalStatus = .none
-        await saveTask(next)
-    }
-
-    func toggleSubtask(item: NikiWorkItem, subtask: NikiWorkItemSubtask) async {
-        var next = item
-        next.subtasks = item.subtasks.map {
-            $0.id == subtask.id ? NikiWorkItemSubtask(id: $0.id, title: $0.title, done: !$0.done) : $0
-        }
-        await saveTask(next)
-    }
-
-    func deleteTask(_ item: NikiWorkItem) async {
-        do {
-            try await client.deleteWorkItem(id: item.id)
-            tasks.removeAll { $0.id == item.id }
-        } catch {
-            taskError = error.localizedDescription
-        }
-    }
-
     func startVoiceRecording() async {
         voiceError = ""
         let granted = await AVCaptureDevice.requestAccess(for: .audio)
@@ -522,7 +464,7 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
                 compatibilityMode: runtimeCompatibilityMode,
                 diagnosticsEnabled: runtimeDiagnosticsEnabled
             )
-            let nextProfile = NikiPersonaProfile(
+            personaProfile = NikiPersonaProfile(
                 assistantName: personaProfile.assistantName,
                 tone: personaProfile.tone,
                 brevity: personaProfile.brevity,
@@ -531,8 +473,6 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
                 responseStyle: personaProfile.responseStyle,
                 updatedAt: isoNow()
             )
-            personaProfile = nextProfile
-            try await client.setMemory(key: "preferences.persona_profile", value: try encodePersona(nextProfile))
             persistConfig()
             persistSession()
             settingsSaved = true
@@ -556,22 +496,10 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
         } catch {
             settingsError = error.localizedDescription
         }
-        do {
-            let memory = try await client.listMemory()
-            memoryEntries = memory.entries
-            if let raw = memory.entries.first(where: { $0.key == "preferences.persona_profile" })?.value,
-               let data = raw.data(using: .utf8),
-               let profile = try? JSONDecoder().decode(NikiPersonaProfile.self, from: data) {
-                personaProfile = profile
-            }
-        } catch {
-            settingsError = error.localizedDescription
-        }
     }
 
     func loadShellData() async {
         await refreshRuntimeStatus()
-        await refreshTasks()
         await refreshSettingsData()
         connectRuntimeEvents()
     }
@@ -589,17 +517,6 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
             runtimeConnected = false
             runtimeSummary = error.localizedDescription
             agentState = .error
-        }
-    }
-
-    private func saveTask(_ item: NikiWorkItem) async {
-        do {
-            let updated = try await client.updateWorkItem(item)
-            if let index = tasks.firstIndex(where: { $0.id == updated.id }) {
-                tasks[index] = updated
-            }
-        } catch {
-            taskError = error.localizedDescription
         }
     }
 
@@ -1021,11 +938,6 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
         }
     }
 
-    private func encodePersona(_ profile: NikiPersonaProfile) throws -> String {
-        let data = try JSONEncoder().encode(profile)
-        return String(decoding: data, as: UTF8.self)
-    }
-
     private func isoNow() -> String {
         ISO8601DateFormatter().string(from: Date())
     }
@@ -1042,7 +954,8 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
             runtimeDiagnosticsEnabled: runtimeDiagnosticsEnabled,
             ttsVoice: ttsVoice,
             autoVoice: autoVoice,
-            orbAccentHex: orbAccentHex
+            orbAccentHex: orbAccentHex,
+            personaProfile: personaProfile
         )
         if let data = try? JSONEncoder().encode(config) {
             UserDefaults.standard.set(data, forKey: configKey)
@@ -1075,6 +988,9 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
             ttsVoice = config.ttsVoice
             autoVoice = config.autoVoice
             orbAccentHex = config.orbAccentHex
+            if let personaProfile = config.personaProfile {
+                self.personaProfile = personaProfile
+            }
         }
         if let data = UserDefaults.standard.data(forKey: sessionKey),
            let session = try? JSONDecoder().decode(NikiStoredSession.self, from: data) {

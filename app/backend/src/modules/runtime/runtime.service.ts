@@ -4,13 +4,14 @@ import {
   Inject,
   Injectable,
   Logger,
+  OnModuleDestroy,
 } from "@nestjs/common";
 import type { Request, Response } from "express";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, watchFile, writeFileSync, unwatchFile, type Stats } from "node:fs";
 import { homedir } from "node:os";
 
 import type { ChatRequestDto } from "../../wrapper/wrapper.types";
-import type { NikiPersonaProfile, WorkItem, WorkItemKind } from "../../domain/contracts";
+import type { NikiPersonaProfile } from "../../domain/contracts";
 import { AppConfigService } from "../common/app-config.service";
 import {
   actingUserIdFrom,
@@ -19,7 +20,6 @@ import {
   wrapperApiKeyFrom,
 } from "../common/request-context";
 import { RuntimeStateService } from "../common/runtime-state.service";
-import { WorkItemsService } from "../work-items/work-items.service";
 import { ComputerControlService } from "../computer/computer-control.service";
 import { ConversationContextService } from "./conversation-context.service";
 import {
@@ -271,26 +271,37 @@ function summarizeHermesPayloadShape(payload: unknown, depth = 0): unknown {
 }
 
 @Injectable()
-export class RuntimeService {
+export class RuntimeService implements OnModuleDestroy {
   private readonly logger = new Logger(RuntimeService.name);
   private readonly listeners = new Set<Response>();
   private readonly heartbeatMs = 15_000;
+  private readonly hermesConfigFilePath = hermesConfigPath();
   private heartbeatId?: ReturnType<typeof setInterval>;
   private lastBroadcastState = "";
+  private readonly handleHermesConfigWatch = (current: Stats, previous: Stats) => {
+    if (current.mtimeMs === previous.mtimeMs && current.size === previous.size) return;
+    this.logger.log(`[runtime] detected Hermes config change at ${this.hermesConfigFilePath}`);
+    this.lastBroadcastState = "";
+    void this.broadcastRuntimeHeartbeat();
+  };
 
   constructor(
     @Inject(AppConfigService)
     private readonly configService: AppConfigService,
     @Inject(RuntimeStateService)
     private readonly runtimeState: RuntimeStateService,
-    @Inject(WorkItemsService)
-    private readonly workItemsService: WorkItemsService,
     @Inject(ConversationContextService)
     private readonly conversationContext: ConversationContextService,
     @Inject(ComputerControlService)
     private readonly computer: ComputerControlService,
   ) {
     this.ensureHeartbeat();
+    this.ensureHermesConfigWatch();
+  }
+
+  onModuleDestroy() {
+    if (this.heartbeatId) clearInterval(this.heartbeatId);
+    unwatchFile(this.hermesConfigFilePath, this.handleHermesConfigWatch);
   }
 
   assertWrapperAuthorized(req: Request) {
@@ -745,669 +756,6 @@ export class RuntimeService {
     if (!res.writableEnded) res.end();
   }
 
-  private async tryHandleWorkItemCommand(params: {
-    userId: string;
-    sessionId: string;
-    channel: string;
-    input: string;
-    correlationId: string;
-    messages?: Array<{ role?: string; content?: string }>;
-  }): Promise<
-    | {
-        message: string;
-        visibleText: string;
-        action: "list" | "create" | "update" | "delete" | "noop";
-      }
-    | null
-  > {
-    const { userId, sessionId, channel, input, correlationId, messages } = params;
-    const preferredIds = this.conversationContext.getPreferredWorkItemIds(
-      userId,
-      sessionId,
-      channel,
-    );
-
-    const listKind = this.extractWorkItemListKind(input);
-    if (listKind !== undefined) {
-      const items = this.workItemsService.listRaw(userId, {
-        kind: listKind ?? undefined,
-        status: "open",
-      });
-      await this.conversationContext.recordWorkItemListing(
-        userId,
-        sessionId,
-        channel,
-        items,
-      );
-      const visibleText = this.formatWorkItemList(items, listKind ?? undefined);
-      await this.conversationContext.recordAssistantReply(
-        userId,
-        sessionId,
-        channel,
-        visibleText,
-      );
-      return {
-        action: "list",
-        message: `${visibleText}\n\n[[exec_status:verificada|work_items]]`,
-        visibleText,
-      };
-    }
-
-    const createIntent = this.extractCreateWorkItemIntent(input);
-    if (createIntent) {
-      const created = this.workItemsService.create(
-        userId,
-        {
-          ...createIntent,
-          source: "chat",
-          sourceSessionId: sessionId,
-        },
-        { actor: "chat", correlationId },
-      );
-      const item = {
-        ...(created.item as Omit<WorkItem, "userId">),
-        userId,
-      } as WorkItem;
-      await this.conversationContext.recordWorkItemMutation(
-        userId,
-        sessionId,
-        channel,
-        "create",
-        item,
-      );
-      const visibleText = this.formatWorkItemCreatedMessage(item);
-      await this.conversationContext.recordAssistantReply(
-        userId,
-        sessionId,
-        channel,
-        visibleText,
-      );
-      return {
-        action: "create",
-        message: `${visibleText}\n\n[[work_item_created:${item.id}]]\n[[exec_status:verificada|work_items]]`,
-        visibleText,
-      };
-    }
-
-    const importIntent = this.extractImportWorkItemsIntent(input, messages);
-    if (importIntent) {
-      if (importIntent.items.length === 0) {
-        const visibleText =
-          "No pude meter esas tareas en Tasks porque en el historial reciente no encontré una lista concreta para importar.";
-        await this.conversationContext.recordAssistantReply(
-          userId,
-          sessionId,
-          channel,
-          visibleText,
-        );
-        return {
-          action: "noop",
-          message: `${visibleText}\n\n[[exec_status:sin_acciones|work_items]]`,
-          visibleText,
-        };
-      }
-
-      const createdItems = importIntent.items.map((item) =>
-        this.workItemsService.create(
-          userId,
-          {
-            kind: importIntent.targetKind,
-            title: item.title,
-            category: item.category,
-            source: "chat",
-            sourceSessionId: sessionId,
-          },
-          { actor: "chat", correlationId },
-        ),
-      );
-      const firstItem = createdItems[0]?.item as Omit<WorkItem, "userId"> | undefined;
-      const mutationItems = createdItems
-        .map((created) => created.item as Omit<WorkItem, "userId"> | undefined)
-        .filter(Boolean)
-        .map((item) => ({ ...item, userId } as WorkItem));
-
-      for (const item of mutationItems) {
-        await this.conversationContext.recordWorkItemMutation(
-          userId,
-          sessionId,
-          channel,
-          "create",
-          item,
-        );
-      }
-
-      const visibleText = this.formatImportedWorkItemsMessage(
-        mutationItems,
-        importIntent.targetKind,
-      );
-      await this.conversationContext.recordAssistantReply(
-        userId,
-        sessionId,
-        channel,
-        visibleText,
-      );
-      return {
-        action: "create",
-        message: `${visibleText}${firstItem ? `\n\n[[work_item_created:${firstItem.id}]]` : ""}\n[[exec_status:verificada|work_items]]`,
-        visibleText,
-      };
-    }
-
-    const completeIntent = this.extractCompleteWorkItemIntent(input, preferredIds);
-    if (completeIntent) {
-      const match = this.workItemsService.findBestMatch(userId, completeIntent.query, {
-        kind: completeIntent.kind,
-        preferredIds,
-      });
-      if (!match) {
-        const visibleText = `No encontré un task que coincida con "${completeIntent.query}".`;
-        await this.conversationContext.recordAssistantReply(
-          userId,
-          sessionId,
-          channel,
-          visibleText,
-        );
-        return {
-          action: "update",
-          message: `${visibleText}\n\n[[exec_status:sin_acciones|work_items]]`,
-          visibleText,
-        };
-      }
-      const updated = this.workItemsService.update(
-        userId,
-        match.id,
-        { status: "done" },
-        { correlationId },
-      );
-      const item = {
-        ...(updated.item as Omit<WorkItem, "userId">),
-        userId,
-      } as WorkItem;
-      await this.conversationContext.recordWorkItemMutation(
-        userId,
-        sessionId,
-        channel,
-        "update",
-        item,
-      );
-      const visibleText = `Listo, marqué "${item.title}" como hecho.`;
-      await this.conversationContext.recordAssistantReply(
-        userId,
-        sessionId,
-        channel,
-        visibleText,
-      );
-      return {
-        action: "update",
-        message: `${visibleText}\n\n[[work_item_updated:${item.id}]]\n[[exec_status:verificada|work_items]]`,
-        visibleText,
-      };
-    }
-
-    const deleteIntent = this.extractDeleteWorkItemIntent(input, preferredIds.length > 0);
-    if (deleteIntent) {
-      const match = this.workItemsService.findBestMatch(userId, deleteIntent.query, {
-        kind: deleteIntent.kind,
-        preferredIds,
-      });
-      if (!match) {
-        const visibleText = `No encontré un task que coincida con "${deleteIntent.query}".`;
-        await this.conversationContext.recordAssistantReply(
-          userId,
-          sessionId,
-          channel,
-          visibleText,
-        );
-        return {
-          action: "delete",
-          message: `${visibleText}\n\n[[exec_status:sin_acciones|work_items]]`,
-          visibleText,
-        };
-      }
-      const deleted = this.workItemsService.delete(userId, match.id, { correlationId });
-      const item = {
-        ...(deleted.item as Omit<WorkItem, "userId">),
-        userId,
-      } as WorkItem;
-      await this.conversationContext.recordWorkItemMutation(
-        userId,
-        sessionId,
-        channel,
-        "delete",
-        item,
-      );
-      const visibleText = `Listo, eliminé "${item.title}".`;
-      await this.conversationContext.recordAssistantReply(
-        userId,
-        sessionId,
-        channel,
-        visibleText,
-      );
-      return {
-        action: "delete",
-        message: `${visibleText}\n\n[[work_item_deleted:${item.id}]]\n[[exec_status:verificada|work_items]]`,
-        visibleText,
-      };
-    }
-
-    return null;
-  }
-
-  private async tryHandleFullAppSetupRequest(params: {
-    userId: string;
-    sessionId: string;
-    channel: string;
-    input: string;
-    personaProfile: NikiPersonaProfile;
-  }) {
-    const { userId, sessionId, channel, input, personaProfile } = params;
-    const normalized = this.normalizeIntentText(input);
-    const looksLikeFullApp =
-      /\b(app completa|aplicacion completa|complete app|full app|complete product|producto completo)\b/.test(
-        normalized,
-      ) ||
-      (/\b(crea|build|haz|make|desarrolla)\b/.test(normalized) &&
-        /\b(app|aplicacion|producto|product)\b/.test(normalized) &&
-        /\b(completa|complete|full)\b/.test(normalized));
-
-    if (!looksLikeFullApp) return null;
-
-    const visibleText = this.formatFullAppSetupPlan(input, personaProfile);
-    await this.conversationContext.recordAssistantReply(
-      userId,
-      sessionId,
-      channel,
-      visibleText,
-    );
-    return {
-      message: `${visibleText}\n\n[[exec_status:pendiente|full_app_setup]]`,
-      visibleText,
-    };
-  }
-
-  private extractWorkItemListKind(input: string): WorkItemKind | null | undefined {
-    const normalized = this.normalizeIntentText(input);
-    const asksList =
-      /(que tengo|que hay|muestrame|muestrame|muestrame|lista|show me|what do i have|list)/.test(
-        normalized,
-      ) || /^(mis|my)\b/.test(normalized);
-
-    const taskLike = /\b(tarea|tareas|task|tasks|todo|to do)\b/.test(normalized);
-
-    if (!asksList) return undefined;
-    if (taskLike) return null;
-    return undefined;
-  }
-
-  private extractCreateWorkItemIntent(input: string) {
-    const normalized = this.normalizeIntentText(input);
-    const isTaskLike =
-      /\b(recordatorio|recordatorios|reminder|reminders|recu[eé]rdame|remind me|tarea|tareas|task|tasks)\b/.test(
-        normalized,
-      );
-    const hasCreateVerb =
-      /^(?:puedes\s+|podrias\s+|me ayudas a\s+|ayudame a\s+)?(?:pon|ponme|agrega|agregame|añade|anade|crea|creame|haz|hazme|add|create|make)\b/.test(
-        normalized,
-      ) ||
-      /\b(?:añade|anade|agrega|crea|haz|add|create|make)\s+(?:una|un)?\s*(?:nuev[oa]\s+)?(?:tarea|task)\b/.test(
-        normalized,
-      ) ||
-      /\b(recuerdame|recuérdame|remind me)\b/.test(normalized);
-
-    if (!hasCreateVerb || !isTaskLike) return null;
-
-    let working = input.trim();
-    working = working
-      .replace(
-        /^(?:por favor\s+)?(?:puedes\s+|podrias\s+|me ayudas a\s+|ayudame a\s+)?(?:pon(?:me)?|agrega(?:me)?|a[nñ]ade|crea(?:me)?|haz(?:me)?|add|create|make)\s+(?:un|una)?\s*(?:nuev[oa]\s+)?\s*(?:recordatorio|reminder|tarea|task)\s*(?:dentro de niki|en niki|en la app de niki|inside niki|inside the niki app)?\s*(?:que diga|que diga que|sobre|to|de|para)?\s*/i,
-        "",
-      )
-      .replace(/^(?:recu[eé]rdame|remind me)\s+/i, "");
-
-    working = working
-      .replace(/^(?:una|un)\s+(?:nuev[oa]\s+)?(?:tarea|task|recordatorio|reminder)\s+/i, "")
-      .replace(/^(?:dentro de niki|en niki|en la app de niki|inside niki)\s+/i, "")
-      .replace(/^(?:para|to|sobre)\s+/i, "");
-
-    const schedule = this.extractScheduleFromText(working);
-    working = schedule.remainingText;
-    const category = this.extractCategoryFromText(working);
-    working = category.remainingText
-      .replace(/[.]+$/g, "")
-      .replace(/^(?:el|la|los|las|un|una)\s+/i, "")
-      .replace(/^(?:que diga(?: que)?|que sea|sobre)\s+/i, "")
-      .trim();
-
-    if (!working) return null;
-
-    return {
-      kind: "task" as const,
-      title: working,
-      category: category.category,
-      dueAt: schedule.whenIso,
-    };
-  }
-
-  private extractDeleteWorkItemIntent(input: string, hasPreferredContext: boolean) {
-    const normalized = this.normalizeIntentText(input);
-    if (!/^(elimina|borra|quita|remove|delete)\b/.test(normalized)) return null;
-
-    const mentionsWorkItems =
-      /\b(recordatorio|recordatorios|reminder|reminders|tarea|tareas|task|tasks)\b/.test(
-        normalized,
-      ) || hasPreferredContext;
-    if (!mentionsWorkItems) return null;
-
-    let working = input
-      .trim()
-      .replace(/^(?:por favor\s+)?(?:elimina|borra|quita|remove|delete)\s+/i, "")
-      .replace(/^(?:el|la|los|las|un|una)\s+/i, "")
-      .replace(/^(?:recordatorio|reminder|tarea|task)\s*(?:de|para)?\s*/i, "")
-      .replace(/[.]+$/g, "")
-      .trim();
-
-    if (!working) return null;
-
-    return {
-      query: working,
-      kind: "task" as const,
-    };
-  }
-
-  private extractCompleteWorkItemIntent(input: string, preferredIds: string[]) {
-    const normalized = this.normalizeIntentText(input);
-    if (
-      !/^(completa|marca|marcar|mark|complete|termina)\b/.test(normalized)
-    ) {
-      return null;
-    }
-
-    const hasContext =
-      /\b(recordatorio|recordatorios|reminder|reminders|tarea|tareas|task|tasks)\b/.test(
-        normalized,
-      ) || preferredIds.length > 0;
-    if (!hasContext) return null;
-
-    const working = input
-      .trim()
-      .replace(/^(?:por favor\s+)?(?:completa|marca|marcar|mark|complete|termina)\s+/i, "")
-      .replace(/^(?:el|la|los|las|un|una)\s+/i, "")
-      .replace(/^(?:recordatorio|reminder|tarea|task)\s*(?:de|para)?\s*/i, "")
-      .replace(/\b(?:como hecho|as done|done)\b/gi, "")
-      .replace(/[.]+$/g, "")
-      .trim();
-
-    if (!working) return null;
-
-    return {
-      query: working,
-      kind: "task" as const,
-    };
-  }
-
-  private extractCategoryFromText(text: string) {
-    const match = text.match(/\b(?:categoria|categoría|category)\s+([a-z0-9][a-z0-9\s-]{0,40})/i);
-    if (!match?.[1]) {
-      return {
-        category: "General",
-        remainingText: text.trim(),
-      };
-    }
-
-    return {
-      category: match[1].trim(),
-      remainingText: text.replace(match[0], "").replace(/\s+/g, " ").trim(),
-    };
-  }
-
-  private extractScheduleFromText(text: string) {
-    let remainingText = text;
-    let dayOffset = 0;
-    let hour = 9;
-    let minute = 0;
-    let explicitTime = false;
-
-    if (/\b(mañana|manana|tomorrow)\b/i.test(remainingText)) {
-      dayOffset = 1;
-      remainingText = remainingText.replace(/\b(mañana|manana|tomorrow)\b/gi, " ");
-    } else if (/\b(hoy|today)\b/i.test(remainingText)) {
-      remainingText = remainingText.replace(/\b(hoy|today)\b/gi, " ");
-      hour = 18;
-    }
-
-    const timeMatch = remainingText.match(/\b(?:a las|at)\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b/i);
-    if (timeMatch?.[1]) {
-      hour = Number.parseInt(timeMatch[1], 10);
-      minute = Number.parseInt(timeMatch[2] ?? "0", 10);
-      const meridiem = String(timeMatch[3] ?? "").toLowerCase();
-      if (meridiem === "pm" && hour < 12) hour += 12;
-      if (meridiem === "am" && hour === 12) hour = 0;
-      explicitTime = true;
-      remainingText = remainingText.replace(timeMatch[0], " ");
-    }
-
-    const hadDateLanguage = dayOffset > 0 || /\b(hoy|today)\b/i.test(text);
-    const whenIso =
-      hadDateLanguage || explicitTime
-        ? this.buildScheduledIso(dayOffset, hour, minute, explicitTime)
-        : undefined;
-
-    return {
-      whenIso,
-      remainingText: remainingText.replace(/\s+/g, " ").trim(),
-    };
-  }
-
-  private extractImportWorkItemsIntent(
-    input: string,
-    messages?: Array<{ role?: string; content?: string }>,
-  ) {
-    const normalized = this.normalizeIntentText(input);
-    const asksImport =
-      /\b(puedes|podrias|podrias|me ayudas a|ayudame a|help me)\b/.test(normalized) ||
-      /\b(pon|poner|mete|meter|agrega|agregar|pasa|pasar|integra|integrar|sincroniza|sincronizar|importa|importar|add|move|sync|import)\b/.test(
-        normalized,
-      );
-    const mentionsTarget =
-      /\b(tasks|task|tareas|recordatorios|reminders|reminder)\b/.test(normalized) &&
-      /\b(app|niki)\b/.test(normalized);
-    const refersToExistingSet =
-      /\b(esas|esos|estas|estos|those|them|las de|los de)\b/.test(normalized) ||
-      /\b(de reminders|de recordatorios|from reminders)\b/.test(normalized);
-
-    if (!asksImport || !mentionsTarget || !refersToExistingSet) return null;
-
-    return {
-      targetKind: "task" as const,
-      items: this.extractReferencedWorkItems(messages, "task"),
-    };
-  }
-
-  private extractReferencedWorkItems(
-    messages: Array<{ role?: string; content?: string }> | undefined,
-    targetKind: WorkItemKind,
-  ) {
-    if (!messages?.length) return [];
-
-    const seen = new Set<string>();
-    const items: Array<{ title: string; category: string }> = [];
-    const recentMessages = messages.slice(-6).reverse();
-
-    for (const message of recentMessages) {
-      const content = String(message.content ?? "").trim();
-      if (!content) continue;
-
-      for (const candidate of this.extractCandidateTitlesFromMessage(content)) {
-        const normalized = this.normalizeIntentText(candidate);
-        if (!normalized || seen.has(normalized)) continue;
-        if (this.looksLikeNonTaskCandidate(candidate)) continue;
-
-        seen.add(normalized);
-        items.push({
-          title: candidate,
-          category: "Imported",
-        });
-        if (items.length >= 8) return items;
-      }
-    }
-
-    return items;
-  }
-
-  private extractCandidateTitlesFromMessage(content: string) {
-    const candidates: string[] = [];
-    const lines = content
-      .split("\n")
-      .map((line) => line.trim())
-      .filter(Boolean);
-
-    for (const line of lines) {
-      const bulletMatch = line.match(
-        /^(?:[-*•]\s+|\d+\.\s+|\[\s?[x ]\s?\]\s*)(?:\[(?:Reminder|Task)\]\s*)?(.+)$/i,
-      );
-      if (bulletMatch?.[1]) {
-        candidates.push(this.cleanCandidateTitle(bulletMatch[1]));
-      }
-
-      const labeledMatch = line.match(/^\[(?:Reminder|Task)\]\s+(.+)$/i);
-      if (labeledMatch?.[1]) {
-        candidates.push(this.cleanCandidateTitle(labeledMatch[1]));
-      }
-
-      const quoted = [...line.matchAll(/"([^"]{2,120})"/g)];
-      for (const match of quoted) {
-        if (match[1]) candidates.push(this.cleanCandidateTitle(match[1]));
-      }
-    }
-
-    return candidates.filter(Boolean);
-  }
-
-  private cleanCandidateTitle(value: string) {
-    return value
-      .replace(/\s*\([^)]*\)\s*$/g, "")
-      .replace(/[.]+$/g, "")
-      .replace(/\s+/g, " ")
-      .trim();
-  }
-
-  private looksLikeNonTaskCandidate(value: string) {
-    const normalized = this.normalizeIntentText(value);
-    if (!normalized) return true;
-    if (normalized.length < 3) return true;
-    if (
-      /^(apple reminders|work items de niki|work items|resumen de tus tareas|tareas pendientes|apple|niki|notes)$/.test(
-        normalized,
-      )
-    ) {
-      return true;
-    }
-    if (
-      /\b(sin fecha asignada|con fecha|tarea abierta|tareas pendientes|queres que haga algo)\b/.test(
-        normalized,
-      )
-    ) {
-      return true;
-    }
-    return false;
-  }
-
-  private formatImportedWorkItemsMessage(items: WorkItem[], kind: WorkItemKind) {
-    const kindLabel = "tasks";
-    if (items.length === 1) {
-      return `Listo, metí 1 item en ${kindLabel}: "${items[0].title}".`;
-    }
-    const preview = items
-      .slice(0, 3)
-      .map((item) => `"${item.title}"`)
-      .join(", ");
-    const suffix = items.length > 3 ? "..." : "";
-    return `Listo, metí ${items.length} items en ${kindLabel}: ${preview}${suffix}`;
-  }
-
-  private buildScheduledIso(dayOffset: number, hour: number, minute: number, explicitTime: boolean) {
-    const target = new Date();
-    target.setSeconds(0, 0);
-    target.setDate(target.getDate() + dayOffset);
-    target.setHours(hour, minute, 0, 0);
-
-    if (!dayOffset && explicitTime && target.getTime() < Date.now()) {
-      target.setDate(target.getDate() + 1);
-    }
-
-    return target.toISOString();
-  }
-
-  private formatWorkItemList(items: WorkItem[], kind?: WorkItemKind) {
-    if (items.length === 0) {
-      return "No tienes tasks pendientes.";
-    }
-
-    const heading = `Tienes ${items.length} tasks pendientes:`;
-    const lines = items.map((item) => {
-      const schedule = this.formatWorkItemSchedule(item);
-      const prefix = item.proposalStatus === "proposed" ? "[Suggested]" : "[Task]";
-      return `- ${prefix} ${item.title}${schedule ? ` (${schedule})` : ""}`;
-    });
-    return [heading, ...lines].join("\n");
-  }
-
-  private formatWorkItemCreatedMessage(item: WorkItem) {
-    const schedule = this.formatWorkItemSchedule(item);
-    const scheduleText = schedule ? ` para ${schedule}` : "";
-    return `Listo, guardé el task "${item.title}"${scheduleText}.`;
-  }
-
-  private formatFullAppSetupPlan(input: string, personaProfile: NikiPersonaProfile) {
-    const lead =
-      personaProfile.responseStyle === "friendly"
-        ? "Puedo desarrollar la app completa y dejar el runtime listo, pero esto queda como plan preparado hasta que confirmes la ejecución."
-        : "Esto queda preparado como plan. No lo marco como instalado ni ejecutado todavía.";
-    return [
-      lead,
-      "",
-      "Plan base para app completa con runtime real:",
-      "1. Definir alcance de la app y las superficies clave.",
-      "2. Preparar Hermes: instalar, habilitar `API_SERVER_ENABLED=true`, y arrancar o reiniciar `hermes gateway`.",
-      "3. Preparar OpenClaw: instalar/configurar gateway y validar la ruta runtime real.",
-      "4. Conectar Niki/backend a Hermes y OpenClaw con validación de health/runtime.",
-      "5. Implementar la app completa sobre ese runtime, no sobre mocks.",
-      "",
-      "Checklist Hermes/OpenClaw incluido por defecto:",
-      "- Hermes install",
-      "- Hermes API server enablement",
-      "- Hermes gateway start/restart",
-      "- OpenClaw install/setup path",
-      "- OpenClaw gateway/runtime validation",
-      "",
-      `Pedido detectado: "${input.trim()}"`,
-      "Si quieres, el siguiente paso es convertir este plan en tareas concretas o en una automatización revisable.",
-    ].join("\n");
-  }
-
-  private formatWorkItemSchedule(item: WorkItem) {
-    const iso = item.dueAt;
-    if (!iso) return "";
-    const date = new Date(iso);
-    if (Number.isNaN(date.getTime())) return "";
-    return date.toLocaleString("es-CR", {
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  }
-
-  private normalizeIntentText(text: string) {
-    return String(text ?? "")
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .toLowerCase()
-      .replace(/[^\w\s]/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
-  }
-
   private async emitInitialRuntimeState(res: Response) {
     const status = await this.status();
     res.write(
@@ -1804,6 +1152,10 @@ export class RuntimeService {
     this.heartbeatId = setInterval(() => {
       void this.broadcastRuntimeHeartbeat();
     }, this.heartbeatMs);
+  }
+
+  private ensureHermesConfigWatch() {
+    watchFile(this.hermesConfigFilePath, { interval: 2_000 }, this.handleHermesConfigWatch);
   }
 
   private async broadcastRuntimeHeartbeat() {

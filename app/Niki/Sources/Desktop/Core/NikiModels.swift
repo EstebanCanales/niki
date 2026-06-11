@@ -285,6 +285,7 @@ struct NikiStoredConfig: Codable {
     var ttsVoice: String
     var autoVoice: Bool
     var orbAccentHex: String
+    var personaProfile: NikiPersonaProfile?
 }
 
 struct NikiNotchBridgeConfig: Codable {

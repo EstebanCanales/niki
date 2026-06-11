@@ -134,67 +134,6 @@ struct NikiAPIClient {
         )
     }
 
-    func listMemory() async throws -> NikiMemoryResponse {
-        try await decodeResponse(NikiMemoryResponse.self, from: try request("/v1/memory"))
-    }
-
-    func setMemory(key: String, value: String, ttl: Int? = nil) async throws {
-        var payload: [String: Any] = ["key": key, "value": value]
-        if let ttl {
-            payload["ttl"] = ttl
-        }
-        let body = try JSONSerialization.data(withJSONObject: payload)
-        _ = try await decodeResponse(NikiHealthResponse.self, from: try request("/v1/memory", method: "POST", body: body))
-    }
-
-    func listWorkItems() async throws -> [NikiWorkItem] {
-        let response = try await decodeResponse(NikiWorkItemsResponse.self, from: try request("/v1/work-items"))
-        return response.items ?? []
-    }
-
-    func createWorkItem(title: String, category: String = "Suggested") async throws -> NikiWorkItem {
-        let body = try JSONSerialization.data(withJSONObject: [
-            "kind": "task",
-            "title": title,
-            "category": category,
-            "priority": "medium",
-            "source": "manual",
-        ])
-        let response = try await decodeResponse(NikiWorkItemResponse.self, from: try request("/v1/work-items", method: "POST", body: body))
-        guard let item = response.item else { throw NikiAPIError.invalidResponse }
-        return item
-    }
-
-    func updateWorkItem(_ item: NikiWorkItem) async throws -> NikiWorkItem {
-        let subtasks = item.subtasks.map {
-            ["id": $0.id, "title": $0.title, "done": $0.done] as [String: Any]
-        }
-        let body = try JSONSerialization.data(withJSONObject: [
-            "title": item.title,
-            "notes": item.notes ?? "",
-            "category": item.category,
-            "status": item.status.rawValue,
-            "priority": item.priority.rawValue,
-            "dueAt": item.dueAt ?? "",
-            "subtasks": subtasks,
-            "proposalStatus": item.proposalStatus.rawValue,
-        ])
-        let response = try await decodeResponse(
-            NikiWorkItemResponse.self,
-            from: try request("/v1/work-items/\(item.id)", method: "PATCH", body: body)
-        )
-        guard let updated = response.item else { throw NikiAPIError.invalidResponse }
-        return updated
-    }
-
-    func deleteWorkItem(id: String) async throws {
-        let request = try request("/v1/work-items/\(id)", method: "DELETE", contentType: nil)
-        let (_, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse, (200 ..< 300).contains(http.statusCode) else {
-            throw NikiAPIError.invalidResponse
-        }
-    }
-
     func transcribeAudio(data: Data, language: String) async throws -> NikiVoiceTranscriptionResponse {
         let boundary = "NikiBoundary-\(UUID().uuidString)"
         var body = Data()

@@ -6,7 +6,7 @@ struct NikiDockView: View {
     @State private var hoveredItem: DockItem?
     @Namespace private var selectionAnimation
 
-    private let items: [DockItem] = [.chat, .tasks, .voice, .settings]
+    private let items: [DockItem] = [.chat, .voice, .settings]
 
     var body: some View {
         NikiGlassPanel(cornerRadius: 999, outerBorderOpacity: 0.12, blurBackground: true) {
@@ -96,7 +96,7 @@ struct NikiDockView: View {
     }
 
     private func shouldShowSeparator(after item: DockItem) -> Bool {
-        item == .tasks || item == .voice
+        item == .voice
     }
 
     private func buttonBackground(for item: DockItem) -> some View {

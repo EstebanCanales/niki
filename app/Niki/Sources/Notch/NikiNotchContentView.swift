@@ -149,6 +149,7 @@ struct NikiNotchContentView: View {
                     droppedFiles: appModel.chatAttachments,
                     voiceRecording: appModel.voiceRecording,
                     voiceProcessing: appModel.voiceProcessing,
+                    callModeActive: appModel.activeMode == .call,
                     promptFocused: _promptFocused,
                     onSubmit: submitPrompt,
                     onVoice: { toggleVoiceDictation() },
@@ -516,6 +517,7 @@ private struct ChatControls: View {
     let droppedFiles: [NikiChatAttachment]
     let voiceRecording: Bool
     let voiceProcessing: Bool
+    let callModeActive: Bool
     @FocusState var promptFocused: Bool
     @State private var dropTargeted = false
     let onSubmit: () -> Void
@@ -607,12 +609,14 @@ private struct ChatControls: View {
 
     private var actionRow: some View {
         HStack(spacing: 7) {
-            NotchActionButton(
-                icon: voiceIcon,
-                label: voiceRecording ? "Stop" : voiceProcessing ? "Voice" : "Mic",
-                active: voiceRecording || voiceProcessing,
-                action: onVoice
-            )
+            if callModeActive {
+                NotchActionButton(
+                    icon: voiceIcon,
+                    label: voiceRecording ? "Stop" : voiceProcessing ? "Voice" : "Mic",
+                    active: voiceRecording || voiceProcessing,
+                    action: onVoice
+                )
+            }
             NotchActionButton(icon: "square.grid.2x2.fill", label: "Shelf", action: onShowShelf)
             NotchActionButton(icon: "sparkles", label: "Utils", action: onShowUtils)
 

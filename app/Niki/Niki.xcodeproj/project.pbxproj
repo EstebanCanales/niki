@@ -68,6 +68,7 @@
 		5ECAB16EFBE6C0F30E05A6CA /* HoverButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A2554850695F47D8963BB00 /* HoverButton.swift */; };
 		5FE501D0973DF52AF0D76424 /* AsyncXPCConnection in Frameworks */ = {isa = PBXBuildFile; productRef = C0766279081787143F3349AE /* AsyncXPCConnection */; };
 		5FFC47F1771707A176C619D6 /* ShelfPersistenceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2130A1B84975566783D8E5AA /* ShelfPersistenceService.swift */; };
+		5FFEF81897423789B4951001 /* NikiModeIndicator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AD47C6C54E714127A6CFAED /* NikiModeIndicator.swift */; };
 		61327D3346C200252C6269BB /* NikiXPCHelper.xpc in CopyFiles */ = {isa = PBXBuildFile; fileRef = 784E1BCB8EF8688F0D16E836 /* NikiXPCHelper.xpc */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		6356F1E8DEB9793A7E4922A5 /* FullscreenMediaDetection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75864FF7811BAC291D757F9C /* FullscreenMediaDetection.swift */; };
 		637B34C775836DFA8C7E8177 /* TestView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC61768D76490F70413949C3 /* TestView.swift */; };
@@ -274,6 +275,7 @@
 		784E1BCB8EF8688F0D16E836 /* NikiXPCHelper.xpc */ = {isa = PBXFileReference; explicitFileType = "wrapper.xpc-service"; includeInIndex = 0; path = NikiXPCHelper.xpc; sourceTree = BUILT_PRODUCTS_DIR; };
 		7884DEE36FAB6387D41FBC29 /* Button+Bouncing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Button+Bouncing.swift"; sourceTree = "<group>"; };
 		79DEFD2C6BBA49EF3B7D9CC5 /* StatusBarMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusBarMenu.swift; sourceTree = "<group>"; };
+		7AD47C6C54E714127A6CFAED /* NikiModeIndicator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NikiModeIndicator.swift; sourceTree = "<group>"; };
 		7C8722DB5B6608A806A5BB23 /* NikiGlass.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NikiGlass.swift; sourceTree = "<group>"; };
 		7D48F74428464699267985C8 /* Constants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Constants.swift; sourceTree = "<group>"; };
 		7F867E708A862B201FE0A7E9 /* MediaControllerProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaControllerProtocol.swift; sourceTree = "<group>"; };
@@ -403,6 +405,7 @@
 				29B8530291FA300E8C29C327 /* NikiComposerTextView.swift */,
 				564DF90904DBDBC3972EB712 /* NikiDockView.swift */,
 				7C8722DB5B6608A806A5BB23 /* NikiGlass.swift */,
+				7AD47C6C54E714127A6CFAED /* NikiModeIndicator.swift */,
 				91E0C9A2A0E9253864A1528D /* NikiOrbView.swift */,
 				B75A2370DF36A440BBCDFBE4 /* NikiSidebarPanels.swift */,
 			);
@@ -1129,6 +1132,7 @@
 				4266831942574F9D0C648916 /* NikiDockView.swift in Sources */,
 				9795EEC9C7C5A4638D84AA79 /* NikiExtrasMenu.swift in Sources */,
 				C15BDBA6192C1D490FAC6CD9 /* NikiGlass.swift in Sources */,
+				5FFEF81897423789B4951001 /* NikiModeIndicator.swift in Sources */,
 				7609D8B0F021EBC6A2AB29C2 /* NikiModels.swift in Sources */,
 				574DF5783A751E85E9A345FE /* NikiNotchContentView.swift in Sources */,
 				A719132F5A16A0547E59F93E /* NikiNotchCoordinator.swift in Sources */,

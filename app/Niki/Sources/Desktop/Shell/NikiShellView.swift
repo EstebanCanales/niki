@@ -64,6 +64,9 @@ struct NikiShellView: View {
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(Color.white.opacity(0.72))
                     .lineLimit(2)
+
+                NikiModeIndicator(mode: appModel.activeMode)
+                    .animation(.spring(response: 0.35, dampingFraction: 0.8), value: appModel.activeMode == .none)
             }
             .padding(.top, 18)
         }

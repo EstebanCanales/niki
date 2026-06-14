@@ -19,6 +19,7 @@ struct NikiApp: App {
                     appModel.connectAppDelegate(appDelegate)
                     appDelegate.appModel = appModel
                     appDelegate.setupNotchWindows()
+                    hideMainWindow()
                 }
         }
         .windowStyle(.hiddenTitleBar)
@@ -29,6 +30,14 @@ struct NikiApp: App {
 
         Settings {
             SettingsView(updaterController: appDelegate.updaterController)
+        }
+    }
+
+    private func hideMainWindow() {
+        DispatchQueue.main.async {
+            NSApp.windows
+                .filter { !($0 is NikiNotchSkyLightWindow) && $0.title == "Niki" }
+                .forEach { $0.orderOut(nil) }
         }
     }
 }

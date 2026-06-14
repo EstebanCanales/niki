@@ -255,25 +255,19 @@ private struct ClosedNotchHandle: View {
     let voiceActive: Bool
 
     var body: some View {
-        HStack(spacing: 8) {
-            Circle()
-                .fill(indicatorColor)
-                .frame(width: 6, height: 6)
-                .shadow(color: indicatorColor.opacity(0.8), radius: 8)
-
-            Capsule()
-                .fill(Color.white.opacity(0.16))
-                .frame(width: 84, height: 6)
+        // Invisible when closed — blends with hardware notch (black on black)
+        // Show a subtle glow only when voice is active
+        Group {
+            if voiceActive {
+                Circle()
+                    .fill(Color(red: 0.46, green: 0.88, blue: 1).opacity(0.72))
+                    .frame(width: 6, height: 6)
+                    .shadow(color: Color(red: 0.46, green: 0.88, blue: 1).opacity(0.9), radius: 10)
+                    .padding(.vertical, 8)
+            } else {
+                Color.clear
+            }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
-        .background(Color.white.opacity(0.035), in: Capsule())
-        .overlay(Capsule().stroke(Color.white.opacity(0.08), lineWidth: 1))
-    }
-
-    private var indicatorColor: Color {
-        if voiceActive { return Color(red: 0.46, green: 0.88, blue: 1) }
-        return Color.white.opacity(0.56)
     }
 }
 

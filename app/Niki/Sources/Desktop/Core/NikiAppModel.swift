@@ -34,8 +34,17 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
     @Published var runtimeSummary: String = "Ready."
     @Published var runtimeModelResolved: String = ""
     @Published var agentState: NikiAgentVisualState = .idle
+    @Published var operatorCapabilities = NikiOperatorCapabilities(modules: [:], capabilities: [:])
+    @Published var pendingApprovals: [NikiRuntimeApprovalRequest] = []
+    @Published var latestApprovalResolution: NikiRuntimeApprovalResolution?
+    @Published var computerAvailability = NikiComputerAvailability(state: .hidden, reason: nil)
+    @Published var recentComputerActions: [NikiComputerRecentAction] = []
 
     @Published var chatSessions: [NikiChatSession] = []
+    @Published var remoteSessions: [NikiRemoteSession] = []
+    @Published var mcpServers: [NikiMcpServer] = []
+    @Published var diagnostics: [NikiRuntimeDiagnostic] = []
+    @Published var latestDiagnostic: NikiRuntimeDiagnostic?
     @Published var activeSessionID: String = ""
     @Published var chatMessages: [String: [NikiChatMessage]] = [:]
     @Published var chatInput: String = ""
@@ -56,6 +65,27 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
     var companionActive: Bool { activeMode == .auto }
     var callModeActive: Bool { activeMode == .call }
 
+    var availableDockItems: [DockItem] {
+        var items: [DockItem] = [.chat]
+        if moduleAvailability(for: .computer).state != .hidden {
+            items.append(.computer)
+        }
+        if moduleAvailability(for: .approvals).state != .hidden {
+            items.append(.approvals)
+        }
+        if moduleAvailability(for: .sessions).state != .hidden {
+            items.append(.sessions)
+        }
+        if moduleAvailability(for: .mcp).state != .hidden {
+            items.append(.mcp)
+        }
+        if moduleAvailability(for: .diagnostics).state != .hidden {
+            items.append(.diagnostics)
+        }
+        items.append(contentsOf: [.auto, .call, .settings])
+        return items
+    }
+
     @Published var personaProfile: NikiPersonaProfile = .default
     @Published var settingsSaved = false
     @Published var settingsError: String = ""
@@ -71,6 +101,7 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
     private var activeChatTask: Task<Void, Never>?
     private var titleGenerationTasks: [String: Task<Void, Never>] = [:]
     private var companionTask: Task<Void, Never>?
+    private var callTask: Task<Void, Never>?
     private let silenceDuration: TimeInterval = 1.5
     private let silenceThreshold: Float = -28.0  // dBFS
 
@@ -101,6 +132,16 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
         }
         let title = session.title.trimmingCharacters(in: .whitespacesAndNewlines)
         return title.isEmpty || title == "New chat" ? "Chat" : title
+    }
+
+    func moduleAvailability(for moduleID: NikiModuleID) -> NikiModuleAvailability {
+        if let availability = operatorCapabilities.modules[moduleID.rawValue] {
+            return availability
+        }
+        if NikiFeatureRegistry.alwaysVisibleModules.contains(moduleID) {
+            return NikiModuleAvailability(state: .ready, reason: nil)
+        }
+        return NikiModuleAvailability(state: .hidden, reason: nil)
     }
 
     var client: NikiAPIClient {
@@ -506,6 +547,10 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
 
     func loadShellData() async {
         await refreshRuntimeStatus()
+        await refreshRuntimeCapabilities()
+        await refreshComputerRecent()
+        await refreshRemoteSessions()
+        await refreshMcpServers()
         await refreshSettingsData()
         connectRuntimeEvents()
     }
@@ -519,10 +564,66 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
             runtimeAPIURL = status.apiServerUrl
             runtimeModel = status.resolvedModel
             agentState = runtimeConnected ? .idle : .warning
+            pendingApprovals = status.approvals?.pending ?? []
         } catch {
             runtimeConnected = false
             runtimeSummary = error.localizedDescription
             agentState = .error
+        }
+    }
+
+    func refreshRuntimeCapabilities() async {
+        do {
+            let response = try await client.runtimeCapabilities()
+            operatorCapabilities = response.capabilities
+            computerAvailability = computerAvailabilityFromCapabilities(response.capabilities)
+            if moduleAvailability(for: .mcp).state == .hidden {
+                mcpServers = []
+            }
+            if moduleAvailability(for: .diagnostics).state == .hidden {
+                diagnostics = []
+                latestDiagnostic = nil
+            }
+        } catch {
+            settingsError = error.localizedDescription
+            mcpServers = []
+            diagnostics = []
+            latestDiagnostic = nil
+        }
+    }
+
+    func respondToApproval(_ approval: NikiRuntimeApprovalRequest, choice: String) async {
+        do {
+            try await client.respondToApproval(runID: approval.runId, choice: choice)
+        } catch {
+            settingsError = error.localizedDescription
+        }
+    }
+
+    func refreshComputerRecent() async {
+        do {
+            let response = try await client.computerRecent(limit: 12)
+            recentComputerActions = response.recent
+        } catch {
+            recentComputerActions = []
+        }
+    }
+
+    func refreshRemoteSessions() async {
+        do {
+            let response = try await client.runtimeSessions()
+            remoteSessions = response.sessions
+        } catch {
+            remoteSessions = []
+        }
+    }
+
+    func refreshMcpServers() async {
+        do {
+            let response = try await client.runtimeMcpServers()
+            mcpServers = response.servers
+        } catch {
+            mcpServers = []
         }
     }
 
@@ -611,29 +712,73 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
 
     private func connectRuntimeEvents() {
         runtimeEventsTask?.cancel()
-        runtimeEventsTask = client.streamRuntimeEvents { [weak self] patch in
+        runtimeEventsTask = client.streamRuntimeEvents { [weak self] envelope in
             guard let self else { return }
-            if let connection = patch.connection {
-                self.runtimeConnected = connection.state == "ready"
-                if let endpoint = connection.endpoint, !endpoint.isEmpty {
-                    self.runtimeAPIURL = endpoint
+            switch envelope.kind {
+            case "partial":
+                guard let patch = envelope.patch else { return }
+                if let connection = patch.connection {
+                    self.runtimeConnected = connection.state == "ready"
+                    if let endpoint = connection.endpoint, !endpoint.isEmpty {
+                        self.runtimeAPIURL = endpoint
+                    }
+                    if let version = connection.runtimeVersion, !version.isEmpty {
+                        self.runtimeModelResolved = version
+                    }
                 }
-                if let version = connection.runtimeVersion, !version.isEmpty {
-                    self.runtimeModelResolved = version
+                if let agent = patch.agent {
+                    if let state = agent.state {
+                        self.agentState = state
+                    }
+                    if let summary = agent.summary, !summary.isEmpty {
+                        self.runtimeSummary = summary
+                    }
+                    if let model = agent.model, !model.isEmpty {
+                        self.runtimeModelResolved = model
+                    }
                 }
-            }
-            if let agent = patch.agent {
-                if let state = agent.state {
-                    self.agentState = state
+            case "capabilities":
+                if let payload = envelope.payload {
+                    self.operatorCapabilities = payload
+                    self.computerAvailability = self.computerAvailabilityFromCapabilities(payload)
+                    Task { await self.refreshComputerRecent() }
+                    Task { await self.refreshRemoteSessions() }
+                    Task { await self.refreshMcpServers() }
                 }
-                if let summary = agent.summary, !summary.isEmpty {
-                    self.runtimeSummary = summary
+            case "approval_request":
+                if let data = envelope.approvalRequest {
+                    self.pendingApprovals.removeAll { $0.id == data.id }
+                    self.pendingApprovals.insert(data, at: 0)
+                    if self.selection == nil {
+                        self.selection = .approvals
+                    }
                 }
-                if let model = agent.model, !model.isEmpty {
-                    self.runtimeModelResolved = model
+            case "approval_resolved":
+                if let data = envelope.approvalResolution {
+                    self.latestApprovalResolution = data
+                    self.pendingApprovals.removeAll { $0.id == data.id }
                 }
+            case "diagnostics":
+                if let data = envelope.diagnostic {
+                    self.latestDiagnostic = data
+                    self.diagnostics.removeAll { $0.id == data.id }
+                    self.diagnostics.insert(data, at: 0)
+                    if self.diagnostics.count > 25 {
+                        self.diagnostics = Array(self.diagnostics.prefix(25))
+                    }
+                }
+            default:
+                break
             }
         }
+    }
+
+    private func computerAvailabilityFromCapabilities(_ capabilities: NikiOperatorCapabilities) -> NikiComputerAvailability {
+        let availability = capabilities.modules[NikiModuleID.computer.rawValue]
+        return NikiComputerAvailability(
+            state: availability?.state ?? .hidden,
+            reason: availability?.reason
+        )
     }
 
     private func speak(text: String) async {
@@ -693,6 +838,27 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
         activeMode = .call
         autoVoice = true
         voiceError = ""
+        callTask = Task { @MainActor [weak self] in
+            await self?.callLoop()
+        }
+    }
+
+    private func callLoop() async {
+        while activeMode == .call, !Task.isCancelled {
+            guard !voiceRecording, !voiceProcessing, !chatBusy, !speaking else {
+                try? await Task.sleep(for: .milliseconds(200))
+                continue
+            }
+            await startVoiceRecording()
+            // wait until recording stops (user or VAD)
+            while voiceRecording, activeMode == .call, !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(150))
+            }
+            // wait for transcription + send + speak to finish
+            while (voiceProcessing || chatBusy || speaking), activeMode == .call, !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(200))
+            }
+        }
     }
 
     func deactivateMode() {
@@ -700,6 +866,8 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
         autoVoice = false
         companionTask?.cancel()
         companionTask = nil
+        callTask?.cancel()
+        callTask = nil
         recorder?.stop()
         recorder = nil
         audioPlayer?.stop()

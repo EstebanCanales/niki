@@ -26,6 +26,16 @@ struct NikiSidebarPanels: View {
             switch selection {
             case .chat:
                 NikiChatSidebar()
+            case .computer:
+                NikiComputerPanel()
+            case .approvals:
+                NikiApprovalsPanel()
+            case .sessions:
+                NikiSessionsPanel()
+            case .mcp:
+                NikiMcpPanel()
+            case .diagnostics:
+                NikiDiagnosticsPanel()
             case .auto:
                 NikiVoicePanel()
             case .call:
@@ -37,7 +47,7 @@ struct NikiSidebarPanels: View {
     }
 }
 
-private struct SidebarShell<Content: View>: View {
+struct SidebarShell<Content: View>: View {
     let eyebrow: String
     let title: String
     let content: Content
@@ -86,7 +96,7 @@ private struct SidebarShell<Content: View>: View {
     }
 }
 
-private struct SidebarCard<Content: View>: View {
+struct SidebarCard<Content: View>: View {
     let content: Content
 
     init(@ViewBuilder content: () -> Content) {

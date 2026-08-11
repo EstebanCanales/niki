@@ -4,11 +4,15 @@ import { ConfigModule } from "@nestjs/config";
 import { AppConfigService } from "./config/app-config.service";
 import { PrismaService } from "./database/prisma.service";
 import { AuthModule } from "./auth/auth.module";
+import { DevicesModule } from "./devices/devices.module";
 import { HealthController } from "./health/health.controller";
+import { MeteringModule } from "./metering/metering.module";
 
 @Module({
   imports: [
     AuthModule,
+    DevicesModule,
+    MeteringModule,
     ConfigModule.forRoot({
       isGlobal: true,
       validate: (environment: Record<string, string | undefined>) => {

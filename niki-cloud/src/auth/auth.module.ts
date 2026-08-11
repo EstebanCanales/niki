@@ -10,5 +10,6 @@ import { SessionGuard } from "./session.guard";
 @Module({
   controllers: [AuthController],
   providers: [AppConfigService, AuthService, MailerService, PrismaService, SessionGuard],
+  exports: [AuthService, SessionGuard],
 })
 export class AuthModule {}

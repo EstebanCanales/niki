@@ -1,10 +1,13 @@
-import { INestApplication, ValidationPipe } from "@nestjs/common";
+import { INestApplication, ServiceUnavailableException, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
 
+import { AppConfigService } from "../config/app-config.service";
 import { PrismaService } from "../database/prisma.service";
+import { MailerService } from "./mailer.service";
+import { requireTestDatabaseUrl } from "./test-database";
 
-process.env.DATABASE_URL = "postgresql://estebancanales@127.0.0.1:55432/niki_cloud?schema=public";
+process.env.DATABASE_URL = requireTestDatabaseUrl(process.env.DATABASE_URL);
 process.env.MAGIC_CODE_PEPPER = "test-magic-code-pepper";
 process.env.SESSION_COOKIE_SECRET = "test-session-cookie-secret";
 process.env.NIKI_CLOUD_DEV_AUTH = "1";
@@ -33,6 +36,7 @@ describe("AuthController", () => {
 
     await prisma.webSession.deleteMany();
     await prisma.magicCode.deleteMany();
+    await prisma.magicCodeLock.deleteMany();
     await prisma.user.deleteMany();
     await prisma.waitlistEntry.deleteMany();
   });
@@ -110,5 +114,94 @@ describe("AuthController", () => {
 
     expect(cookie).toEqual(expect.stringContaining("niki_session=;"));
     expect(cookie).toEqual(expect.stringContaining("Expires=Thu, 01 Jan 1970 00:00:00 GMT"));
+  });
+
+  it("revokes an undelivered code when mail delivery fails", async () => {
+    const moduleRef = await Test.createTestingModule({
+      imports: [AppModule],
+    })
+      .overrideProvider(AppConfigService)
+      .useValue({
+        isDevAuthEnabled: false,
+        magicCodePepper: "test-magic-code-pepper",
+        sessionCookieSecret: "test-session-cookie-secret",
+      })
+      .overrideProvider(MailerService)
+      .useValue({
+        sendMagicCode: async () => {
+          throw new ServiceUnavailableException("mail delivery failed");
+        },
+      })
+      .compile();
+    const productionApp = moduleRef.createNestApplication();
+    productionApp.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true }));
+    await productionApp.init();
+
+    try {
+      const response = await request(productionApp.getHttpServer())
+        .post("/v1/auth/request-code")
+        .send({ email: "person@example.com" })
+        .expect(503);
+
+      expect(response.body.debugCode).toBeUndefined();
+      expect(await prisma.magicCode.count()).toBe(0);
+    } finally {
+      await productionApp.close();
+    }
+  });
+
+  it("omits debugCode and uses the mailer outside development", async () => {
+    const delivered: Array<{ email: string; code: string }> = [];
+    const moduleRef = await Test.createTestingModule({
+      imports: [AppModule],
+    })
+      .overrideProvider(AppConfigService)
+      .useValue({
+        isDevAuthEnabled: false,
+        magicCodePepper: "test-magic-code-pepper",
+        sessionCookieSecret: "test-session-cookie-secret",
+      })
+      .overrideProvider(MailerService)
+      .useValue({
+        sendMagicCode: async (email: string, code: string) => {
+          delivered.push({ email, code });
+        },
+      })
+      .compile();
+    const productionApp = moduleRef.createNestApplication();
+    productionApp.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true }));
+    await productionApp.init();
+
+    try {
+      const response = await request(productionApp.getHttpServer())
+        .post("/v1/auth/request-code")
+        .send({ email: "person@example.com" })
+        .expect(201);
+
+      expect(response.body).toEqual({ ok: true });
+      expect(delivered).toEqual([{ email: "person@example.com", code: expect.stringMatching(/^\d{6}$/) }]);
+    } finally {
+      await productionApp.close();
+    }
+  });
+
+  it("marks the session cookie Secure in production", async () => {
+    const previousNodeEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+
+    try {
+      const requested = await request(app.getHttpServer())
+        .post("/v1/auth/request-code")
+        .send({ email: "person@example.com" })
+        .expect(201);
+      const verified = await request(app.getHttpServer())
+        .post("/v1/auth/verify-code")
+        .send({ email: "person@example.com", code: requested.body.debugCode })
+        .expect(201);
+
+      expect(verified.headers["set-cookie"]?.[0]).toEqual(expect.stringContaining("Secure"));
+    } finally {
+      process.env.NODE_ENV = previousNodeEnv;
+    }
   });
 });

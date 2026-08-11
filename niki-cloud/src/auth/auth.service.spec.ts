@@ -3,8 +3,9 @@ import { Test } from "@nestjs/testing";
 
 import { PrismaService } from "../database/prisma.service";
 import { AuthService } from "./auth.service";
+import { requireTestDatabaseUrl } from "./test-database";
 
-process.env.DATABASE_URL = "postgresql://estebancanales@127.0.0.1:55432/niki_cloud?schema=public";
+process.env.DATABASE_URL = requireTestDatabaseUrl(process.env.DATABASE_URL);
 process.env.MAGIC_CODE_PEPPER = "test-magic-code-pepper";
 process.env.SESSION_COOKIE_SECRET = "test-session-cookie-secret";
 process.env.NIKI_CLOUD_DEV_AUTH = "1";
@@ -28,6 +29,7 @@ describe("AuthService", () => {
 
     await prisma.webSession.deleteMany();
     await prisma.magicCode.deleteMany();
+    await prisma.magicCodeLock.deleteMany();
     await prisma.user.deleteMany();
     await prisma.waitlistEntry.deleteMany();
   });
@@ -70,6 +72,17 @@ describe("AuthService", () => {
     }
 
     await expect(service.verifyMagicCode("person@example.com", code)).rejects.toThrow();
+  });
+
+  it("does not issue a fresh code after the current code reaches five invalid attempts", async () => {
+    await service.issueMagicCode("person@example.com");
+
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      await expect(service.verifyMagicCode("person@example.com", "000000")).rejects.toThrow();
+    }
+
+    await expect(service.issueMagicCode("person@example.com")).rejects.toThrow();
+    expect(await prisma.magicCode.count()).toBe(1);
   });
 
   it("stores only a hash for a new web session token", async () => {

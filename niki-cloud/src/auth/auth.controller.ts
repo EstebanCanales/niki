@@ -32,13 +32,19 @@ export class AuthController {
   async requestCode(
     @Body() body: RequestMagicCodeDto,
   ): Promise<{ ok: true; debugCode?: string }> {
-    const code = await this.authService.issueMagicCode(body.email);
+    const issuedMagicCode = await this.authService.issueMagicCodeForDelivery(body.email);
 
     if (this.config.isDevAuthEnabled) {
-      return { ok: true, debugCode: code };
+      return { ok: true, debugCode: issuedMagicCode.code };
     }
 
-    await this.mailer.sendMagicCode(body.email, code);
+    try {
+      await this.mailer.sendMagicCode(body.email, issuedMagicCode.code);
+    } catch (error) {
+      await this.authService.revokeMagicCode(issuedMagicCode);
+      throw error;
+    }
+
     return { ok: true };
   }
 

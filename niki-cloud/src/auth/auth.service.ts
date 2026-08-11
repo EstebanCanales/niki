@@ -1,5 +1,6 @@
-import { Injectable, UnauthorizedException } from "@nestjs/common";
-import { createHash, createHmac, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
+import { HttpException, HttpStatus, Injectable, UnauthorizedException } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
+import { createHash, createHmac, randomBytes, randomInt, randomUUID, timingSafeEqual } from "node:crypto";
 
 import { AppConfigService } from "../config/app-config.service";
 import { PrismaService } from "../database/prisma.service";
@@ -13,6 +14,12 @@ export interface AuthUser {
 const MAGIC_CODE_EXPIRY_MS = 10 * 60 * 1000;
 const MAX_MAGIC_CODE_ATTEMPTS = 5;
 const SESSION_EXPIRY_MS = 30 * 24 * 60 * 60 * 1000;
+
+export interface IssuedMagicCode {
+  id: string;
+  emailNormalized: string;
+  code: string;
+}
 
 @Injectable()
 export class AuthService {
@@ -32,18 +39,62 @@ export class AuthService {
   }
 
   async issueMagicCode(email: string): Promise<string> {
+    const issuedMagicCode = await this.issueMagicCodeForDelivery(email);
+    return issuedMagicCode.code;
+  }
+
+  async issueMagicCodeForDelivery(email: string): Promise<IssuedMagicCode> {
     const normalizedEmail = this.normalizeEmail(email);
     const code = randomInt(0, 1_000_000).toString().padStart(6, "0");
+    const id = randomUUID();
+    const expiresAt = new Date(Date.now() + MAGIC_CODE_EXPIRY_MS);
 
-    await this.prisma.magicCode.create({
-      data: {
-        emailNormalized: normalizedEmail,
-        codeHash: this.hashMagicCode(code),
-        expiresAt: new Date(Date.now() + MAGIC_CODE_EXPIRY_MS),
-      },
+    await this.prisma.$transaction(async (transaction) => {
+      const renewedLock = await transaction.magicCodeLock.updateMany({
+        where: { emailNormalized: normalizedEmail, lockedUntil: { lte: new Date() } },
+        data: { lockedUntil: expiresAt, magicCodeId: id },
+      });
+
+      if (renewedLock.count === 0) {
+        try {
+          await transaction.magicCodeLock.create({
+            data: { emailNormalized: normalizedEmail, lockedUntil: expiresAt, magicCodeId: id },
+          });
+        } catch (error) {
+          if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+            throw new HttpException(
+              "A magic code is already active for this email",
+              HttpStatus.TOO_MANY_REQUESTS,
+            );
+          }
+
+          throw error;
+        }
+      }
+
+      await transaction.magicCode.create({
+        data: {
+          id,
+          emailNormalized: normalizedEmail,
+          codeHash: this.hashMagicCode(code),
+          expiresAt,
+        },
+      });
     });
 
-    return code;
+    return { id, emailNormalized: normalizedEmail, code };
+  }
+
+  async revokeMagicCode(issuedMagicCode: IssuedMagicCode): Promise<void> {
+    await this.prisma.$transaction(async (transaction) => {
+      await transaction.magicCode.deleteMany({ where: { id: issuedMagicCode.id } });
+      await transaction.magicCodeLock.deleteMany({
+        where: {
+          emailNormalized: issuedMagicCode.emailNormalized,
+          magicCodeId: issuedMagicCode.id,
+        },
+      });
+    });
   }
 
   async verifyMagicCode(email: string, code: string): Promise<AuthUser> {
@@ -90,12 +141,17 @@ export class AuthService {
         return null;
       }
 
-      return transaction.user.upsert({
+      const user = await transaction.user.upsert({
         where: { email: normalizedEmail },
         create: { email: normalizedEmail },
         update: {},
         select: { id: true, email: true, displayName: true },
       });
+      await transaction.magicCodeLock.deleteMany({
+        where: { emailNormalized: normalizedEmail, magicCodeId: magicCode.id },
+      });
+
+      return user;
     });
 
     if (!user) {

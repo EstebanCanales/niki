@@ -3,7 +3,12 @@ import { ConfigService } from "@nestjs/config";
 
 interface CloudEnvironment {
   DATABASE_URL: string;
+  MAGIC_CODE_PEPPER?: string;
+  MAIL_FROM?: string;
   PORT: number;
+  RESEND_API_KEY?: string;
+  SESSION_COOKIE_SECRET?: string;
+  NIKI_CLOUD_DEV_AUTH: boolean;
   WEB_ORIGIN: string;
 }
 
@@ -15,11 +20,41 @@ export class AppConfigService {
     return this.configService.getOrThrow("DATABASE_URL", { infer: true });
   }
 
+  get magicCodePepper(): string {
+    return this.getRequiredSecret("MAGIC_CODE_PEPPER");
+  }
+
+  get mailFrom(): string | undefined {
+    return this.configService.get("MAIL_FROM", { infer: true });
+  }
+
   get port(): number {
     return this.configService.getOrThrow("PORT", { infer: true });
   }
 
+  get resendApiKey(): string | undefined {
+    return this.configService.get("RESEND_API_KEY", { infer: true });
+  }
+
+  get sessionCookieSecret(): string {
+    return this.getRequiredSecret("SESSION_COOKIE_SECRET");
+  }
+
+  get isDevAuthEnabled(): boolean {
+    return this.configService.getOrThrow("NIKI_CLOUD_DEV_AUTH", { infer: true });
+  }
+
   get webOrigin(): string {
     return this.configService.getOrThrow("WEB_ORIGIN", { infer: true });
+  }
+
+  private getRequiredSecret(name: "MAGIC_CODE_PEPPER" | "SESSION_COOKIE_SECRET"): string {
+    const value = this.configService.get(name, { infer: true });
+
+    if (!value) {
+      throw new Error(`${name} is required for authentication`);
+    }
+
+    return value;
   }
 }

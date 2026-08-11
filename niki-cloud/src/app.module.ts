@@ -3,10 +3,12 @@ import { ConfigModule } from "@nestjs/config";
 
 import { AppConfigService } from "./config/app-config.service";
 import { PrismaService } from "./database/prisma.service";
+import { AuthModule } from "./auth/auth.module";
 import { HealthController } from "./health/health.controller";
 
 @Module({
   imports: [
+    AuthModule,
     ConfigModule.forRoot({
       isGlobal: true,
       validate: (environment: Record<string, string | undefined>) => {
@@ -22,7 +24,12 @@ import { HealthController } from "./health/health.controller";
 
         return {
           DATABASE_URL: environment.DATABASE_URL,
+          MAGIC_CODE_PEPPER: environment.MAGIC_CODE_PEPPER,
+          MAIL_FROM: environment.MAIL_FROM,
+          NIKI_CLOUD_DEV_AUTH: environment.NIKI_CLOUD_DEV_AUTH === "1",
           PORT: port,
+          RESEND_API_KEY: environment.RESEND_API_KEY,
+          SESSION_COOKIE_SECRET: environment.SESSION_COOKIE_SECRET,
           WEB_ORIGIN: environment.WEB_ORIGIN ?? "http://localhost:3001",
         };
       },

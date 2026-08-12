@@ -7,7 +7,6 @@ import {
   IsObject,
   IsOptional,
   IsString,
-  IsUUID,
   MaxLength,
   Min,
   MinLength,
@@ -60,7 +59,8 @@ export class DeviceUsageEventDto implements DeviceUsageEvent {
   model?: string;
 
   @IsOptional()
-  @IsUUID()
+  @IsString()
+  @MaxLength(128)
   conversationId?: string;
 
   @IsOptional()

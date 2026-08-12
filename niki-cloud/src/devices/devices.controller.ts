@@ -10,10 +10,15 @@ import {
   UseGuards,
 } from "@nestjs/common";
 import { Transform } from "class-transformer";
-import { IsOptional, IsString, Matches, MaxLength, MinLength } from "class-validator";
+import { IsOptional, IsString, MaxLength, MinLength } from "class-validator";
 
 import { AuthenticatedRequest, SessionGuard } from "../auth/session.guard";
 import { DeviceView, DevicesService, LinkedDeviceCredential } from "./devices.service";
+
+interface DeviceLinkRequest {
+  ip?: string;
+  socket?: { remoteAddress?: string };
+}
 
 const trimString = ({ value }: { value: unknown }): unknown =>
   typeof value === "string" ? value.trim() : value;
@@ -23,7 +28,7 @@ export class LinkDeviceDto {
     typeof value === "string" ? value.trim().toUpperCase() : value,
   )
   @IsString()
-  @Matches(/^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{6}$/)
+  @MaxLength(128)
   code!: string;
 
   @Transform(trimString)
@@ -46,13 +51,18 @@ export class DevicesController {
 
   @Post("link-code")
   @UseGuards(SessionGuard)
-  createLinkCode(@Req() request: AuthenticatedRequest): { code: string; expiresAt: Date } {
+  createLinkCode(
+    @Req() request: AuthenticatedRequest,
+  ): Promise<{ code: string; expiresAt: Date }> {
     return this.devices.createLinkCode(request.user!);
   }
 
   @Post("link")
-  link(@Body() body: LinkDeviceDto): Promise<LinkedDeviceCredential> {
-    return this.devices.link(body);
+  link(
+    @Req() request: DeviceLinkRequest,
+    @Body() body: LinkDeviceDto,
+  ): Promise<LinkedDeviceCredential> {
+    return this.devices.link(body, request.ip ?? request.socket?.remoteAddress ?? "unknown");
   }
 
   @Get()

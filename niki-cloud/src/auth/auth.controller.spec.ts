@@ -4,12 +4,14 @@ import request from "supertest";
 
 import { AppConfigService } from "../config/app-config.service";
 import { PrismaService } from "../database/prisma.service";
+import { resetTestDatabase } from "../testing/reset-test-database";
 import { MailerService } from "./mailer.service";
 import { requireTestDatabaseUrl } from "./test-database";
 
 process.env.DATABASE_URL = requireTestDatabaseUrl(process.env.DATABASE_URL);
 process.env.MAGIC_CODE_PEPPER = "test-magic-code-pepper";
 process.env.SESSION_COOKIE_SECRET = "test-session-cookie-secret";
+process.env.DEVICE_SECRET_ENCRYPTION_KEY = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
 process.env.NIKI_CLOUD_DEV_AUTH = "1";
 
 const { AppModule } = require("../app.module") as typeof import("../app.module");
@@ -34,11 +36,7 @@ describe("AuthController", () => {
     await app.init();
     prisma = app.get(PrismaService);
 
-    await prisma.webSession.deleteMany();
-    await prisma.magicCode.deleteMany();
-    await prisma.magicCodeLock.deleteMany();
-    await prisma.user.deleteMany();
-    await prisma.waitlistEntry.deleteMany();
+    await resetTestDatabase(prisma);
   });
 
   afterEach(async () => {
@@ -122,6 +120,7 @@ describe("AuthController", () => {
     })
       .overrideProvider(AppConfigService)
       .useValue({
+        deviceSecretEncryptionKey: Buffer.alloc(32),
         isDevAuthEnabled: false,
         magicCodePepper: "test-magic-code-pepper",
         sessionCookieSecret: "test-session-cookie-secret",
@@ -157,6 +156,7 @@ describe("AuthController", () => {
     })
       .overrideProvider(AppConfigService)
       .useValue({
+        deviceSecretEncryptionKey: Buffer.alloc(32),
         isDevAuthEnabled: false,
         magicCodePepper: "test-magic-code-pepper",
         sessionCookieSecret: "test-session-cookie-secret",

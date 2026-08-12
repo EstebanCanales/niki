@@ -2,12 +2,14 @@ import { INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 
 import { PrismaService } from "../database/prisma.service";
+import { resetTestDatabase } from "../testing/reset-test-database";
 import { AuthService } from "./auth.service";
 import { requireTestDatabaseUrl } from "./test-database";
 
 process.env.DATABASE_URL = requireTestDatabaseUrl(process.env.DATABASE_URL);
 process.env.MAGIC_CODE_PEPPER = "test-magic-code-pepper";
 process.env.SESSION_COOKIE_SECRET = "test-session-cookie-secret";
+process.env.DEVICE_SECRET_ENCRYPTION_KEY = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
 process.env.NIKI_CLOUD_DEV_AUTH = "1";
 
 const { AppModule } = require("../app.module") as typeof import("../app.module");
@@ -27,11 +29,7 @@ describe("AuthService", () => {
     prisma = app.get(PrismaService);
     service = app.get(AuthService);
 
-    await prisma.webSession.deleteMany();
-    await prisma.magicCode.deleteMany();
-    await prisma.magicCodeLock.deleteMany();
-    await prisma.user.deleteMany();
-    await prisma.waitlistEntry.deleteMany();
+    await resetTestDatabase(prisma);
   });
 
   afterEach(async () => {

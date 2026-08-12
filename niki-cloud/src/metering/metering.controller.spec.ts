@@ -5,10 +5,13 @@ import request from "supertest";
 
 import { requireTestDatabaseUrl } from "../auth/test-database";
 import { PrismaService } from "../database/prisma.service";
+import { DeviceSecretEncryptionService } from "../devices/device-secret-encryption.service";
+import { resetTestDatabase } from "../testing/reset-test-database";
 
 process.env.DATABASE_URL = requireTestDatabaseUrl(process.env.DATABASE_URL);
 process.env.MAGIC_CODE_PEPPER = "test-magic-code-pepper";
 process.env.SESSION_COOKIE_SECRET = "test-session-cookie-secret";
+process.env.DEVICE_SECRET_ENCRYPTION_KEY = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
 process.env.NIKI_CLOUD_DEV_AUTH = "1";
 
 const { AppModule } = require("../app.module") as typeof import("../app.module");
@@ -29,17 +32,15 @@ describe("MeteringController", () => {
     await app.init();
     prisma = app.get(PrismaService);
 
-    await prisma.creditEntry.deleteMany();
-    await prisma.usageEvent.deleteMany();
-    await prisma.device.deleteMany();
-    await prisma.webSession.deleteMany();
-    await prisma.magicCode.deleteMany();
-    await prisma.magicCodeLock.deleteMany();
-    await prisma.user.deleteMany();
+    await resetTestDatabase(prisma);
 
     const user = await prisma.user.create({ data: { email: "meter-route@example.com" } });
+    const newDeviceId = randomUUID();
+    const encryptedSecret = app
+      .get(DeviceSecretEncryptionService)
+      .encrypt(secret, newDeviceId);
     const device = await prisma.device.create({
-      data: { userId: user.id, name: "Route Meter", secretHash: secret },
+      data: { id: newDeviceId, userId: user.id, name: "Route Meter", ...encryptedSecret },
     });
     deviceId = device.id;
   });

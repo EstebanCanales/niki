@@ -5,10 +5,12 @@ import request from "supertest";
 import { AuthService } from "../auth/auth.service";
 import { requireTestDatabaseUrl } from "../auth/test-database";
 import { PrismaService } from "../database/prisma.service";
+import { resetTestDatabase } from "../testing/reset-test-database";
 
 process.env.DATABASE_URL = requireTestDatabaseUrl(process.env.DATABASE_URL);
 process.env.MAGIC_CODE_PEPPER = "test-magic-code-pepper";
 process.env.SESSION_COOKIE_SECRET = "test-session-cookie-secret";
+process.env.DEVICE_SECRET_ENCRYPTION_KEY = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
 process.env.NIKI_CLOUD_DEV_AUTH = "1";
 
 const { AppModule } = require("../app.module") as typeof import("../app.module");
@@ -28,13 +30,7 @@ describe("DevicesController", () => {
     await app.init();
     prisma = app.get(PrismaService);
 
-    await prisma.creditEntry.deleteMany();
-    await prisma.usageEvent.deleteMany();
-    await prisma.device.deleteMany();
-    await prisma.webSession.deleteMany();
-    await prisma.magicCode.deleteMany();
-    await prisma.magicCodeLock.deleteMany();
-    await prisma.user.deleteMany();
+    await resetTestDatabase(prisma);
 
     const auth = app.get(AuthService);
     const user = await auth.createUserForEmail("device-route@example.com");
@@ -84,5 +80,51 @@ describe("DevicesController", () => {
       .delete(`/v1/devices/${linked.body.deviceId}`)
       .set("Cookie", cookie)
       .expect(200, { ok: true });
+  });
+
+  it("links a code after the issuing application instance restarts", async () => {
+    const issued = await request(app.getHttpServer())
+      .post("/v1/devices/link-code")
+      .set("Cookie", cookie)
+      .expect(201);
+
+    await app.close();
+    const restartedModule = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    app = restartedModule.createNestApplication();
+    app.useGlobalPipes(
+      new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true }),
+    );
+    await app.init();
+
+    await request(app.getHttpServer())
+      .post("/v1/devices/link")
+      .send({ code: issued.body.code, name: "Restarted Mac", platform: "macos" })
+      .expect(201);
+  });
+
+  it("locks an origin after five failed link attempts and keeps errors generic", async () => {
+    const issued = await request(app.getHttpServer())
+      .post("/v1/devices/link-code")
+      .set("Cookie", cookie)
+      .expect(201);
+
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const failed = await request(app.getHttpServer())
+        .post("/v1/devices/link")
+        .send({ code: `AAAAA${attempt + 2}`, name: "Guessing Mac" })
+        .expect(401);
+      expect(failed.body.message).toBe("Invalid or expired device link code");
+    }
+
+    const locked = await request(app.getHttpServer())
+      .post("/v1/devices/link")
+      .send({ code: issued.body.code, name: "Blocked Mac" })
+      .expect(401);
+    expect(locked.body.message).toBe("Invalid or expired device link code");
+    expect(await prisma.device.count()).toBe(0);
+    expect(await prisma.deviceLinkAttempt.findFirstOrThrow()).toMatchObject({
+      failedAttemptCount: 5,
+      lockedUntil: expect.any(Date),
+    });
   });
 });

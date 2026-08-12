@@ -42,7 +42,7 @@ export class MeteringService {
               eventId: prepared.event.eventId,
               userId: device.userId,
               deviceId: device.id,
-              conversationId: prepared.event.conversationId,
+              externalConversationId: prepared.event.conversationId,
               category: prepared.event.category,
               quantity: BigInt(prepared.event.quantity),
               model: prepared.event.model,

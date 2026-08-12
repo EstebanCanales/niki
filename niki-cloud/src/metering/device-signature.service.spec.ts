@@ -1,15 +1,18 @@
 import { INestApplication, UnauthorizedException } from "@nestjs/common";
 import { Device } from "@prisma/client";
 import { Test } from "@nestjs/testing";
-import { createHmac } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 
 import { requireTestDatabaseUrl } from "../auth/test-database";
 import { PrismaService } from "../database/prisma.service";
+import { DeviceSecretEncryptionService } from "../devices/device-secret-encryption.service";
+import { resetTestDatabase } from "../testing/reset-test-database";
 import { DeviceSignatureService } from "./device-signature.service";
 
 process.env.DATABASE_URL = requireTestDatabaseUrl(process.env.DATABASE_URL);
 process.env.MAGIC_CODE_PEPPER = "test-magic-code-pepper";
 process.env.SESSION_COOKIE_SECRET = "test-session-cookie-secret";
+process.env.DEVICE_SECRET_ENCRYPTION_KEY = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
 process.env.NIKI_CLOUD_DEV_AUTH = "1";
 
 const { AppModule } = require("../app.module") as typeof import("../app.module");
@@ -31,17 +34,13 @@ describe("DeviceSignatureService", () => {
     prisma = app.get(PrismaService);
     service = app.get(DeviceSignatureService);
 
-    await prisma.creditEntry.deleteMany();
-    await prisma.usageEvent.deleteMany();
-    await prisma.device.deleteMany();
-    await prisma.webSession.deleteMany();
-    await prisma.magicCode.deleteMany();
-    await prisma.magicCodeLock.deleteMany();
-    await prisma.user.deleteMany();
+    await resetTestDatabase(prisma);
 
     const user = await prisma.user.create({ data: { email: "signature@example.com" } });
+    const deviceId = randomUUID();
+    const encryptedSecret = app.get(DeviceSecretEncryptionService).encrypt(secret, deviceId);
     device = await prisma.device.create({
-      data: { userId: user.id, name: "Signed Mac", secretHash: secret },
+      data: { id: deviceId, userId: user.id, name: "Signed Mac", ...encryptedSecret },
     });
   });
 

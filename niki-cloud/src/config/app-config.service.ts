@@ -3,6 +3,7 @@ import { ConfigService } from "@nestjs/config";
 
 interface CloudEnvironment {
   DATABASE_URL: string;
+  DEVICE_SECRET_ENCRYPTION_KEY?: string;
   MAGIC_CODE_PEPPER?: string;
   MAIL_FROM?: string;
   PORT: number;
@@ -18,6 +19,12 @@ export class AppConfigService {
 
   get databaseUrl(): string {
     return this.configService.getOrThrow("DATABASE_URL", { infer: true });
+  }
+
+  get deviceSecretEncryptionKey(): Buffer {
+    return decodeDeviceSecretEncryptionKey(
+      this.configService.get("DEVICE_SECRET_ENCRYPTION_KEY", { infer: true }),
+    );
   }
 
   get magicCodePepper(): string {
@@ -57,4 +64,17 @@ export class AppConfigService {
 
     return value;
   }
+}
+
+export function decodeDeviceSecretEncryptionKey(value: string | undefined): Buffer {
+  if (!value) {
+    throw new Error("DEVICE_SECRET_ENCRYPTION_KEY is required");
+  }
+
+  const decoded = Buffer.from(value, "base64");
+  if (decoded.length !== 32 || decoded.toString("base64") !== value) {
+    throw new Error("DEVICE_SECRET_ENCRYPTION_KEY must be a base64-encoded 32-byte key");
+  }
+
+  return decoded;
 }

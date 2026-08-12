@@ -4,6 +4,7 @@ import { isUUID } from "class-validator";
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 import { PrismaService } from "../database/prisma.service";
+import { DeviceSecretEncryptionService } from "../devices/device-secret-encryption.service";
 
 const MAX_TIMESTAMP_SKEW_MS = 5 * 60 * 1000;
 const LOWERCASE_SHA256_HEX = /^[0-9a-f]{64}$/;
@@ -17,7 +18,10 @@ export interface DeviceSignatureHeaders {
 
 @Injectable()
 export class DeviceSignatureService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly secrets: DeviceSecretEncryptionService,
+  ) {}
 
   async verify(
     headers: DeviceSignatureHeaders,
@@ -45,7 +49,14 @@ export class DeviceSignatureService {
       throw new UnauthorizedException("Invalid device signature");
     }
 
-    const expectedSignature = createHmac("sha256", device.secretHash)
+    let secret: string;
+    try {
+      secret = this.secrets.decrypt(device, device.id);
+    } catch {
+      throw new UnauthorizedException("Invalid device signature");
+    }
+
+    const expectedSignature = createHmac("sha256", secret)
       .update(`${headers.timestamp}.`)
       .update(rawBody)
       .digest();

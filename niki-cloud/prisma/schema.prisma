@@ -8,15 +8,16 @@ datasource db {
 }
 
 model User {
-  id                      String          @id @default(uuid()) @db.Uuid
-  email                   String          @unique
+  id                      String           @id @default(uuid()) @db.Uuid
+  email                   String           @unique
   displayName             String?
-  conversationSyncEnabled Boolean         @default(false)
-  createdAt               DateTime        @default(now()) @db.Timestamptz(6)
-  updatedAt               DateTime        @updatedAt @db.Timestamptz(6)
+  conversationSyncEnabled Boolean          @default(false)
+  createdAt               DateTime         @default(now()) @db.Timestamptz(6)
+  updatedAt               DateTime         @updatedAt @db.Timestamptz(6)
   magicCodes              MagicCode[]
   webSessions             WebSession[]
   devices                 Device[]
+  deviceLinkCodes         DeviceLinkCode[]
   usageEvents             UsageEvent[]
   creditEntries           CreditEntry[]
   conversations           Conversation[]
@@ -55,52 +56,75 @@ model MagicCodeLock {
 }
 
 model WebSession {
-  id        String    @id @default(uuid()) @db.Uuid
-  userId    String    @db.Uuid
-  tokenHash String    @unique
-  expiresAt DateTime  @db.Timestamptz(6)
-  createdAt DateTime  @default(now()) @db.Timestamptz(6)
-  updatedAt DateTime  @updatedAt @db.Timestamptz(6)
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  tokenHash String   @unique
+  expiresAt DateTime @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, expiresAt])
 }
 
 model Device {
-  id         String    @id @default(uuid()) @db.Uuid
-  userId     String    @db.Uuid
-  name       String
-  platform   String?
-  secretHash String
-  linkedAt   DateTime  @default(now()) @db.Timestamptz(6)
-  revokedAt  DateTime? @db.Timestamptz(6)
-  createdAt  DateTime  @default(now()) @db.Timestamptz(6)
-  updatedAt  DateTime  @updatedAt @db.Timestamptz(6)
-  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  usageEvents UsageEvent[]
-  conversations Conversation[]
-  syncCursors SyncCursor[]
+  id               String         @id @default(uuid()) @db.Uuid
+  userId           String         @db.Uuid
+  name             String
+  platform         String?
+  secretCiphertext String
+  secretNonce      String
+  secretAuthTag    String
+  linkedAt         DateTime       @default(now()) @db.Timestamptz(6)
+  revokedAt        DateTime?      @db.Timestamptz(6)
+  createdAt        DateTime       @default(now()) @db.Timestamptz(6)
+  updatedAt        DateTime       @updatedAt @db.Timestamptz(6)
+  user             User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  usageEvents      UsageEvent[]
+  conversations    Conversation[]
+  syncCursors      SyncCursor[]
 
   @@index([userId, revokedAt])
 }
 
+model DeviceLinkCode {
+  id                 String    @id @default(uuid()) @db.Uuid
+  userId             String    @db.Uuid
+  codeHash           String    @unique
+  expiresAt          DateTime  @db.Timestamptz(6)
+  failedAttemptCount Int       @default(0)
+  claimedAt          DateTime? @db.Timestamptz(6)
+  createdAt          DateTime  @default(now()) @db.Timestamptz(6)
+  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+}
+
+model DeviceLinkAttempt {
+  originHash         String    @id
+  failedAttemptCount Int       @default(0)
+  windowStartedAt    DateTime  @db.Timestamptz(6)
+  lockedUntil        DateTime? @db.Timestamptz(6)
+  createdAt          DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime  @updatedAt @db.Timestamptz(6)
+}
+
 model UsageEvent {
-  id             String        @id @default(uuid()) @db.Uuid
-  eventId        String        @unique
-  userId         String        @db.Uuid
-  deviceId       String        @db.Uuid
-  conversationId String?       @db.Uuid
-  category       String
-  quantity       BigInt
-  model          String?
-  metadata       Json?
-  occurredAt     DateTime      @db.Timestamptz(6)
-  createdAt      DateTime      @default(now()) @db.Timestamptz(6)
-  updatedAt      DateTime      @updatedAt @db.Timestamptz(6)
-  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  device         Device        @relation(fields: [deviceId], references: [id], onDelete: Cascade)
-  conversation   Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
-  creditEntry    CreditEntry?
+  id                     String       @id @default(uuid()) @db.Uuid
+  eventId                String       @unique
+  userId                 String       @db.Uuid
+  deviceId               String       @db.Uuid
+  externalConversationId String?
+  category               String
+  quantity               BigInt
+  model                  String?
+  metadata               Json?
+  occurredAt             DateTime     @db.Timestamptz(6)
+  createdAt              DateTime     @default(now()) @db.Timestamptz(6)
+  updatedAt              DateTime     @updatedAt @db.Timestamptz(6)
+  user                   User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  device                 Device       @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  creditEntry            CreditEntry?
 
   @@index([userId, occurredAt])
   @@index([deviceId, occurredAt])
@@ -113,26 +137,24 @@ model CreditEntry {
   amountMicros  BigInt
   kind          String
   createdAt     DateTime    @default(now()) @db.Timestamptz(6)
-  updatedAt     DateTime    @updatedAt @db.Timestamptz(6)
-  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user          User        @relation(fields: [userId], references: [id], onDelete: Restrict)
   sourceEvent   UsageEvent? @relation(fields: [sourceEventId], references: [eventId], onDelete: Restrict)
 
   @@index([userId, createdAt])
 }
 
 model Conversation {
-  id           String       @id @default(uuid()) @db.Uuid
-  userId       String       @db.Uuid
-  deviceId     String?      @db.Uuid
-  externalId   String
-  title        String?
-  lastMessageAt DateTime?   @db.Timestamptz(6)
-  createdAt    DateTime     @default(now()) @db.Timestamptz(6)
-  updatedAt    DateTime     @updatedAt @db.Timestamptz(6)
-  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  device       Device?      @relation(fields: [deviceId], references: [id], onDelete: SetNull)
-  messages     Message[]
-  usageEvents  UsageEvent[]
+  id            String    @id @default(uuid()) @db.Uuid
+  userId        String    @db.Uuid
+  deviceId      String?   @db.Uuid
+  externalId    String
+  title         String?
+  lastMessageAt DateTime? @db.Timestamptz(6)
+  createdAt     DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime  @updatedAt @db.Timestamptz(6)
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  device        Device?   @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+  messages      Message[]
 
   @@unique([userId, externalId])
   @@index([userId, lastMessageAt])

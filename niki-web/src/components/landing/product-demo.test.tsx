@@ -12,13 +12,34 @@ describe("ProductDemo", () => {
 
     render(<ProductDemo />);
     expect(
-      screen.getByRole("region", { name: "Vista previa del centro de control Niki" }),
+      screen.getByRole("region", { name: "Presencia de Niki" }),
     ).toBeVisible();
     expect(screen.getByLabelText("Niki está escuchando")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Escuchar" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
 
     await user.click(screen.getByRole("button", { name: "Pensar" }));
 
     expect(screen.getByLabelText("Niki está pensando")).toBeVisible();
-    expect(screen.getByText("Conecta lo que dijiste con el contexto que ya elegiste guardar.")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Pensar" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByRole("button", { name: "Escuchar" })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+    expect(screen.getByText("Pensando contigo.")).toBeVisible();
+
+    await user.click(screen.getByRole("button", { name: "Actuar" }));
+
+    expect(screen.getByLabelText("Niki está actuando")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Actuar" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByText("Listo para actuar, cuando tú confirmes.")).toBeVisible();
   });
 });

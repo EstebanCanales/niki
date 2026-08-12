@@ -35,6 +35,7 @@
     "moduleFileExtensions": ["js", "json", "ts"],
     "rootDir": "src",
     "testRegex": ".*\\.spec\\.ts$",
+    "setupFiles": ["<rootDir>/testing/test-environment.ts"],
     "transform": {
       "^.+\\.(t|j)s$": "ts-jest"
     },

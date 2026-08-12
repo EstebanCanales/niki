@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 
 interface CloudEnvironment {
+  CONVERSATION_ENCRYPTION_KEY?: string;
   DATABASE_URL: string;
   DEVICE_SECRET_ENCRYPTION_KEY?: string;
   MAGIC_CODE_PEPPER?: string;
@@ -19,6 +20,12 @@ export class AppConfigService {
 
   get databaseUrl(): string {
     return this.configService.getOrThrow("DATABASE_URL", { infer: true });
+  }
+
+  get conversationEncryptionKey(): Buffer {
+    return decodeConversationEncryptionKey(
+      this.configService.get("CONVERSATION_ENCRYPTION_KEY", { infer: true }),
+    );
   }
 
   get deviceSecretEncryptionKey(): Buffer {
@@ -67,13 +74,21 @@ export class AppConfigService {
 }
 
 export function decodeDeviceSecretEncryptionKey(value: string | undefined): Buffer {
+  return decodeEncryptionKey("DEVICE_SECRET_ENCRYPTION_KEY", value);
+}
+
+export function decodeConversationEncryptionKey(value: string | undefined): Buffer {
+  return decodeEncryptionKey("CONVERSATION_ENCRYPTION_KEY", value);
+}
+
+function decodeEncryptionKey(name: string, value: string | undefined): Buffer {
   if (!value) {
-    throw new Error("DEVICE_SECRET_ENCRYPTION_KEY is required");
+    throw new Error(`${name} is required`);
   }
 
   const decoded = Buffer.from(value, "base64");
   if (decoded.length !== 32 || decoded.toString("base64") !== value) {
-    throw new Error("DEVICE_SECRET_ENCRYPTION_KEY must be a base64-encoded 32-byte key");
+    throw new Error(`${name} must be a base64-encoded 32-byte key`);
   }
 
   return decoded;

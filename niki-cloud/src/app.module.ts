@@ -1,18 +1,26 @@
 import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 
-import { AppConfigService, decodeDeviceSecretEncryptionKey } from "./config/app-config.service";
+import {
+  AppConfigService,
+  decodeConversationEncryptionKey,
+  decodeDeviceSecretEncryptionKey,
+} from "./config/app-config.service";
 import { PrismaService } from "./database/prisma.service";
 import { AuthModule } from "./auth/auth.module";
 import { DevicesModule } from "./devices/devices.module";
 import { HealthController } from "./health/health.controller";
 import { MeteringModule } from "./metering/metering.module";
+import { ConversationsModule } from "./conversations/conversations.module";
+import { PortalModule } from "./portal/portal.module";
 
 @Module({
   imports: [
     AuthModule,
     DevicesModule,
     MeteringModule,
+    ConversationsModule,
+    PortalModule,
     ConfigModule.forRoot({
       isGlobal: true,
       validate: (environment: Record<string, string | undefined>) => {
@@ -23,6 +31,7 @@ import { MeteringModule } from "./metering/metering.module";
         }
 
         decodeDeviceSecretEncryptionKey(environment.DEVICE_SECRET_ENCRYPTION_KEY);
+        decodeConversationEncryptionKey(environment.CONVERSATION_ENCRYPTION_KEY);
 
         if (!Number.isInteger(port) || port < 1 || port > 65535) {
           throw new Error("PORT must be a valid port number");
@@ -30,6 +39,7 @@ import { MeteringModule } from "./metering/metering.module";
 
         return {
           DATABASE_URL: environment.DATABASE_URL,
+          CONVERSATION_ENCRYPTION_KEY: environment.CONVERSATION_ENCRYPTION_KEY,
           DEVICE_SECRET_ENCRYPTION_KEY: environment.DEVICE_SECRET_ENCRYPTION_KEY,
           MAGIC_CODE_PEPPER: environment.MAGIC_CODE_PEPPER,
           MAIL_FROM: environment.MAIL_FROM,

@@ -120,6 +120,7 @@ describe("AuthController", () => {
     })
       .overrideProvider(AppConfigService)
       .useValue({
+        conversationEncryptionKey: Buffer.alloc(32),
         deviceSecretEncryptionKey: Buffer.alloc(32),
         isDevAuthEnabled: false,
         magicCodePepper: "test-magic-code-pepper",
@@ -156,6 +157,7 @@ describe("AuthController", () => {
     })
       .overrideProvider(AppConfigService)
       .useValue({
+        conversationEncryptionKey: Buffer.alloc(32),
         deviceSecretEncryptionKey: Buffer.alloc(32),
         isDevAuthEnabled: false,
         magicCodePepper: "test-magic-code-pepper",

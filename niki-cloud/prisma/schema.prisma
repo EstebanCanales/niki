@@ -182,6 +182,7 @@ model SyncCursor {
   userId       String    @db.Uuid
   deviceId     String    @db.Uuid
   cursor       String?
+  batchDigest  String?
   lastSyncedAt DateTime? @db.Timestamptz(6)
   createdAt    DateTime  @default(now()) @db.Timestamptz(6)
   updatedAt    DateTime  @updatedAt @db.Timestamptz(6)

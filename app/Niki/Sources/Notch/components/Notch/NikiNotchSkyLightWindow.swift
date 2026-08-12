@@ -109,6 +109,9 @@ class NikiNotchSkyLightWindow: NSPanel {
     
     private var observers: Set<AnyCancellable> = []
     
+    // Puede recibir foco de teclado cuando el usuario interactúa (campos de texto del notch),
+    // pero nunca se vuelve la ventana "main" de la app: así no roba protagonismo ni activa
+    // la app cuando aparece. Combinado con .nonactivatingPanel, el notch es un overlay pasivo.
     override var canBecomeKey: Bool { true }
-    override var canBecomeMain: Bool { true }
+    override var canBecomeMain: Bool { false }
 }

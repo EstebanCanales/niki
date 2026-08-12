@@ -5,12 +5,20 @@ import KeyboardShortcuts
 import Sparkle
 import SwiftUI
 
-class NikiAppDelegate: NSObject, NSApplicationDelegate {
+class NikiAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var statusItem: NSStatusItem?
+    private var desktopWindow: NSWindow?   // strong: retenemos el shell para reabrirlo
+    private var desktopShellRevealed = false
+    private var lastModifierTap: Date?
+    private var flagsMonitorLocal: Any?
+    private var flagsMonitorGlobal: Any?
     var windows: [String: NSWindow] = [:] // UUID -> NSWindow
     var viewModels: [String: NikiNotchViewModel] = [:] // UUID -> NikiNotchViewModel
     var window: NSWindow?
-    weak var appModel: NikiAppModel?
+    /// Siempre disponible (incluso en `applicationDidFinishLaunching`, antes de que
+    /// SwiftUI monte la escena) — los menús y atajos operan sobre el mismo estado
+    /// que la ventana y el notch.
+    var appModel: NikiAppModel? = NikiAppModel.shared
     let vm: NikiNotchViewModel = .init()
     @ObservedObject var coordinator = NikiNotchCoordinator.shared
     var quickShareService = QuickShareService.shared
@@ -35,7 +43,12 @@ class NikiAppDelegate: NSObject, NSApplicationDelegate {
         return false
     }
 
+    /// Reabrir la app (open -a Niki, click en el Dock, activarla) trae de vuelta la
+    /// ventana de escritorio. Sin esto, el único camino para recuperarla es el ícono de
+    /// la barra de menú — que macOS esconde en el overflow cuando la barra se llena
+    /// (o queda tapado por el notch), dejando la ventana irrecuperable.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        showDesktopShell()
         return false
     }
 
@@ -201,7 +214,8 @@ class NikiAppDelegate: NSObject, NSApplicationDelegate {
 
     private func createNikiNotchWindow(for screen: NSScreen, with viewModel: NikiNotchViewModel) -> NSWindow {
         let rect = NSRect(x: 0, y: 0, width: windowSize.width, height: windowSize.height)
-        let styleMask: NSWindow.StyleMask = [.borderless, .utilityWindow, .hudWindow]
+        // Overlay limpio: borderless + non-activating (sin look HUD/utility, sin toolbar fantasma).
+        let styleMask: NSWindow.StyleMask = [.borderless, .nonactivatingPanel]
 
         let window = NikiNotchSkyLightWindow(contentRect: rect, styleMask: styleMask, backing: .buffered, defer: false)
 
@@ -212,16 +226,18 @@ class NikiAppDelegate: NSObject, NSApplicationDelegate {
             window.disableSkyLight()
         }
 
-        let appModelRef = appModel
+        // Siempre la instancia compartida: el notch tiene que ver exactamente el mismo
+        // estado que la ventana, no una copia propia.
         window.contentView = NSHostingView(
             rootView: NikiNotchContentView()
                 .environmentObject(viewModel)
-                .environmentObject(appModelRef ?? NikiAppModel())
+                .environmentObject(NikiAppModel.shared)
         )
 
         window.hidesOnDeactivate = false
         window.isExcludedFromWindowsMenu = true
-        window.makeKeyAndOrderFront(nil)
+        // No usar makeKeyAndOrderFront: robaría el foco y activaría la app. El notch es un
+        // overlay pasivo — solo se muestra, sin convertirse en ventana clave al aparecer.
         window.orderFrontRegardless()
         NotchSpaceManager.shared.notchSpace.windows.insert(window)
 
@@ -394,6 +410,29 @@ class NikiAppDelegate: NSObject, NSApplicationDelegate {
 
         setupDragDetectors()
 
+        // La app vive como overlay (notch + barra de menú), sin icono de app normal en el dock.
+        // La ventana de escritorio se abre bajo demanda desde el status item ("Abrir Niki").
+        setupNikiStatusItem()
+        setupDoubleTapShortcut()
+        NSApp.setActivationPolicy(.accessory)
+        // Barridos escalonados: SwiftUI re-muestra el WindowGroup tras el arranque, así que
+        // ocultamos la cromática de escritorio varias veces hasta que se asiente.
+        for delay in [0.2, 0.5, 0.9, 1.5] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                self?.hideDesktopChromeOnLaunch()
+            }
+        }
+        // Red de seguridad: si una ventana de escritorio se vuelve key antes de que el usuario
+        // abra el shell, la ocultamos. Tras "Abrir Niki" (desktopShellRevealed) deja de actuar.
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.didBecomeKeyNotification, object: nil, queue: .main
+        ) { [weak self] note in
+            guard let self, !self.desktopShellRevealed else { return }
+            if let w = note.object as? NSWindow, !(w is NikiNotchSkyLightWindow) {
+                w.orderOut(nil)
+            }
+        }
+
         if coordinator.firstLaunch {
             coordinator.firstLaunch = false
         } else if MusicManager.shared.isNowPlayingDeprecated
@@ -565,6 +604,134 @@ class NikiAppDelegate: NSObject, NSApplicationDelegate {
 
     @objc func showMenu() {
         statusItem?.menu?.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
+    }
+
+    // MARK: - Desktop shell (ventana de escritorio bajo demanda)
+
+    /// El shell de escritorio (chat / STT Lab / orbe) registra su ventana al aparecer.
+    /// La ocultamos al arrancar para que la app muestre SOLO el notch; se reabre desde el status item.
+    func registerDesktopWindow(_ window: NSWindow) {
+        // El WindowAccessor sólo vive en el ContentView del shell, así que esta ventana ES el
+        // shell. La retenemos (strong) y evitamos que se libere al ocultarla, para reabrirla.
+        window.isReleasedWhenClosed = false
+        desktopWindow = window
+    }
+
+    /// La ventana del shell de escritorio (retenida). Fallback: la no-notch más ancha
+    /// (el shell es 1440px; Settings 700px), nunca Settings por error.
+    private func desktopShellWindow() -> NSWindow? {
+        if let desktopWindow { return desktopWindow }
+        return NSApp.windows
+            .filter { !($0 is NikiNotchSkyLightWindow) }
+            .max(by: { $0.frame.width < $1.frame.width })
+    }
+
+    /// Oculta al arrancar TODO lo que no sea el notch (ventana de escritorio, settings,
+    /// onboarding). Corre con delay para ganarle a SwiftUI, que re-muestra el WindowGroup.
+    private func hideDesktopChromeOnLaunch() {
+        guard !desktopShellRevealed else { return }
+        for w in NSApp.windows where !(w is NikiNotchSkyLightWindow) && w.isVisible {
+            w.orderOut(nil)
+        }
+    }
+
+    @objc func showDesktopShell() {
+        desktopShellRevealed = true
+        if let shell = desktopShellWindow() {
+            desktopWindow = shell
+            shell.makeKeyAndOrderFront(nil)
+        }
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    @objc func newChatAction() {
+        appModel?.startFreshChatSession()
+        showDesktopShell()
+    }
+
+    @objc func callAction() {
+        appModel?.toggleSttLab()
+        showDesktopShell()
+    }
+
+    @objc func muteAction() {
+        appModel?.toggleCallMute()
+    }
+
+    @objc func openSettingsAction() {
+        showDesktopShell()
+        appModel?.selection = .settings
+    }
+
+    /// El menú se reconstruye al abrirse para reflejar el estado (en llamada, silenciado…).
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.removeAllItems()
+        let inCall = appModel?.sttLabActive == true
+        let muted = appModel?.callMuted == true
+
+        menu.addItem(NSMenuItem(title: "Abrir Niki", action: #selector(showDesktopShell), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "Nuevo chat", action: #selector(newChatAction), keyEquivalent: "n"))
+        menu.addItem(.separator())
+        menu.addItem(NSMenuItem(title: inCall ? "Colgar llamada" : "Llamar a Niki",
+                                action: #selector(callAction), keyEquivalent: ""))
+        if inCall {
+            menu.addItem(NSMenuItem(title: muted ? "Reactivar micrófono" : "Silenciar micrófono",
+                                    action: #selector(muteAction), keyEquivalent: "m"))
+        }
+        menu.addItem(.separator())
+        menu.addItem(NSMenuItem(title: "Configuración", action: #selector(openSettingsAction), keyEquivalent: ","))
+        menu.addItem(NSMenuItem(title: "Salir", action: #selector(quitAction), keyEquivalent: "q"))
+    }
+
+    // MARK: - Doble toque de modificador para abrir Niki
+
+    private func setupDoubleTapShortcut() {
+        let handler: (NSEvent) -> Void = { [weak self] event in
+            self?.handleFlagsChanged(event)
+        }
+        flagsMonitorGlobal = NSEvent.addGlobalMonitorForEvents(matching: .flagsChanged) { handler($0) }
+        flagsMonitorLocal = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { handler($0); return $0 }
+    }
+
+    private func targetModifierFlag() -> NSEvent.ModifierFlags {
+        switch appModel?.doubleTapModifier {
+        case "command": return .command
+        case "control": return .control
+        case "shift": return .shift
+        default: return .option
+        }
+    }
+
+    private func handleFlagsChanged(_ event: NSEvent) {
+        guard appModel?.doubleTapToOpenEnabled == true else { return }
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        let target = targetModifierFlag()
+
+        if flags == target {
+            // "Press" del modificador objetivo (sin otros modificadores).
+            let now = Date()
+            if let last = lastModifierTap, now.timeIntervalSince(last) < 0.4 {
+                lastModifierTap = nil
+                showDesktopShell()
+            } else {
+                lastModifierTap = now
+            }
+        } else if !flags.isEmpty {
+            // Cualquier otra combinación reinicia la secuencia.
+            lastModifierTap = nil
+        }
+    }
+
+    private func setupNikiStatusItem() {
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        if let button = item.button {
+            button.image = NSImage(systemSymbolName: "sparkles", accessibilityDescription: "Niki")
+            button.image?.isTemplate = true
+        }
+        let menu = NSMenu()
+        menu.delegate = self  // menuNeedsUpdate reconstruye según el estado
+        item.menu = menu
+        statusItem = item
     }
 
     @objc func quitAction() {

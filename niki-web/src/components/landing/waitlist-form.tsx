@@ -33,56 +33,60 @@ export function WaitlistForm({ compact = false }: WaitlistFormProps) {
 
   if (state === "success") {
     return (
-      <div className="waitlist-confirmation" role="status">
-        <span className="confirmation-mark" aria-hidden="true">
-          ✓
-        </span>
-        <span>
-          <strong>Estás en la lista privada.</strong>
-          <small>Te escribiremos cuando tu acceso esté listo.</small>
-        </span>
+      <div className="waitlist-flow">
+        <div className="waitlist-confirmation" role="status">
+          <span className="confirmation-mark" aria-hidden="true">
+            ✓
+          </span>
+          <span>
+            <strong>Estás en la lista privada.</strong>
+            <small>Te escribiremos cuando tu acceso esté listo.</small>
+          </span>
+        </div>
       </div>
     );
   }
 
   return (
-    <form
-      className={compact ? "waitlist-form waitlist-form--compact" : "waitlist-form"}
-      noValidate
-      onSubmit={handleSubmit}
-    >
-      <label className="sr-only" htmlFor={inputId}>
-        Correo
-      </label>
-      <input
-        aria-describedby={state === "invalid" || state === "network" ? `${inputId}-error` : undefined}
-        aria-invalid={state === "invalid"}
-        autoComplete="email"
-        id={inputId}
-        name="email"
-        onChange={(event) => setEmail(event.target.value)}
-        placeholder="tu@correo.com"
-        required
-        type="email"
-        value={email}
-      />
-      <button disabled={state === "loading"} type="submit">
-        {state === "loading"
-          ? "Solicitando…"
-          : state === "network"
-            ? "Intentar de nuevo"
-            : "Solicitar acceso"}
-      </button>
-      {state === "invalid" ? (
-        <p className="waitlist-error" id={`${inputId}-error`} role="alert">
-          Escribe un correo válido.
-        </p>
-      ) : null}
-      {state === "network" ? (
-        <p className="waitlist-error" id={`${inputId}-error`} role="alert">
-          No pudimos conectar. Revisa tu conexión e inténtalo de nuevo.
-        </p>
-      ) : null}
-    </form>
+    <div className="waitlist-flow">
+      <form
+        className={compact ? "waitlist-form waitlist-form--compact" : "waitlist-form"}
+        noValidate
+        onSubmit={handleSubmit}
+      >
+        <label className="sr-only" htmlFor={inputId}>
+          Correo
+        </label>
+        <input
+          aria-describedby={state === "invalid" || state === "network" ? `${inputId}-error` : undefined}
+          aria-invalid={state === "invalid"}
+          autoComplete="email"
+          id={inputId}
+          name="email"
+          onChange={(event) => setEmail(event.target.value)}
+          placeholder="tu@correo.com"
+          required
+          type="email"
+          value={email}
+        />
+        <button disabled={state === "loading"} type="submit">
+          {state === "loading"
+            ? "Solicitando…"
+            : state === "network"
+              ? "Intentar de nuevo"
+              : "Solicitar acceso"}
+        </button>
+        {state === "invalid" ? (
+          <p className="waitlist-error" id={`${inputId}-error`} role="alert">
+            Escribe un correo válido.
+          </p>
+        ) : null}
+        {state === "network" ? (
+          <p className="waitlist-error" id={`${inputId}-error`} role="alert">
+            No pudimos conectar. Revisa tu conexión e inténtalo de nuevo.
+          </p>
+        ) : null}
+      </form>
+    </div>
   );
 }

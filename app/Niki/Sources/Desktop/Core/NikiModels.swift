@@ -1,11 +1,5 @@
 import Foundation
 
-enum NikiActiveMode {
-    case none
-    case auto  // agente loop continuo: escucha → piensa → habla → repite
-    case call  // conversación 1:1: usuario habla, Niki responde automáticamente
-}
-
 enum NikiBootStage {
     case loading
     case setup
@@ -122,6 +116,7 @@ struct NikiRuntimeStatusResponse: Codable {
     let state: String
     let health: String
     let detail: String?
+    let approvals: NikiRuntimeApprovalsSnapshot?
 }
 
 struct NikiRuntimeConfigResponse: Codable {
@@ -242,6 +237,15 @@ struct NikiVoiceTranscriptionResponse: Codable {
     let error: String?
     let language: String?
     let duration: Int?
+    let provider: String?
+}
+
+struct NikiSttChunk: Identifiable {
+    let id = UUID()
+    let text: String
+    let latencyMs: Int
+    let provider: String
+    let index: Int
 }
 
 struct NikiVoiceSynthesisResponse: Codable {
@@ -277,6 +281,360 @@ struct NikiRuntimePatch: Codable {
 struct NikiRuntimeEventEnvelope: Codable {
     let kind: String
     let patch: NikiRuntimePatch?
+    let payload: NikiOperatorCapabilities?
+    let sessionsSnapshot: NikiRuntimeSessionsSnapshot?
+    let mcpSnapshot: NikiRuntimeMcpSnapshot?
+    let profilesSnapshot: NikiRuntimeProfilesSnapshot?
+    let sessionAction: NikiRuntimeSessionAction?
+    let event: NikiRuntimeStreamEvent?
+    let approvalRequest: NikiRuntimeApprovalRequest?
+    let approvalResolution: NikiRuntimeApprovalResolution?
+    let diagnostic: NikiRuntimeDiagnostic?
+    let surface: NikiRuntimeSurface?
+
+    enum CodingKeys: String, CodingKey {
+        case kind
+        case patch
+        case payload
+        case event
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        kind = try container.decode(String.self, forKey: .kind)
+        patch = try container.decodeIfPresent(NikiRuntimePatch.self, forKey: .patch)
+        event = try container.decodeIfPresent(NikiRuntimeStreamEvent.self, forKey: .event)
+
+        var payload: NikiOperatorCapabilities?
+        var sessionsSnapshot: NikiRuntimeSessionsSnapshot?
+        var mcpSnapshot: NikiRuntimeMcpSnapshot?
+        var profilesSnapshot: NikiRuntimeProfilesSnapshot?
+        var sessionAction: NikiRuntimeSessionAction?
+        var approvalRequest: NikiRuntimeApprovalRequest?
+        var approvalResolution: NikiRuntimeApprovalResolution?
+        var diagnostic: NikiRuntimeDiagnostic?
+        var surface: NikiRuntimeSurface?
+
+        switch kind {
+        case "capabilities":
+            payload = try container.decodeIfPresent(NikiOperatorCapabilities.self, forKey: .payload)
+        case "sessions_snapshot":
+            sessionsSnapshot = try container.decodeIfPresent(NikiRuntimeSessionsSnapshot.self, forKey: .payload)
+        case "mcp_snapshot":
+            mcpSnapshot = try container.decodeIfPresent(NikiRuntimeMcpSnapshot.self, forKey: .payload)
+        case "profiles_snapshot":
+            profilesSnapshot = try container.decodeIfPresent(NikiRuntimeProfilesSnapshot.self, forKey: .payload)
+        case "session_action":
+            sessionAction = try container.decodeIfPresent(NikiRuntimeSessionAction.self, forKey: .payload)
+        case "approval_request":
+            approvalRequest = try container.decodeIfPresent(NikiRuntimeApprovalRequest.self, forKey: .payload)
+        case "approval_resolved":
+            approvalResolution = try container.decodeIfPresent(NikiRuntimeApprovalResolution.self, forKey: .payload)
+        case "diagnostics":
+            diagnostic = try container.decodeIfPresent(NikiRuntimeDiagnostic.self, forKey: .payload)
+        case "surface":
+            surface = try container.decodeIfPresent(NikiRuntimeSurface.self, forKey: .payload)
+        case "surface_clear":
+            break
+        default:
+            break
+        }
+
+        self.payload = payload
+        self.sessionsSnapshot = sessionsSnapshot
+        self.mcpSnapshot = mcpSnapshot
+        self.profilesSnapshot = profilesSnapshot
+        self.sessionAction = sessionAction
+        self.approvalRequest = approvalRequest
+        self.approvalResolution = approvalResolution
+        self.diagnostic = diagnostic
+        self.surface = surface
+    }
+}
+
+struct NikiRuntimeCapabilitiesResponse: Codable {
+    let ok: Bool
+    let capabilities: NikiOperatorCapabilities
+}
+
+struct NikiRuntimeApprovalRequest: Identifiable, Codable, Hashable {
+    let id: String
+    let runId: String
+    let title: String
+    let toolName: String
+    let detail: String
+    let choices: [String]
+}
+
+struct NikiRuntimeApprovalResolution: Codable, Hashable {
+    let id: String
+    let runId: String
+    let decision: String
+    let resolved: Int
+}
+
+enum NikiRuntimeSurfaceKind: String, Codable, Hashable {
+    case search
+    case map
+    case model3d
+}
+
+struct NikiRuntimeSurfaceLocation: Codable, Hashable {
+    let label: String
+    let lat: Double?
+    let lng: Double?
+    let address: String?
+}
+
+struct NikiRuntimeSurface: Identifiable, Codable, Hashable {
+    let id: String
+    let kind: NikiRuntimeSurfaceKind
+    let title: String
+    let subtitle: String?
+    let query: String?
+    let url: String?
+    let location: NikiRuntimeSurfaceLocation?
+    let modelUrl: String?
+    let createdAt: String
+}
+
+struct NikiRuntimeApprovalsSnapshot: Codable {
+    let pending: [NikiRuntimeApprovalRequest]
+}
+
+struct NikiRuntimeSessionAction: Codable, Hashable {
+    let sessionId: String
+    let action: String
+    let status: String
+    let summary: String
+    let detail: String?
+    let platform: String?
+    let removed: Int?
+}
+
+struct NikiComputerAvailability: Codable, Hashable {
+    let state: NikiModuleAvailabilityState
+    let reason: String?
+}
+
+struct NikiComputerCapability: Identifiable, Codable, Hashable {
+    let name: String
+    let description: String
+    let risk: String
+
+    var id: String { name }
+
+    enum CodingKeys: String, CodingKey {
+        case name
+        case description
+        case risk
+    }
+}
+
+struct NikiComputerPermissionStatus: Codable, Hashable {
+    let required: Bool?
+    let note: String?
+}
+
+struct NikiComputerInputHelperStatus: Codable, Hashable {
+    let available: Bool?
+    let path: String?
+    let reason: String?
+}
+
+struct NikiComputerPermissions: Codable, Hashable {
+    let ok: Bool?
+    let accessibility: NikiComputerPermissionStatus?
+    let screenRecording: NikiComputerPermissionStatus?
+    let inputHelper: NikiComputerInputHelperStatus?
+}
+
+struct NikiComputerCapabilitiesResponse: Codable {
+    let ok: Bool
+    let permissions: NikiComputerPermissions?
+    let capabilities: [NikiComputerCapability]
+    let surface: NikiComputerOperatorSurface?
+}
+
+struct NikiComputerOperatorAction: Identifiable, Codable, Hashable {
+    let id: String
+    let capability: String
+    let title: String
+    let subtitle: String
+    let risk: String
+    let state: String
+    let reason: String?
+    let params: [String: String]?
+    let inputs: [NikiComputerOperatorInput]?
+}
+
+struct NikiComputerOperatorInput: Identifiable, Codable, Hashable {
+    var id: String { key }
+    let key: String
+    let label: String
+    let placeholder: String
+    let kind: String
+}
+
+struct NikiComputerOperatorSurface: Codable, Hashable {
+    let summary: String
+    let recommendedActions: [NikiComputerOperatorAction]
+}
+
+struct NikiComputerRecentAction: Identifiable, Codable, Hashable {
+    var id: String { "\(name)-\(at)" }
+    let name: String
+    let risk: String
+    let ok: Bool
+    let durationMs: Int
+    let source: String
+    let userId: String
+    let at: String
+}
+
+struct NikiComputerRecentResponse: Codable {
+    let ok: Bool
+    let recent: [NikiComputerRecentAction]
+}
+
+struct NikiComputerActionResponse: Codable {
+    let ok: Bool
+    let error: String?
+    let result: String?
+    let text: String?
+    let stdout: String?
+    let stderr: String?
+    let path: String?
+    let bytes: Int?
+    let mime: String?
+    let imageBase64: String?
+    let raw: String?
+}
+
+struct NikiRemoteSession: Identifiable, Codable, Hashable {
+    let id: String
+    let title: String
+    let profileId: String
+    let model: String?
+    let provider: String?
+    let resumable: Bool
+    let canUndo: Bool
+    let canUndoReason: String?
+    let canHandoff: Bool
+    let canHandoffReason: String?
+    let handoffTargets: [String]?
+    let updatedAt: String?
+    let platform: String?
+    let source: String?
+    let messageCount: Int?
+    let apiCallCount: Int?
+    let suspended: Bool?
+    let resumePending: Bool?
+    let resumeReason: String?
+    let handoffState: String?
+    let handoffPlatform: String?
+    let handoffError: String?
+    let endedAt: String?
+}
+
+struct NikiRemoteSessionsResponse: Codable {
+    let ok: Bool
+    let sessions: [NikiRemoteSession]
+}
+
+struct NikiRuntimeSessionsSnapshot: Codable {
+    let sessions: [NikiRemoteSession]
+}
+
+struct NikiRemoteProfile: Identifiable, Codable, Hashable {
+    let id: String
+    let label: String
+    let sessionCount: Int
+    let lastSeenAt: String?
+    let providers: [String]
+    let models: [String]
+}
+
+struct NikiRemoteProfilesResponse: Codable {
+    let ok: Bool
+    let profiles: [NikiRemoteProfile]
+}
+
+struct NikiRuntimeProfilesSnapshot: Codable {
+    let profiles: [NikiRemoteProfile]
+}
+
+struct NikiSessionHandoffResponse: Codable {
+    let ok: Bool
+    let sessionId: String
+    let state: String?
+    let platform: String?
+    let error: String?
+}
+
+struct NikiSessionUndoResponse: Codable {
+    let ok: Bool
+    let sessionId: String
+    let removed: Int
+    let preview: String?
+    let error: String?
+}
+
+struct NikiMcpServer: Identifiable, Codable, Hashable {
+    let id: String
+    let name: String
+    let status: String
+    let enabled: Bool
+    let transport: String?
+    let authType: String?
+    let supportsParallelToolCalls: Bool
+    let resourcesEnabled: Bool
+    let promptsEnabled: Bool
+    let includeCount: Int
+    let excludeCount: Int
+    let reason: String?
+}
+
+struct NikiMcpServersResponse: Codable {
+    let ok: Bool
+    let servers: [NikiMcpServer]
+}
+
+struct NikiRuntimeMcpSnapshot: Codable {
+    let servers: [NikiMcpServer]
+}
+
+struct NikiDiscoverCapability: Identifiable, Codable, Hashable {
+    let id: String
+    let title: String
+    let available: Bool
+    let reason: String?
+}
+
+struct NikiDiscoverCapabilitiesResponse: Codable {
+    let ok: Bool
+    let profileId: String
+    let capabilities: [NikiDiscoverCapability]
+}
+
+struct NikiRuntimeDiagnostic: Identifiable, Codable, Hashable {
+    let id: String
+    let runId: String
+    let sessionId: String?
+    let filePath: String
+    let severity: String
+    let message: String
+}
+
+struct NikiRuntimeStreamEvent: Codable {
+    let id: String?
+    let ts: String?
+    let level: String?
+    let source: String?
+    let type: String?
+    let title: String?
+    let summary: String?
+    let detail: String?
 }
 
 struct NikiStoredConfig: Codable {

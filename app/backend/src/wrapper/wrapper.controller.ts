@@ -56,6 +56,66 @@ export class WrapperController {
     return this.wrapperService.runtimeConfig();
   }
 
+  @Get("runtime/capabilities")
+  runtimeCapabilities(@Req() req: Request) {
+    this.wrapperService.assertAuthorized(req);
+    return this.wrapperService.runtimeCapabilities();
+  }
+
+  @Get("runtime/sessions")
+  runtimeSessions(@Req() req: Request) {
+    this.wrapperService.assertAuthorized(req);
+    return this.wrapperService.runtimeSessions();
+  }
+
+  @Get("runtime/profiles")
+  runtimeProfiles(@Req() req: Request) {
+    this.wrapperService.assertAuthorized(req);
+    return this.wrapperService.runtimeProfiles();
+  }
+
+  @Post("runtime/sessions/handoff")
+  @HttpCode(200)
+  runtimeSessionHandoff(
+    @Req() req: Request,
+    @Body() body: { sessionId?: string; platform?: string },
+  ) {
+    this.wrapperService.assertAuthorized(req);
+    return this.wrapperService.requestSessionHandoff(body);
+  }
+
+  @Post("runtime/sessions/undo")
+  @HttpCode(200)
+  runtimeSessionUndo(
+    @Req() req: Request,
+    @Body() body: { sessionId?: string },
+  ) {
+    this.wrapperService.assertAuthorized(req);
+    return this.wrapperService.requestSessionUndo(body);
+  }
+
+  @Get("runtime/mcp")
+  runtimeMcp(@Req() req: Request) {
+    this.wrapperService.assertAuthorized(req);
+    return this.wrapperService.runtimeMcpServers();
+  }
+
+  @Post("runtime/mcp/server")
+  @HttpCode(200)
+  runtimeMcpServerUpdate(
+    @Req() req: Request,
+    @Body() body: { id?: string; enabled?: boolean },
+  ) {
+    this.wrapperService.assertAuthorized(req);
+    return this.wrapperService.updateRuntimeMcpServer(body);
+  }
+
+  @Get("runtime/discover")
+  runtimeDiscover(@Req() req: Request, @Query("profileId") profileId?: string) {
+    this.wrapperService.assertAuthorized(req);
+    return this.wrapperService.runtimeDiscoverCapabilities(profileId);
+  }
+
   @Post("runtime/config")
   @HttpCode(200)
   updateRuntimeConfig(
@@ -124,6 +184,42 @@ export class WrapperController {
   runtimeEvents(@Req() req: Request, @Res() res: Response) {
     this.wrapperService.assertRuntimeEventsAuthorized(req);
     return this.wrapperService.streamRuntimeEvents(req, res);
+  }
+
+  @Post("runtime/approvals/respond")
+  @HttpCode(200)
+  runtimeApprovalRespond(
+    @Req() req: Request,
+    @Body() body: { runId?: string; choice?: string; all?: boolean },
+  ) {
+    this.wrapperService.assertAuthorized(req);
+    return this.wrapperService.respondToApproval(body);
+  }
+
+  @Post("runtime/surface")
+  @HttpCode(200)
+  runtimeShowSurface(
+    @Req() req: Request,
+    @Body()
+    body: {
+      kind?: string;
+      title?: string;
+      subtitle?: string;
+      query?: string;
+      url?: string;
+      location?: { label: string; lat?: number; lng?: number; address?: string };
+      modelUrl?: string;
+    },
+  ) {
+    this.wrapperService.assertAuthorized(req);
+    return this.wrapperService.showSurface(body);
+  }
+
+  @Post("runtime/surface/clear")
+  @HttpCode(200)
+  runtimeClearSurface(@Req() req: Request) {
+    this.wrapperService.assertAuthorized(req);
+    return this.wrapperService.clearSurface();
   }
 
   @Post("chat/stream")
@@ -227,6 +323,11 @@ export class WrapperController {
     if (!audioBuffer || audioBuffer.length === 0) {
       console.log("[voice/transcribe] no audio buffer");
       return { ok: false, error: "No audio file uploaded" };
+    }
+
+    // Rechazar audio demasiado corto para tener habla real (< 0.5s a 16kHz 16bit mono)
+    if (audioBuffer.length < 16_000) {
+      return { ok: true, text: "", language: "es", duration: 0, provider: "skipped" };
     }
 
     const prompt = body?.prompt;

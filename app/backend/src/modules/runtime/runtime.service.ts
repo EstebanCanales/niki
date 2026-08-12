@@ -23,49 +23,48 @@ import { RuntimeStateService } from "../common/runtime-state.service";
 import { ComputerControlService } from "../computer/computer-control.service";
 import { ConversationContextService } from "./conversation-context.service";
 import { HermesProbeCache } from "./hermes-probe-cache";
+import { projectRuntimeCapabilities, type RuntimeCapabilities } from "./runtime-capabilities";
 import {
   parseHermesRuntimeConfig,
   serializeHermesRuntimeConfig,
   type HermesCompatibilityMode,
 } from "./hermes-config";
-
-type RuntimeConnectionState = "disconnected" | "connecting" | "pairing" | "syncing" | "ready" | "degraded";
-
-type RuntimeUpdate =
-  | {
-      kind: "partial";
-      patch: RuntimePatch;
-    }
-  | {
-      kind: "event";
-      event: {
-        id: string;
-        ts: string;
-        level: "info" | "success" | "warning" | "error";
-        source: string;
-        type: string;
-        title: string;
-        summary: string;
-        detail?: string;
-      };
-    };
-
-type RuntimePatch = {
-  connection?: {
-    state: RuntimeConnectionState;
-    endpoint: string;
-    latencyMs: number;
-    operatorMode: string;
-    runtimeVersion: string;
-  };
-  agent?: {
-    state: "idle" | "listening" | "thinking" | "acting" | "speaking" | "success" | "warning" | "error";
-    model: string;
-    channel: string;
-    currentTask: string;
-    summary: string;
-  };
-};
+import { requestHermesSessionHandoff, undoHermesSessionLastExchange } from "./runtime-session-actions";
+import {
+  projectRuntimeSessions,
+  readHermesChannelDirectoryPlatforms,
+  readHermesSessionDbRows,
+  readHermesSessionsIndex,
+} from "./runtime-sessions";
+import {
+  parseHermesMcpServers,
+  projectRuntimeMcpServers,
+  readHermesMcpConfigRaw,
+  toggleHermesMcpServerEnabled,
+} from "./runtime-mcp";
+import { projectRuntimeProfiles } from "./runtime-profiles";
+import { projectDiscoverCapabilities } from "./runtime-discover";
+import {
+  buildCapabilitiesEvent,
+  buildInitialRuntimeEvents,
+  buildMcpSnapshotEvent,
+  buildProfilesSnapshotEvent,
+  buildSessionActionEvent,
+  buildRuntimeBroadcastSignature,
+  buildSessionsSnapshotEvent,
+  buildSurfaceClearEvent,
+  buildSurfaceEvent,
+  normalizeHermesApprovalEvent,
+  normalizeHermesDiagnosticsEvent,
+  type RuntimeApprovalRequest,
+  type RuntimeConnectionState,
+  type RuntimePatch,
+  type RuntimeSurfacePayload,
+  type RuntimeUpdate,
+} from "./runtime-events";
+import { applyApprovalResolution } from "./runtime-approval-state";
+import { geocodeAddress } from "./runtime-geocode";
+import { RuntimeSurfaceIntentService } from "./runtime-surface-intent.service";
 
 type RuntimeConnectionConfigInput = {
   apiServerUrl?: string;
@@ -168,21 +167,68 @@ function normalizeMessage(role?: string, content?: string) {
   };
 }
 
+const NIKI_BASE_INSTRUCTIONS = `You are Niki, Esteban's personal assistant inside the Niki desktop app on his Mac. You talk with him two ways: by text in the chat, and by voice in a live, call-style conversation. Hermes is the runtime that powers you — never call yourself Hermes, never mention runtimes, models, prompts, or "as an AI." You are simply Niki.
+
+# How you think
+You are an agent, not a chatbot. Reason briefly about what Esteban actually wants, check it against the context you were given, then act. If a request maps to something you can DO with your tools, do it (or take the concrete first step) instead of describing how he could do it himself. Don't narrate your reasoning or list everything you could theoretically do — one clear, coherent reply beats a wall of options. You feel smart by being coherent, by remembering, and by connecting the dots, not by talking a lot.
+
+# How you sound
+Talk like a sharp, warm, switched-on person who knows Esteban — never a robot reading a manual. Use his name naturally when it lands, not in every sentence. Use contractions and an easy rhythm. Match his energy: quick and casual when he is, focused and tight when he's serious. Lead with the answer or the action; skip preamble like "Sure, I can help with that!" — just help. Always reply in his language (Spanish or English, matching whatever he used).
+
+# Conversation continuity
+Treat the exchange as one ongoing conversation, not a collection of unrelated prompts. Use the immediately previous turn to resolve short follow-ups, pronouns, and emotional context. Do not repeat a greeting, a plan, or facts Esteban already acknowledged. If he is just sharing something, respond to the human meaning before offering an action. If you completed an action, say what changed in one natural sentence. Ask at most one focused question, and only when the next step truly depends on it. When the request is clear, act without asking for permission to do ordinary low-risk work.
+
+# What you can actually do (know this cold — half of sounding dumb is not knowing your own reach)
+You genuinely control this Mac and manage Esteban's world. Never say "I can't" to something you can; never claim a capability you don't have.
+- Control macOS (computer_use): screen_capture (snapshot the desktop, to see what he's looking at), screen_info (display layout), app_list (running apps and which is focused — use it to resolve "this app" / "the one I have open"), app_activate(name) (open or focus an app — this is how you "open Safari", "ábrela", "switch to Notes"), open_url(url) (open a web page for "open <site>", "go to…", "look this up"), clipboard_read (read copied text for "what I just copied" / "this"), clipboard_write(text) (put text on the clipboard so he can paste it), system_info (host, OS, memory, uptime), notify(message) (native macOS notification).
+- Manage his tasks (work_items): create, list, update, and complete them, each with category, priority, due date, and subtasks. His current tasks arrive in your context as activeWorkItems — reason over them; never invent tasks or ask him to re-list what you already have.
+- Durable memory: you remember facts across sessions — his name, preferences, and anything he tells you to remember ("recuerda que…", "from now on…"). Relevant memory arrives as durableMemory; apply it proactively.
+- Sessions: handoff across devices, multi-profile, and /undo to reverse a recent action.
+- Connected tools when available: MCP servers, web/x search and video generation (discover), and LSP diagnostics after code edits.
+High-risk actions go through an approval step — that's expected, not a failure; say plainly what you're about to do and let the approval flow handle it. Some capabilities are gated and may be off in the current setup; if a tool isn't available right now, say so honestly and offer the closest thing — don't pretend it worked.
+
+# Use the context you're given (this is what makes you feel smart)
+Each turn you receive an authoritative context object. Read it every turn and let it shape your reply:
+- user — who you're talking to (displayName "Esteban", email, jurisdiction). Address him by name when it fits.
+- session — lastUserRequest, lastAssistantSummary, lastDomain, recent references. This is your short-term memory of THIS conversation. Resolve follow-ups and pronouns from it: "ábrela", "open it", "that one", "the second task", "do it again", "delete it" almost always mean the most recent relevant app/task/item. Resolve the reference confidently instead of asking.
+- durableMemory — facts to remember across sessions. Treat as known truth; honor stated preferences without being reminded twice.
+- activeWorkItems — his real current tasks (real titles, real due dates). Ground task and status answers here.
+- recentActivities — what recently happened; use it for "what did I just do", "again", "the last one".
+If a field is absent or empty, just proceed — never read invented values into it. Only ask a clarifying question when the context genuinely leaves it ambiguous, and then ask one short, specific question.
+
+# When to ask vs act
+Default to acting. Resolve ambiguity yourself from session, recentActivities, and activeWorkItems first. Ask only when the request is genuinely ambiguous AND guessing wrong would be costly or destructive (deleting, sending, overwriting, spending). One sharp question, not a checklist.
+
+# Honesty (non-negotiable)
+Never fake work. Only report an action as done if you actually invoked the tool and it succeeded — otherwise speak in intent ("Opening Safari now", "I'll add that task"), not false past tense. If something failed, is pending approval, or is outside your tools, say so directly and propose the real next step. Never invent task titles, file names, dates, memories, or capabilities that aren't in your context. If you don't know, say so — that's smarter than guessing.
+
+# Style
+Be concise, practical, and action-oriented. Lead with the result or the action, then the minimum necessary detail. Propose concrete next steps ("Want me to open it?", "I can add that as a task") over vague offers. In the chat you may use light Markdown when it genuinely helps scanning (a short list, a code block for code), but never pad a simple answer with structure it doesn't need.`;
+
+const NIKI_VOICE_ADDENDUM = `# MODO VOZ — estás conversando en directo con Esteban
+Esteban escucha tus palabras por síntesis de voz; no las está leyendo. Escribe exactamente como hablaría una persona, con frases naturales y fáciles de escuchar.
+- No uses Markdown: nada de asteriscos, títulos, viñetas, listas numeradas, bloques de código, tablas, enlaces ni emojis.
+- Responde normalmente en una a cuatro frases cortas. Di primero lo importante. Amplía solo si te lo pide o si la situación lo necesita.
+- Mantén el hilo: responde al último turno y no vuelvas a saludar ni a repetir lo que ya quedó claro. Si Esteban dice "sí", "eso", "hazlo" o algo parecido, usa el contexto inmediato para entenderlo.
+- Conversa, no recites. Puedes decir "Entiendo", "Ya veo" u "Voy con eso" cuando encaje, pero no pongas una muletilla antes de cada respuesta.
+- Si solo está compartiendo algo, reconoce la intención humana antes de ofrecer soluciones. Si cuenta un problema, primero demuestra que lo entendiste y después propone el siguiente paso.
+- Si ejecutaste una acción, confirma el resultado en una frase natural. No describas herramientas, prompts, modelos ni pasos internos.
+- Si falta información imprescindible, haz una sola pregunta concreta y espera. No hagas interrogatorios ni enumeres alternativas innecesarias.
+- Habla para el oído: usa palabras, pausas y frases; evita URLs, símbolos, código, cifras difíciles de leer y estructuras visuales.
+Si una respuesta sonaría rara al decirla en voz alta, reescríbela hasta que suene como una conversación real.`;
+
 function buildNikiRuntimeInstructions(channel?: string, contextJson?: string) {
-  const base = [
-    "You are Niki, the user-facing assistant inside the Niki desktop app.",
-    "Do not introduce yourself as Hermes. Hermes is the runtime behind you.",
-    "Use the conversation history you receive to resolve short follow-ups like 'abrela', pronouns, and recent references.",
-    "Keep replies concise, practical, and action-oriented.",
-    "When the wrapper provides structured context for memory, tasks, or recent references, treat that context as authoritative.",
-  ];
+  const parts = [NIKI_BASE_INSTRUCTIONS];
 
-
-  if (contextJson) {
-    base.push(`Wrapper context JSON: ${contextJson}`);
+  if (channel === "niki-voice") {
+    parts.push(NIKI_VOICE_ADDENDUM);
   }
 
-  return base.join(" ");
+  if (contextJson) {
+    parts.push(`Wrapper context JSON: ${contextJson}`);
+  }
+
+  return parts.join("\n\n");
 }
 
 function buildNikiPersonaInstructions(profile: NikiPersonaProfile) {
@@ -284,7 +330,9 @@ function summarizeHermesPayloadShape(payload: unknown, depth = 0): unknown {
 export class RuntimeService implements OnModuleDestroy {
   private readonly logger = new Logger(RuntimeService.name);
   private readonly listeners = new Set<Response>();
+  private readonly pendingApprovals = new Map<string, RuntimeApprovalRequest>();
   private readonly heartbeatMs = 15_000;
+  private hasActiveSurface = false;
   private readonly hermesConfigFilePath = hermesConfigPath();
   private readonly hermesProbeCache = new HermesProbeCache<HermesProbeResult>(1_500);
   private heartbeatId?: ReturnType<typeof setInterval>;
@@ -306,6 +354,8 @@ export class RuntimeService implements OnModuleDestroy {
     private readonly conversationContext: ConversationContextService,
     @Inject(ComputerControlService)
     private readonly computer: ComputerControlService,
+    @Inject(RuntimeSurfaceIntentService)
+    private readonly surfaceIntent: RuntimeSurfaceIntentService,
   ) {
     this.ensureHeartbeat();
     this.ensureHermesConfigWatch();
@@ -366,6 +416,181 @@ export class RuntimeService implements OnModuleDestroy {
       model: runtimeConfig.model,
       provider: "hermes",
       computerControl: this.computer.getConfig().mode,
+    };
+  }
+
+  getRuntimeCapabilities() {
+    const runtimeConfig = this.resolveRuntimeConfig();
+    const computerConfig = this.computer.getConfig();
+    const compatibility = this.evaluateHermesCompatibility(runtimeConfig);
+
+    return projectRuntimeCapabilities({
+      hermes: {
+        computerUse:
+          computerConfig.mode !== "locked" &&
+          Boolean(computerConfig.inputHelper?.available) &&
+          this.computer.capabilitiesList().length > 0,
+        approvals: runtimeConfig.compatibilityMode === "hermes_agent" && compatibility.ok,
+        mcpCatalog: runtimeConfig.compatibilityMode === "hermes_agent" && compatibility.ok,
+        xSearch: runtimeConfig.compatibilityMode === "hermes_agent" && compatibility.ok,
+        videoGenerate: runtimeConfig.compatibilityMode === "hermes_agent" && compatibility.ok,
+        remoteSessions: compatibility.ok,
+        lspDiagnostics: runtimeConfig.diagnosticsEnabled && compatibility.ok,
+      },
+      flags: {
+        computer: process.env.NIKI_FEATURE_COMPUTER !== "0",
+        approvals: process.env.NIKI_FEATURE_APPROVALS !== "0",
+        mcp: process.env.NIKI_FEATURE_MCP !== "0",
+        discover: process.env.NIKI_FEATURE_DISCOVER !== "0",
+        sessions: process.env.NIKI_FEATURE_SESSIONS !== "0",
+        diagnostics: process.env.NIKI_FEATURE_DIAGNOSTICS !== "0",
+      },
+    });
+  }
+
+  getRuntimeSessions() {
+    const runtimeConfig = this.resolveRuntimeConfig();
+    const compatibility = this.evaluateHermesCompatibility(runtimeConfig);
+    return projectRuntimeSessions(readHermesSessionsIndex(), readHermesSessionDbRows(), {
+      handoffSupported: compatibility.ok,
+      undoSupported: compatibility.ok,
+      availableHandoffTargets: readHermesChannelDirectoryPlatforms(),
+    });
+  }
+
+  requestSessionHandoff(input: { sessionId?: string; platform?: string }) {
+    const runtimeConfig = this.resolveRuntimeConfig();
+    const compatibility = this.evaluateHermesCompatibility(runtimeConfig);
+    if (!compatibility.ok) {
+      throw new BadRequestException("Hermes gateway compatibility is required before session handoff can be used.");
+    }
+
+    const sessionId = String(input.sessionId ?? "").trim();
+    const platform = String(input.platform ?? "")
+      .trim()
+      .toLowerCase();
+    const session = this.getRuntimeSessions().find((entry) => entry.id === sessionId);
+
+    if (!session) {
+      throw new BadRequestException("Hermes session not found.");
+    }
+    if (!platform) {
+      throw new BadRequestException("A handoff platform is required.");
+    }
+    if (!session.canHandoff) {
+      throw new BadRequestException(session.canHandoffReason || "This session cannot be handed off right now.");
+    }
+    if (!session.handoffTargets?.includes(platform)) {
+      throw new BadRequestException(`Hermes cannot hand off this session to ${platform} right now.`);
+    }
+
+    const result = requestHermesSessionHandoff({ sessionId, platform });
+    if (!result.ok) {
+      throw new BadRequestException(result.error || "Hermes rejected the handoff request.");
+    }
+
+    this.lastBroadcastState = "";
+    this.broadcast(
+      buildSessionActionEvent({
+        sessionId,
+        action: "handoff",
+        status: "success",
+        summary: `Handoff requested to ${result.platform ?? platform}.`,
+        detail: "Hermes marked the session as pending handoff.",
+        platform: result.platform ?? platform,
+      }),
+    );
+    this.broadcastSessionsSnapshot();
+    this.broadcastProfilesSnapshot();
+    void this.broadcastRuntimeHeartbeat();
+
+    return result;
+  }
+
+  requestSessionUndo(input: { sessionId?: string }) {
+    const runtimeConfig = this.resolveRuntimeConfig();
+    const compatibility = this.evaluateHermesCompatibility(runtimeConfig);
+    if (!compatibility.ok) {
+      throw new BadRequestException("Hermes gateway compatibility is required before session undo can be used.");
+    }
+
+    const sessionId = String(input.sessionId ?? "").trim();
+    const session = this.getRuntimeSessions().find((entry) => entry.id === sessionId);
+    if (!session) {
+      throw new BadRequestException("Hermes session not found.");
+    }
+    if (!session.canUndo) {
+      throw new BadRequestException(session.canUndoReason || "This session cannot be undone right now.");
+    }
+
+    const result = undoHermesSessionLastExchange({ sessionId });
+    if (!result.ok) {
+      throw new BadRequestException(result.error || "Hermes rejected the undo request.");
+    }
+
+    this.lastBroadcastState = "";
+    this.broadcast(
+      buildSessionActionEvent({
+        sessionId,
+        action: "undo",
+        status: "success",
+        summary: result.preview?.trim()
+          ? `Undid last exchange: ${result.preview}`
+          : "Last Hermes exchange removed.",
+        detail: result.preview?.trim()
+          ? "Hermes rewrote the session transcript and state."
+          : "Hermes rewrote the session transcript.",
+        removed: result.removed,
+      }),
+    );
+    this.broadcastSessionsSnapshot();
+    this.broadcastProfilesSnapshot();
+    void this.broadcastRuntimeHeartbeat();
+
+    return result;
+  }
+
+  getRuntimeMcpServers() {
+    return projectRuntimeMcpServers(parseHermesMcpServers(readHermesMcpConfigRaw()));
+  }
+
+  updateRuntimeMcpServer(input: { id?: string; enabled?: boolean }) {
+    const serverId = String(input.id ?? "").trim();
+    if (!serverId) {
+      throw new BadRequestException("MCP server id is required.");
+    }
+    if (typeof input.enabled !== "boolean") {
+      throw new BadRequestException("MCP server enabled must be a boolean.");
+    }
+
+    const raw = readHermesMcpConfigRaw();
+    const next = toggleHermesMcpServerEnabled(raw, serverId, input.enabled);
+    writeFileSync(this.hermesConfigFilePath, next, "utf8");
+    this.hermesProbeCache.clear();
+    this.lastBroadcastState = "";
+    this.broadcastMcpSnapshot();
+    void this.broadcastRuntimeHeartbeat();
+
+    return {
+      ok: true,
+      servers: this.getRuntimeMcpServers(),
+    };
+  }
+
+  getRuntimeProfiles() {
+    return projectRuntimeProfiles(this.getRuntimeSessions());
+  }
+
+  getRuntimeDiscoverCapabilities(profileId?: string) {
+    const capabilities = this.getRuntimeCapabilities().capabilities;
+    const normalizedProfileId = String(profileId ?? "").trim() || "default";
+    return {
+      profileId: normalizedProfileId,
+      capabilities: projectDiscoverCapabilities({
+        xSearch: capabilities.x_search?.available ?? false,
+        videoGenerate: capabilities.video_generate?.available ?? false,
+        profileLabel: normalizedProfileId,
+      }),
     };
   }
 
@@ -444,6 +669,10 @@ export class RuntimeService implements OnModuleDestroy {
         runtimeEvents: true,
         runsApi: true,
       },
+      approvals: {
+        pending: Array.from(this.pendingApprovals.values()),
+      },
+      operatorConsole: this.getRuntimeCapabilities(),
       compatibility,
       config: {
         model: runtimeConfig.model,
@@ -465,8 +694,52 @@ export class RuntimeService implements OnModuleDestroy {
       ok: true,
       tools: [
         "generateAuditSummary",
+        "showSurface",
+        "clearSurface",
       ],
     };
+  }
+
+  async showSurface(input: {
+    kind: RuntimeSurfacePayload["kind"];
+    title?: string;
+    subtitle?: string;
+    query?: string;
+    url?: string;
+    location?: RuntimeSurfacePayload["location"];
+    modelUrl?: string;
+  }) {
+    if (input.kind !== "search" && input.kind !== "map" && input.kind !== "model3d") {
+      throw new BadRequestException("kind must be one of: search, map, model3d");
+    }
+    let location = input.location;
+    if (input.kind === "map" && location && (location.lat === undefined || location.lng === undefined)) {
+      const query = location.address || location.label;
+      if (query) {
+        const geocoded = await geocodeAddress(query);
+        if (geocoded) location = { ...location, lat: geocoded.lat, lng: geocoded.lng };
+      }
+    }
+    const payload: RuntimeSurfacePayload = {
+      id: `surface:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`,
+      kind: input.kind,
+      title: input.title?.trim() || input.query?.trim() || input.location?.label || "Surface",
+      subtitle: input.subtitle,
+      query: input.query,
+      url: input.url,
+      location,
+      modelUrl: input.modelUrl,
+      createdAt: new Date().toISOString(),
+    };
+    this.hasActiveSurface = true;
+    this.broadcast(buildSurfaceEvent(payload));
+    return { ok: true, surface: payload };
+  }
+
+  clearSurface() {
+    this.hasActiveSurface = false;
+    this.broadcast(buildSurfaceClearEvent());
+    return { ok: true };
   }
 
   generateAuditSummary() {
@@ -484,6 +757,8 @@ export class RuntimeService implements OnModuleDestroy {
     this.assertRuntimeEventsAuthorized(req);
     this.setupSse(res);
     this.listeners.add(res);
+    // Un cliente recién conectado empieza sin ninguna surface visible localmente.
+    this.hasActiveSurface = false;
     await this.emitInitialRuntimeState(res);
     req.on("close", () => {
       this.listeners.delete(res);
@@ -500,9 +775,46 @@ export class RuntimeService implements OnModuleDestroy {
     const sessionId = String(body.sessionId ?? "session").trim() || "session";
     const channel = String(body.channel ?? "niki-agent").trim() || "niki-agent";
 
-    await this.conversationContext.captureUserTurn(userId, sessionId, channel, input);
+    // El contexto corto es de proceso y lo lee buildRuntimeContext — va primero y sin
+    // await porque no toca la red.
+    this.conversationContext.captureUserTurnContext(userId, sessionId, channel, input);
 
-    const personaProfile = await this.conversationContext.getPersonaProfile(userId);
+    // Todo lo que necesita memoria arranca junto. UserMemoryService deduplica las
+    // lecturas en vuelo y las cachea 30 s, así que estos tres caminos comparten una
+    // sola ida a Upstash — y del segundo turno de una llamada en adelante, ninguna.
+    const [memoryEntries, personaProfile, runtimeContext] = await Promise.all([
+      this.conversationContext.prefetchMemory(userId),
+      this.conversationContext.getPersonaProfile(userId),
+      this.conversationContext.buildRuntimeContext(userId, sessionId, channel),
+    ]);
+
+    // Guardar hechos explícitos es una escritura que nadie lee en esta respuesta:
+    // esperarla solo retrasaba el primer token.
+    void this.conversationContext
+      .persistExplicitFacts(userId, input, memoryEntries)
+      .catch((error) => this.logger.warn(`[runtime] persistExplicitFacts: ${String(error)}`));
+
+    // body.messages incluye el turno actual como último elemento (ver NikiAppModel
+    // buildHermesMessages) — lo excluimos para no duplicarlo como "historial".
+    const surfaceHistory = (body.messages ?? [])
+      .slice(0, -1)
+      .filter(
+        (m): m is { role: "user" | "assistant"; content: string } =>
+          (m.role === "user" || m.role === "assistant") && typeof m.content === "string" && m.content.trim().length > 0,
+      );
+
+    void this.surfaceIntent
+      .detect(input, this.hasActiveSurface, surfaceHistory)
+      .then((result) => {
+        if (result.action === "show") {
+          this.hasActiveSurface = true;
+          this.broadcast(buildSurfaceEvent(result.payload));
+        } else if (result.action === "clear") {
+          this.hasActiveSurface = false;
+          this.broadcast(buildSurfaceClearEvent());
+        }
+      })
+      .catch((err) => this.logger.warn(`[runtime] surface intent detection failed: ${String(err)}`));
 
     this.runtimeState.audit(
       userId,
@@ -551,12 +863,6 @@ export class RuntimeService implements OnModuleDestroy {
       .filter((message) => message.content.length > 0);
     const latestMessage = messages.at(-1);
     const conversationHistory = messages.slice(0, -1);
-    const runtimeContext = await this.conversationContext.buildRuntimeContext(
-      userId,
-      sessionId,
-      channel,
-    );
-
     this.logger.log(`[runtime] [${correlationId}] user=${userId} session=${sessionId} channel=${channel}`);
     this.logger.log(`[runtime] [${correlationId}] prompt → hermes ${apiServerUrl}/v1/runs`);
 
@@ -650,6 +956,20 @@ export class RuntimeService implements OnModuleDestroy {
         const label = summarizeEventType(eventType);
         const progress = this.progressMarkerForEvent(eventType);
         const nextState = this.agentStateForEvent(eventType);
+        const approvalEvent = normalizeHermesApprovalEvent(eventType, parsed.data);
+        const diagnosticsEvent = normalizeHermesDiagnosticsEvent(eventType, parsed.data);
+
+        if (approvalEvent?.kind === "approval_request") {
+          this.pendingApprovals.set(approvalEvent.payload.id, approvalEvent.payload);
+          this.broadcast(approvalEvent);
+        } else if (approvalEvent?.kind === "approval_resolved") {
+          this.pendingApprovals.delete(approvalEvent.payload.id);
+          this.broadcast(approvalEvent);
+        }
+
+        if (diagnosticsEvent?.kind === "diagnostics") {
+          this.broadcast(diagnosticsEvent);
+        }
 
         if (nextState) {
           this.broadcastPatch({
@@ -771,27 +1091,79 @@ export class RuntimeService implements OnModuleDestroy {
 
   private async emitInitialRuntimeState(res: Response) {
     const status = await this.status();
-    res.write(
-      toSseData({
-        kind: "partial",
-        patch: {
-          connection: {
-            state: status.state,
-            endpoint: status.apiServerUrl,
-            latencyMs: 0,
-            operatorMode: "wrapper",
-            runtimeVersion: status.resolvedModel,
-          },
-          agent: {
-            state: status.state === "ready" ? "idle" : status.state === "degraded" ? "warning" : "error",
-            model: status.resolvedModel,
-            channel: "Niki app -> Hermes",
-            currentTask: status.state === "ready" ? "Ready for realtime requests" : "Runtime unavailable",
-            summary: String(status.detail ?? ""),
-          },
-        },
-      } satisfies RuntimeUpdate),
-    );
+    const events = buildInitialRuntimeEvents({
+      status: {
+        state: status.state,
+        apiServerUrl: status.apiServerUrl,
+        resolvedModel: status.resolvedModel,
+        detail: status.detail,
+      },
+      capabilities: this.getRuntimeCapabilities(),
+      sessions: this.getRuntimeSessions(),
+      mcpServers: this.getRuntimeMcpServers(),
+      profiles: this.getRuntimeProfiles(),
+    });
+
+    for (const event of events) {
+      res.write(toSseData(event satisfies RuntimeUpdate));
+    }
+
+    for (const approval of this.pendingApprovals.values()) {
+      res.write(toSseData({ kind: "approval_request", payload: approval } satisfies RuntimeUpdate));
+    }
+  }
+
+  async respondToApproval(input: { runId?: string; choice?: string; all?: boolean }) {
+    const runtimeConfig = this.resolveRuntimeConfig();
+    const runId = String(input.runId ?? "").trim();
+    const choice = String(input.choice ?? "").trim().toLowerCase();
+    const resolveAll = Boolean(input.all);
+    if (!runId) {
+      throw new BadRequestException("runId is required");
+    }
+    if (!choice) {
+      throw new BadRequestException("choice is required");
+    }
+
+    const response = await fetch(`${runtimeConfig.apiServerUrl}/v1/runs/${runId}/approval`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...this.hermesHeaders("user-demo", "approval-response"),
+      },
+      body: JSON.stringify({
+        choice,
+        all: resolveAll,
+      }),
+    });
+
+    const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+    if (!response.ok) {
+      throw new BadRequestException(`Hermes approval failed: ${JSON.stringify(payload)}`);
+    }
+
+    const projected = applyApprovalResolution(Array.from(this.pendingApprovals.values()), {
+      runId,
+      choice,
+      all: resolveAll,
+    });
+    this.pendingApprovals.clear();
+    for (const approval of projected.pending) {
+      this.pendingApprovals.set(approval.id, approval);
+    }
+    for (const resolution of projected.resolved) {
+      this.broadcast({
+        kind: "approval_resolved",
+        payload: resolution,
+      });
+    }
+    this.lastBroadcastState = "";
+    void this.broadcastRuntimeHeartbeat();
+
+    return {
+      ok: true,
+      approval: payload,
+    };
   }
 
   private async probeHermes() {
@@ -1133,6 +1505,22 @@ export class RuntimeService implements OnModuleDestroy {
     this.broadcast({ kind: "partial", patch });
   }
 
+  private broadcastCapabilities(capabilities: RuntimeCapabilities) {
+    this.broadcast(buildCapabilitiesEvent(capabilities));
+  }
+
+  private broadcastSessionsSnapshot() {
+    this.broadcast(buildSessionsSnapshotEvent(this.getRuntimeSessions()));
+  }
+
+  private broadcastMcpSnapshot() {
+    this.broadcast(buildMcpSnapshotEvent(this.getRuntimeMcpServers()));
+  }
+
+  private broadcastProfilesSnapshot() {
+    this.broadcast(buildProfilesSnapshotEvent(this.getRuntimeProfiles()));
+  }
+
   private broadcastEvent(
     level: "info" | "success" | "warning" | "error",
     source: string,
@@ -1186,10 +1574,29 @@ export class RuntimeService implements OnModuleDestroy {
   private async broadcastRuntimeHeartbeat() {
     if (this.listeners.size === 0) return;
     const status = await this.status();
-    const signature = `${status.state}|${status.resolvedModel}|${status.detail}`;
+    const capabilities = this.getRuntimeCapabilities();
+    const sessions = this.getRuntimeSessions();
+    const mcpServers = this.getRuntimeMcpServers();
+    const profiles = this.getRuntimeProfiles();
+    const signature = buildRuntimeBroadcastSignature({
+      status: {
+        state: status.state,
+        apiServerUrl: status.apiServerUrl,
+        resolvedModel: status.resolvedModel,
+        detail: status.detail,
+      },
+      capabilities,
+      sessions,
+      mcpServers,
+      profiles,
+    });
     if (signature === this.lastBroadcastState) return;
     this.lastBroadcastState = signature;
 
+    this.broadcastCapabilities(capabilities);
+    this.broadcast(buildSessionsSnapshotEvent(sessions));
+    this.broadcast(buildMcpSnapshotEvent(mcpServers));
+    this.broadcast(buildProfilesSnapshotEvent(profiles));
     this.broadcastPatch({
       connection: {
         state: status.state,

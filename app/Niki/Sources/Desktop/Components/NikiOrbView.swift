@@ -1,246 +1,219 @@
 import SwiftUI
 
-private struct SphereDot {
-    let x: Double
-    let y: Double
-    let z: Double
-    let lon: Double
-    let lat: Double
-    let seed: Double
-    let seed2: Double
+/// Native SwiftUI interpretation of the nine semantic states from
+/// thinking-orbs. The web project uses a 2D canvas; this keeps the same
+/// semantic vocabulary and tuned motion while staying native to the macOS
+/// shell and notch.
+/// Reference: https://github.com/Jakubantalik/thinking-orbs
+enum NikiThinkingOrbState: String, CaseIterable {
+    case working
+    case searching
+    case solving
+    case listening
+    case connecting
+    case weaving
+    case composing
+    case breathing
+    case shaping
+
+    var label: String {
+        switch self {
+        case .working: return "Trabajando"
+        case .searching: return "Buscando"
+        case .solving: return "Resolviendo"
+        case .listening: return "Escuchando"
+        case .connecting: return "Conectando"
+        case .weaving: return "Integrando"
+        case .composing: return "Hablando"
+        case .breathing: return "En espera"
+        case .shaping: return "Listo"
+        }
+    }
+
+    static func from(agentState: NikiAgentVisualState) -> Self {
+        switch agentState {
+        case .idle: return .breathing
+        case .listening: return .listening
+        case .thinking: return .solving
+        case .acting: return .working
+        case .speaking: return .composing
+        case .success: return .shaping
+        case .warning: return .connecting
+        case .error: return .searching
+        }
+    }
 }
 
-private struct RenderedDot {
-    let x: CGFloat
-    let y: CGFloat
-    let z: Double
-    let scale: Double
-    let alpha: Double
-    let size: Double
-    let glow: Double
+/// Reusable native renderer. `size` accepts any value so it can serve the
+/// hero orb, inline message indicator, notch and voice panel.
+struct NikiThinkingOrbView: View {
+    let state: NikiThinkingOrbState
+    let size: CGFloat
+    let accentHex: String
+    var speed: Double = 1
+    var paused: Bool = false
+    /// Nivel de audio en vivo (0...1) — micrófono del usuario o reproducción de TTS de Niki.
+    /// Se suma a la energía propia del estado para que el orbe reaccione al instante a la
+    /// voz real, no solo al estado discreto (escuchando/hablando/...), dando sensación de
+    /// conversación en vivo en vez de una animación de "modo" estática.
+    var liveLevel: Double = 0
+    /// Modo sereno: el orbe gira más lento, reacciona a la voz con menos amplitud y
+    /// filtra el medidor de audio con más inercia. Es el que se usa en el notch durante
+    /// una llamada, donde el orbe está en pantalla minutos enteros y el nerviosismo
+    /// cuadro a cuadro cansa.
+    var calm: Bool = false
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// El medidor de audio llega a saltos (un valor por buffer). Pintarlo crudo hace
+    /// que el orbe tiemble. Lo pasamos por un filtro de un polo con constantes
+    /// distintas para subir y bajar: sube razonablemente rápido para que se sienta
+    /// en vivo, y cae despacio para que no parpadee entre sílabas.
+    private final class LiveSmoother {
+        var value: Double = 0
+        var last: Date?
+    }
+    @State private var smoother = LiveSmoother()
+
+    /// Figura de la que venimos y cuándo empezó el cambio. Mientras la transición está
+    /// viva dibujamos la mezcla de ambas, así los puntos se reacomodan en vez de saltar.
+    @State private var fromState: NikiThinkingOrbState?
+    @State private var transitionStart: Date?
+
+    /// Un poco más larga que un fundido simple: el escalonado reparte las salidas de
+    /// los puntos dentro de esta ventana, y se necesita aire para que la ola se lea.
+    private static let transitionDuration: Double = 1.15
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 60.0)) { timeline in
+            Canvas { context, canvasSize in
+                let side = min(canvasSize.width, canvasSize.height)
+                let now = timeline.date
+
+                // Filtro del nivel de audio. `smoother` es una clase, no estado de
+                // SwiftUI: mutarla acá no invalida la vista (el TimelineView ya repinta).
+                let target = min(1, max(0, liveLevel))
+                let dt = min(0.25, smoother.last.map { now.timeIntervalSince($0) } ?? (1.0 / 60))
+                smoother.last = now
+                let rising = target > smoother.value
+                let tau = calm ? (rising ? 0.16 : 0.42) : (rising ? 0.05 : 0.14)
+                smoother.value += (target - smoother.value) * (1 - exp(-dt / tau))
+                let live = smoother.value
+                // Cuánto de ese nivel llega a la geometría (vibración del anillo).
+                let liveGain = calm ? 0.42 : 1.0
+
+                func frame(for s: NikiThinkingOrbState) -> NikiOrbFrame {
+                    let kind = NikiOrbConfig.kind(for: s)
+                    var (opts, baseSpeed) = NikiOrbConfig.options(for: kind, size: side)
+                    opts.live = live * liveGain
+                    let phase = reduceMotion || paused
+                        ? 0.72
+                        : now.timeIntervalSinceReferenceDate
+                            * max(0.1, speed) * baseSpeed * 0.1 * (1 + (calm ? 0.16 : 0.45) * live)
+                    return NikiOrbBuilder.build(kind: kind, size: side, time: phase, opts: opts)
+                }
+
+                var rendered = frame(for: state)
+                if !reduceMotion,
+                   let from = fromState,
+                   let start = transitionStart,
+                   NikiOrbConfig.kind(for: from) != NikiOrbConfig.kind(for: state) {
+                    let elapsed = now.timeIntervalSince(start)
+                    if elapsed < Self.transitionDuration {
+                        // Progreso lineal a propósito: el suavizado va por punto dentro
+                        // de `blend`, junto con su retardo. Aplicarlo también acá haría
+                        // el cambio pastoso.
+                        let raw = max(0, min(1, elapsed / Self.transitionDuration))
+                        let center = CGPoint(x: side / 2, y: side / 2)
+                        rendered = NikiOrbMath.blend(frame(for: from), rendered, raw, center: center)
+                    }
+                }
+                draw(frame: rendered, context: &context, size: canvasSize, side: side, live: live)
+            }
+            .accessibilityLabel(state.label)
+        }
+        .frame(width: size, height: size)
+        .drawingGroup()
+        .onChange(of: state) { old, new in
+            guard NikiOrbConfig.kind(for: old) != NikiOrbConfig.kind(for: new) else {
+                // Mismo dibujo con otro nombre de estado: no hay nada que transicionar.
+                // Reiniciar acá era lo que hacía titilar el orbe cuando el agente pasaba
+                // por varios estados que comparten figura.
+                return
+            }
+            // Si ya había una transición a medias, no se puede simplemente decir "vengo
+            // de `old`": los puntos están a mitad de camino. Antes de la mitad seguimos
+            // considerando origen la figura original (volver ahí es el camino corto);
+            // pasada la mitad, el origen real es la figura a la que casi habíamos
+            // llegado. Sin esto el orbe pegaba un salto al encadenar cambios.
+            if let start = transitionStart,
+               let previousFrom = fromState,
+               Date().timeIntervalSince(start) < Self.transitionDuration {
+                let progress = Date().timeIntervalSince(start) / Self.transitionDuration
+                fromState = progress < 0.5 ? previousFrom : old
+            } else {
+                fromState = old
+            }
+            transitionStart = Date()
+        }
+    }
+
+    /// Dibuja el frame ya proyectado. Conserva la luminancia del original (el campo
+    /// `white` es tinta: 0 = brillante) y la tiñe con el acento de Niki.
+    private func draw(frame: NikiOrbFrame, context: inout GraphicsContext, size: CGSize, side: CGFloat, live: Double) {
+        let accent = Color(hex: accentHex)
+        let res = accent.resolve(in: EnvironmentValues())
+        let ar = Double(res.red), ag = Double(res.green), ab = Double(res.blue)
+        // El builder proyecta en un lienzo de lado `side`; centramos si el canvas no es cuadrado.
+        let dx = (size.width - side) / 2
+        let dy = (size.height - side) / 2
+
+        for line in frame.lines {
+            let b = 1 - min(1, max(0, line.white))
+            var path = Path()
+            path.move(to: CGPoint(x: line.x1 + dx, y: line.y1 + dy))
+            path.addLine(to: CGPoint(x: line.x2 + dx, y: line.y2 + dy))
+            context.stroke(path,
+                           with: .color(Color(red: b * (0.55 + 0.45 * ar),
+                                              green: b * (0.55 + 0.45 * ag),
+                                              blue: b * (0.55 + 0.45 * ab)).opacity(line.a)),
+                           lineWidth: line.w)
+        }
+
+        context.blendMode = .screen
+        for dot in frame.dots {
+            let b = 1 - min(1, max(0, dot.white))
+            let cx = dot.x + dx, cy = dot.y + dy
+            let color = Color(red: min(1, b * (0.55 + 0.45 * ar) + 0.12 * b * b),
+                              green: min(1, b * (0.62 + 0.38 * ag) + 0.14 * b * b),
+                              blue: min(1, b * (0.70 + 0.30 * ab) + 0.18 * b * b))
+            // Halo suave en los puntos más brillantes — da el glow del original.
+            if b > 0.62 {
+                let g = dot.r * 3.0
+                context.fill(Path(ellipseIn: CGRect(x: cx - g, y: cy - g, width: g * 2, height: g * 2)),
+                             with: .color(color.opacity(dot.a * 0.05 * (b - 0.62) / 0.38)))
+            }
+            context.fill(Path(ellipseIn: CGRect(x: cx - dot.r, y: cy - dot.r,
+                                                width: dot.r * 2, height: dot.r * 2)),
+                         with: .color(color.opacity(dot.a)))
+        }
+    }
+
 }
 
+/// Compatibility wrapper used by the shell and existing surfaces.
 struct NikiOrbView: View {
     let state: NikiAgentVisualState
     let accentHex: String
-
-    @State private var motionLevel: Double = 0
-    @State private var breathingLevel: Double = 0.08
-
-    private let dotCount = 1350
-    private let camera = 860.0
+    var size: CGFloat = 840
+    var liveLevel: Double = 0
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
-            let loop = timeline.date.timeIntervalSinceReferenceDate / 18.5
-            let t = loop * Double.pi * 2
-            let palette = orbPalette
-
-            ZStack {
-                Circle()
-                    .fill(
-                        RadialGradient(
-                            colors: [
-                                palette.core.opacity(0.28),
-                                palette.accent.opacity(0.13),
-                                Color.black.opacity(0.0)
-                            ],
-                            center: .center,
-                            startRadius: 30,
-                            endRadius: 360
-                        )
-                    )
-                    .blur(radius: 54)
-
-                Circle()
-                    .fill(
-                        RadialGradient(
-                            colors: [
-                                palette.highlight.opacity(0.26),
-                                palette.core.opacity(0.08),
-                                Color.black.opacity(0.0)
-                            ],
-                            center: .center,
-                            startRadius: 8,
-                            endRadius: 260
-                        )
-                    )
-                    .blur(radius: 26)
-
-                Canvas { context, size in
-                    let side = min(size.width, size.height)
-                    let radius = Double(side) * 0.275
-                    let center = CGPoint(x: size.width / 2, y: size.height / 2)
-                    let dots = buildDots(radius: radius)
-                    let rotY = t * 0.58
-                    let rotX = 0.14 * sin(t * 0.45)
-
-                    var rendered: [RenderedDot] = []
-                    rendered.reserveCapacity(dots.count)
-
-                    for dot in dots {
-                        let burst = burstFactor(for: dot, time: t)
-                        let radial = 1 + burst + breathingLevel * 0.02
-                        var point = rotateY(x: dot.x * radial, y: dot.y * radial, z: dot.z * radial, angle: rotY)
-                        point = rotateX(x: point.x, y: point.y, z: point.z, angle: rotX)
-
-                        let scale = camera / (camera - point.z)
-                        let x = center.x + CGFloat(point.x * scale)
-                        let y = center.y + CGFloat(point.y * scale)
-                        let depth = (point.z + radius) / (2 * radius)
-                        let baseAlpha = 0.18 + depth * 0.72
-                        let baseSize = 0.8 + depth * 2.45
-                        let waveA = 1 - min(1, abs(sin(2.0 * dot.lon - t + dot.seed * 0.8)) / 0.16)
-                        let waveB = 1 - min(1, abs(sin(1.2 * dot.lat + 1.3 * dot.lon + t * 1.2)) / 0.22)
-                        let coreGlow = pow(max(waveA, waveB), 1.15)
-                        let flicker = 0.76 + 0.24 * sin(t * 1.9 + dot.seed2 * Double.pi * 2)
-                        let totalGlow = coreGlow + burst * 3.6
-
-                        rendered.append(
-                            RenderedDot(
-                                x: x,
-                                y: y,
-                                z: point.z,
-                                scale: scale,
-                                alpha: min(1, baseAlpha * flicker + totalGlow * 0.22),
-                                size: baseSize + totalGlow * 1.85,
-                                glow: totalGlow
-                            )
-                        )
-                    }
-
-                    rendered.sort { $0.z < $1.z }
-                    context.blendMode = .screen
-
-                    for dot in rendered {
-                        let radius = CGFloat(dot.size * dot.scale)
-                        if dot.glow > 0.08 {
-                            context.fill(
-                                Path(ellipseIn: CGRect(
-                                    x: dot.x - radius * 2.4,
-                                    y: dot.y - radius * 2.4,
-                                    width: radius * 4.8,
-                                    height: radius * 4.8
-                                )),
-                                with: .color(palette.highlight.opacity(0.075 * dot.glow))
-                            )
-                        }
-
-                        let dotColor = Color(
-                            red: min(1, palette.dotRed + 0.12 * dot.glow + 0.04 * dot.alpha),
-                            green: min(1, palette.dotGreen + 0.12 * dot.alpha + 0.07 * dot.glow),
-                            blue: min(1, palette.dotBlue + 0.18 * dot.glow)
-                        )
-
-                        context.fill(
-                            Path(ellipseIn: CGRect(
-                                x: dot.x - radius,
-                                y: dot.y - radius,
-                                width: radius * 2,
-                                height: radius * 2
-                            )),
-                            with: .color(dotColor.opacity(dot.alpha))
-                        )
-                    }
-                }
-            }
-            .padding(10)
-        }
-        .frame(width: 840, height: 840)
-        .onAppear {
-            motionLevel = targetMotionLevel
-            breathingLevel = targetBreathingLevel
-        }
-        .onChange(of: state) { _, _ in
-            withAnimation(.easeInOut(duration: 0.65)) {
-                motionLevel = targetMotionLevel
-                breathingLevel = targetBreathingLevel
-            }
-        }
-    }
-
-    private var orbPalette: (core: Color, highlight: Color, accent: Color, dotRed: Double, dotGreen: Double, dotBlue: Double) {
-        let accent = Color(hex: accentHex)
-        return (accent.opacity(0.92), Color(red: 0.55, green: 0.9, blue: 1), Color(red: 0.7, green: 0.6, blue: 1), 0.36, 0.62, 0.94)
-    }
-
-    private var targetMotionLevel: Double {
-        switch state {
-        case .speaking:
-            return 1
-        case .thinking, .acting:
-            return 0.42
-        case .listening:
-            return 0.58
-        default:
-            return 0
-        }
-    }
-
-    private var targetBreathingLevel: Double {
-        switch state {
-        case .idle, .success:
-            return 0.08
-        case .thinking, .acting:
-            return 0.12
-        case .listening:
-            return 0.15
-        case .speaking:
-            return 0.2
-        case .warning, .error:
-            return 0.06
-        }
-    }
-
-    private func burstFactor(for dot: SphereDot, time: Double) -> Double {
-        let gate = 1 - min(1, abs(sin(time * 0.95 + dot.seed * 9.0)) / 0.14)
-
-        switch state {
-        case .speaking:
-            return motionLevel * (0.008 + 0.05 * pow(gate, 1.55))
-        case .thinking, .acting:
-            return motionLevel * (0.004 + 0.012 * (0.5 + 0.5 * sin(time * 0.7 + dot.seed2 * 6)))
-        case .listening:
-            return motionLevel * (0.006 + 0.016 * max(0, sin(time * 1.3 + dot.seed * 8.0)))
-        default:
-            return motionLevel * 0.002 * (0.5 + 0.5 * sin(time * 0.45 + dot.seed))
-        }
-    }
-
-    private func buildDots(radius: Double) -> [SphereDot] {
-        (0..<dotCount).map { index in
-            let u = Double(index) / Double(dotCount)
-            let y = 1 - 2 * u
-            let ring = sqrt(max(0, 1 - y * y))
-            let theta = Double.pi * (3 - sqrt(5)) * Double(index)
-            let x = cos(theta) * ring
-            let z = sin(theta) * ring
-
-            return SphereDot(
-                x: x * radius,
-                y: y * radius,
-                z: z * radius,
-                lon: atan2(z, x),
-                lat: asin(y),
-                seed: fract(sin(Double(index) * 91.173) * 43758.5453123),
-                seed2: fract(sin(Double(index + 17) * 51.931) * 24634.63451)
-            )
-        }
-    }
-
-    private func rotateY(x: Double, y: Double, z: Double, angle: Double) -> (x: Double, y: Double, z: Double) {
-        let c = cos(angle)
-        let s = sin(angle)
-        return (x * c + z * s, y, -x * s + z * c)
-    }
-
-    private func rotateX(x: Double, y: Double, z: Double, angle: Double) -> (x: Double, y: Double, z: Double) {
-        let c = cos(angle)
-        let s = sin(angle)
-        return (x, y * c - z * s, y * s + z * c)
-    }
-
-    private func fract(_ value: Double) -> Double {
-        value - floor(value)
+        NikiThinkingOrbView(
+            state: NikiThinkingOrbState.from(agentState: state),
+            size: size,
+            accentHex: accentHex,
+            liveLevel: liveLevel
+        )
     }
 }

@@ -3,6 +3,7 @@ import type { Request, Response } from "express";
 
 import { AuditService } from "../modules/audit/audit.service";
 import { ComputerControlService } from "../modules/computer/computer-control.service";
+import { projectComputerOperatorSurface } from "../modules/computer/computer-operator-surface";
 import {
   actingUserIdFrom,
   correlationIdFrom,
@@ -43,11 +44,17 @@ export class WrapperService {
   ) {}
 
   computerCapabilities() {
+    const permissions = this.computerControl.permissions();
+    const capabilities = this.computerControl.capabilitiesList();
     return {
       ok: true,
       config: this.computerControl.getConfig(),
-      permissions: this.computerControl.permissions(),
-      capabilities: this.computerControl.capabilitiesList(),
+      permissions,
+      capabilities,
+      surface: projectComputerOperatorSurface({
+        capabilities,
+        permissions,
+      }),
     };
   }
 
@@ -104,6 +111,55 @@ export class WrapperService {
     return this.runtimeService.getRuntimeConfig();
   }
 
+  runtimeCapabilities() {
+    return {
+      ok: true,
+      capabilities: this.runtimeService.getRuntimeCapabilities(),
+    };
+  }
+
+  runtimeSessions() {
+    return {
+      ok: true,
+      sessions: this.runtimeService.getRuntimeSessions(),
+    };
+  }
+
+  runtimeProfiles() {
+    return {
+      ok: true,
+      profiles: this.runtimeService.getRuntimeProfiles(),
+    };
+  }
+
+  requestSessionHandoff(input: { sessionId?: string; platform?: string }) {
+    return this.runtimeService.requestSessionHandoff(input);
+  }
+
+  requestSessionUndo(input: { sessionId?: string }) {
+    return this.runtimeService.requestSessionUndo(input);
+  }
+
+  runtimeMcpServers() {
+    return {
+      ok: true,
+      servers: this.runtimeService.getRuntimeMcpServers(),
+    };
+  }
+
+  updateRuntimeMcpServer(input: { id?: string; enabled?: boolean }) {
+    return this.runtimeService.updateRuntimeMcpServer(input);
+  }
+
+  runtimeDiscoverCapabilities(profileId?: string) {
+    const projected = this.runtimeService.getRuntimeDiscoverCapabilities(profileId);
+    return {
+      ok: true,
+      profileId: projected.profileId,
+      capabilities: projected.capabilities,
+    };
+  }
+
   updateRuntimeConfig(input: {
     apiServerUrl?: string;
     apiKey?: string;
@@ -121,6 +177,26 @@ export class WrapperService {
 
   streamRuntimeEvents(req: Request, res: Response) {
     return this.runtimeService.streamRuntimeEvents(req, res);
+  }
+
+  respondToApproval(input: { runId?: string; choice?: string; all?: boolean }) {
+    return this.runtimeService.respondToApproval(input);
+  }
+
+  showSurface(input: {
+    kind?: string;
+    title?: string;
+    subtitle?: string;
+    query?: string;
+    url?: string;
+    location?: { label: string; lat?: number; lng?: number; address?: string };
+    modelUrl?: string;
+  }) {
+    return this.runtimeService.showSurface(input as Parameters<RuntimeService["showSurface"]>[0]);
+  }
+
+  clearSurface() {
+    return this.runtimeService.clearSurface();
   }
 
   proxyChatStream(req: Request, res: Response, body: ChatRequestDto) {

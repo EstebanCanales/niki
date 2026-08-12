@@ -5,13 +5,9 @@ export function BentoShell() {
   return (
     <main className="bento-page">
       <article className="bento-shell" aria-labelledby="niki-title">
-        <header className="landing-masthead">
-          <img alt="Niki" height="32" src="/logo-niki.svg" width="76" />
-          <a href="/login">Ya tengo acceso</a>
-        </header>
-
         <div className="landing-lead">
-          <div className="landing-intro">
+          <section className="landing-intro" data-plane="story">
+            <img className="landing-logo" alt="Niki" height="24" src="/logo-niki.svg" width="72" />
             <p className="landing-kicker">Niki para macOS</p>
             <h1 id="niki-title">
               <span>Tu Mac,</span>
@@ -22,21 +18,22 @@ export function BentoShell() {
               permiso antes de actuar.
             </p>
 
-            <div className="landing-access" aria-label="Acceso privado">
+            <section className="landing-access" aria-label="Acceso privado">
               <WaitlistForm compact />
-              <p>Acceso personal por invitación.</p>
-            </div>
-          </div>
+              <div className="landing-access__meta">
+                <span>Acceso personal por invitación.</span>
+                <a href="/login">Entrar a Niki</a>
+              </div>
+            </section>
+          </section>
 
           <ProductDemo />
         </div>
 
-        <div className="editorial-band">
+        <div className="editorial-band" data-plane="continuity">
           <section className="conversation-plane" aria-label="Una conversación continua">
             <p className="editorial-index">Una conversación continua</p>
-            <blockquote>
-              “Organiza lo que me queda hoy y deja un rato para caminar.”
-            </blockquote>
+            <blockquote>“Organiza lo que me queda hoy y deja un rato para caminar.”</blockquote>
             <div className="conversation-reply">
               <span aria-hidden="true" />
               <p>
@@ -55,7 +52,7 @@ export function BentoShell() {
               </div>
               <div>
                 <dt>Actúa con permiso</dt>
-                <dd>La sincronización es opcional y cada decisión sensible espera tu confirmación.</dd>
+                <dd>La sincronización es opcional. Lo sensible espera tu confirmación.</dd>
               </div>
             </dl>
           </section>

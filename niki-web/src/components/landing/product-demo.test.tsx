@@ -14,6 +14,10 @@ describe("ProductDemo", () => {
     expect(
       screen.getByRole("region", { name: "Presencia de Niki" }),
     ).toBeVisible();
+    expect(screen.getByRole("region", { name: "Presencia de Niki" })).toHaveAttribute(
+      "data-presence-state",
+      "listening",
+    );
     expect(screen.getByLabelText("Niki está escuchando")).toBeVisible();
     expect(screen.getByRole("button", { name: "Escuchar" })).toHaveAttribute(
       "aria-pressed",
@@ -23,6 +27,10 @@ describe("ProductDemo", () => {
     await user.click(screen.getByRole("button", { name: "Pensar" }));
 
     expect(screen.getByLabelText("Niki está pensando")).toBeVisible();
+    expect(screen.getByRole("region", { name: "Presencia de Niki" })).toHaveAttribute(
+      "data-presence-state",
+      "thinking",
+    );
     expect(screen.getByRole("button", { name: "Pensar" })).toHaveAttribute(
       "aria-pressed",
       "true",
@@ -36,6 +44,10 @@ describe("ProductDemo", () => {
     await user.click(screen.getByRole("button", { name: "Actuar" }));
 
     expect(screen.getByLabelText("Niki está actuando")).toBeVisible();
+    expect(screen.getByRole("region", { name: "Presencia de Niki" })).toHaveAttribute(
+      "data-presence-state",
+      "acting",
+    );
     expect(screen.getByRole("button", { name: "Actuar" })).toHaveAttribute(
       "aria-pressed",
       "true",

@@ -10,23 +10,9 @@ struct NikiChatSidebar: View {
     private let userBubbleWidth: CGFloat = 330
 
     var body: some View {
-        NikiGlassPanel(
-            cornerRadius: NikiSidebarLayout.cornerRadius,
-            outerBorderOpacity: 0.12,
-            blurBackground: true
-        ) {
-            NikiInnerPanel(cornerRadius: NikiSidebarLayout.innerCornerRadius) {
-                VStack(spacing: 0) {
-                    chatTitleBar
-
-                    chatThread
-                        .layoutPriority(1)
-
-                    composer
-                }
-            }
-            .padding(3)
-        }
+        // El chat se mantiene visible también durante la llamada; los controles de voz
+        // (silenciar / colgar) viven en el dock, junto al resto de controles.
+        chatPanel
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .fileImporter(
             isPresented: $importingFiles,
@@ -47,6 +33,27 @@ struct NikiChatSidebar: View {
                 appModel.cancelCurrentChat()
             }
         }
+    }
+
+    private var chatPanel: some View {
+        NikiGlassPanel(
+            cornerRadius: NikiSidebarLayout.cornerRadius,
+            outerBorderOpacity: 0.12,
+            blurBackground: true
+        ) {
+            NikiInnerPanel(cornerRadius: NikiSidebarLayout.innerCornerRadius) {
+                VStack(spacing: 0) {
+                    chatTitleBar
+
+                    chatThread
+                        .layoutPriority(1)
+
+                    composer
+                }
+            }
+            .padding(3)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var chatTitleBar: some View {
@@ -120,7 +127,7 @@ struct NikiChatSidebar: View {
     }
 
     private var emptyThread: some View {
-        DotmHex10LoaderView(size: 34, dotSize: 4, speed: 1.15, bloom: true, colorPreset: .aurora)
+        NikiThinkingOrbView(state: .breathing, size: 34, accentHex: appModel.orbAccentHex, speed: 1.15)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
             .padding(.top, 90)
     }
@@ -139,6 +146,10 @@ struct NikiChatSidebar: View {
 
     private var composer: some View {
         VStack(spacing: 10) {
+            if let diagnostic = appModel.latestDiagnostic {
+                diagnosticBanner(diagnostic)
+            }
+
             if !appModel.chatAttachments.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 10) {
@@ -210,6 +221,35 @@ struct NikiChatSidebar: View {
         .padding(.top, 12)
         .padding(.bottom, 14)
         .background(composerBackground)
+    }
+
+    private func diagnosticBanner(_ diagnostic: NikiRuntimeDiagnostic) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: diagnostic.severity == "error" ? "xmark.octagon.fill" : "exclamationmark.triangle.fill")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(diagnostic.severity == "error" ? Color.red.opacity(0.92) : Color.orange.opacity(0.92))
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(diagnostic.message)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.white)
+                Text(diagnostic.filePath)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(Color.white.opacity(0.48))
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color.white.opacity(0.04))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                )
+        )
     }
 
     private func assistantMessageRow(_ message: NikiChatMessage) -> some View {
@@ -438,14 +478,22 @@ struct NikiChatSidebar: View {
 
     private func assistantActions(for message: NikiChatMessage) -> some View {
         HStack(spacing: 6) {
-            assistantActionButton("doc.on.doc", "Copy") {
+            assistantActionButton("doc.on.doc", "Copiar") {
                 appModel.copyMessage(message)
             }
-            assistantActionButton("arrow.clockwise", "Retry") {
+            assistantActionButton("arrow.clockwise", "Reintentar") {
                 Task { await appModel.retryAssistantMessage(message) }
             }
-            assistantActionButton(appModel.speaking ? "speaker.wave.2.fill" : "speaker.wave.2", "Voice") {
-                Task { await appModel.speakMessage(message) }
+            // Mientras suena, el mismo botón corta la reproducción.
+            assistantActionButton(
+                appModel.speaking ? "stop.fill" : "speaker.wave.2",
+                appModel.speaking ? "Detener" : "Voz"
+            ) {
+                if appModel.speaking {
+                    appModel.stopSpeaking()
+                } else {
+                    Task { await appModel.speakMessage(message) }
+                }
             }
         }
         .padding(.leading, 1)

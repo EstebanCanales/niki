@@ -1,19 +1,17 @@
 import SwiftUI
 
 struct NikiModeIndicator: View {
-    let mode: NikiActiveMode
+    let active: Bool
 
     var body: some View {
-        if mode != .none {
+        if active {
             HStack(spacing: 6) {
                 Circle()
-                    .fill(mode == .auto
-                        ? Color(red: 0.18, green: 0.86, blue: 0.56)
-                        : Color(red: 0.18, green: 0.46, blue: 1))
+                    .fill(Color(red: 0.18, green: 0.46, blue: 1))
                     .frame(width: 7, height: 7)
-                    .shadow(color: mode == .auto ? .green.opacity(0.9) : .blue.opacity(0.9), radius: 5)
+                    .shadow(color: .blue.opacity(0.9), radius: 5)
 
-                Text(mode == .auto ? "Auto" : "Call")
+                Text("Call")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.85))
             }

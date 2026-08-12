@@ -1,9 +1,38 @@
 import AVFoundation
 import AppKit
+import CoreAudio
 import SwiftUI
 
+/// Log robusto a archivo — no depende de stdout, sobrevive a `open Niki.app`.
+/// Tail en vivo con:  tail -f ~/niki-stt.log
+private let nikiSttLogURL: URL = FileManager.default
+    .homeDirectoryForCurrentUser.appendingPathComponent("niki-stt.log")
+private let nikiSttLogQueue = DispatchQueue(label: "com.niki.stt.log")
+
+func sttLog(_ message: String) {
+    print(message)  // también a consola/Xcode
+    nikiSttLogQueue.async {
+        let line = "\(Date().timeIntervalSince1970) \(message)\n"
+        guard let data = line.data(using: .utf8) else { return }
+        if let handle = try? FileHandle(forWritingTo: nikiSttLogURL) {
+            defer { try? handle.close() }
+            handle.seekToEndOfFile()
+            handle.write(data)
+        } else {
+            try? data.write(to: nikiSttLogURL)
+        }
+    }
+}
+
 @MainActor
-final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @preconcurrency AVAudioPlayerDelegate {
+final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @preconcurrency AVAudioPlayerDelegate, @preconcurrency AVSpeechSynthesizerDelegate {
+    /// Instancia única de la app. El notch se construye en `applicationDidFinishLaunching`,
+    /// que corre ANTES de que SwiftUI monte la escena — si ahí se fabricaba un modelo
+    /// suelto, el notch quedaba conectado a un estado distinto del de la ventana (dos
+    /// streams SSE, dos pipelines de voz, dos configs). Con una sola instancia compartida
+    /// notch y app son literalmente el mismo estado.
+    static let shared = NikiAppModel()
+
     @Published var bootStage: NikiBootStage = .loading
     @Published var selection: DockItem? = nil
 
@@ -37,14 +66,38 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
     @Published var operatorCapabilities = NikiOperatorCapabilities(modules: [:], capabilities: [:])
     @Published var pendingApprovals: [NikiRuntimeApprovalRequest] = []
     @Published var latestApprovalResolution: NikiRuntimeApprovalResolution?
+    @Published var approvalActionBusyID: String?
+    @Published var approvalActionError: String = ""
     @Published var computerAvailability = NikiComputerAvailability(state: .hidden, reason: nil)
+    @Published var computerCapabilities: [NikiComputerCapability] = []
+    @Published var computerPermissions: NikiComputerPermissions?
+    @Published var computerSurfaceSummary: String = ""
+    @Published var computerRecommendedActions: [NikiComputerOperatorAction] = []
+    @Published var computerActionDrafts: [String: [String: String]] = [:]
+    @Published var computerViewportAutoRefreshEnabled = false
+    @Published var computerViewportRefreshing = false
+    @Published var computerViewportUpdatedAt: String = ""
     @Published var recentComputerActions: [NikiComputerRecentAction] = []
+    @Published var computerActionBusy: Bool = false
+    @Published var computerActionError: String = ""
+    @Published var latestComputerResult: String = ""
+    @Published var latestComputerCapture: NSImage?
+    @Published var latestComputerCapturePath: String = ""
 
     @Published var chatSessions: [NikiChatSession] = []
     @Published var remoteSessions: [NikiRemoteSession] = []
+    @Published var remoteProfiles: [NikiRemoteProfile] = []
+    @Published var sessionActionBusyID: String?
+    @Published var sessionActionError: String = ""
+    @Published var latestSessionActionSummary: String = ""
     @Published var mcpServers: [NikiMcpServer] = []
+    @Published var mcpActionBusyID: String?
+    @Published var mcpActionError: String = ""
     @Published var diagnostics: [NikiRuntimeDiagnostic] = []
     @Published var latestDiagnostic: NikiRuntimeDiagnostic?
+    @Published var discoverCapabilities: [NikiDiscoverCapability] = []
+    @Published var activeSurface: NikiRuntimeSurface?
+    @Published var activeProfileID: String = "default"
     @Published var activeSessionID: String = ""
     @Published var chatMessages: [String: [NikiChatMessage]] = [:]
     @Published var chatInput: String = ""
@@ -57,32 +110,69 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
     @Published var voiceError: String = ""
     @Published var voiceTranscript: String = ""
     @Published var autoVoice = false
-    @Published var ttsVoice = "es_AR-daniela"
-    @Published var speaking = false
-    @Published var activeMode: NikiActiveMode = .none
+    @Published var ttsVoice = "Serena"
+    /// Mientras es true, el motor de captura pasa a `.speaking` y queda armado para
+    /// barge-in en vez de cortar frases por silencio.
+    @Published var speaking = false { didSet { if speaking != oldValue { syncCapturePhase() } } }
     @Published var audioLevel: Float = 0
 
-    var companionActive: Bool { activeMode == .auto }
-    var callModeActive: Bool { activeMode == .call }
+    // STT Lab
+    @Published var sttLabActive = false
+    @Published var sttLabChunks: [NikiSttChunk] = []
+    @Published var sttLabError: String = ""
+    @Published var sttLabPeakDb: Float = -160
+    @Published var sttLabStatus: String = ""       // estado diagnóstico visible en UI
+    @Published var sttMicPermission: String = "?"  // "granted" | "denied" | "?"
+    /// Micrófono silenciado durante la conversación. El motor sigue abierto pero descarta
+    /// lo que entra — silenciar no debe costar un arranque de dispositivo al reactivar.
+    @Published var callMuted = false { didSet { if callMuted != oldValue { syncCapturePhase() } } }
+    /// El usuario colapsó el notch con ✕ mientras seguía en llamada. Vive acá y no en
+    /// NikiNotchViewModel porque hay un view model por pantalla y el estado tiene que
+    /// ser el mismo en todas. Se resetea al colgar.
+    @Published var notchCallDismissed = false
+    @Published var availableMicDevices: [(id: AudioDeviceID, name: String)] = []
+    @Published var selectedMicDeviceID: AudioDeviceID = 0  // 0 = default del sistema
+    private var sttLabTask: Task<Void, Never>?
+    private var computerViewportTask: Task<Void, Never>?
+    private var sttLabChunkIndex = 0
+    private var ttsLevelTask: Task<Void, Never>?
+
+    /// Cualquier conversación de voz en curso. El chat de texto se esconde mientras
+    /// esto sea true (ver NikiChatSidebar).
+    var callModeActive: Bool { sttLabActive }
+
+    /// Cuelga la conversación de voz activa.
+    func endCall() {
+        if sttLabActive { stopSttLab() }
+    }
 
     var availableDockItems: [DockItem] {
         var items: [DockItem] = [.chat]
-        if moduleAvailability(for: .computer).state != .hidden {
+        if shouldShowDockModule(.computer) {
             items.append(.computer)
         }
-        if moduleAvailability(for: .approvals).state != .hidden {
+        if shouldShowDockModule(.approvals) {
             items.append(.approvals)
         }
-        if moduleAvailability(for: .sessions).state != .hidden {
+        if shouldShowDockModule(.sessions) {
             items.append(.sessions)
         }
-        if moduleAvailability(for: .mcp).state != .hidden {
+        if shouldShowDockModule(.mcp) {
             items.append(.mcp)
         }
-        if moduleAvailability(for: .diagnostics).state != .hidden {
+        if shouldShowDockModule(.diagnostics) {
             items.append(.diagnostics)
         }
-        items.append(contentsOf: [.auto, .call, .settings])
+        if shouldShowDockModule(.discover) {
+            items.append(.discover)
+        }
+        // Voz + micrófono (+ STT Lab solo si se activa en Settings) + settings.
+        items.append(.call)
+        items.append(.mic)
+        if sttLabEnabled {
+            items.append(.sttLab)
+        }
+        items.append(.settings)
         return items
     }
 
@@ -92,18 +182,88 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
     @Published var notchBridgeStatus: String = ""
     @Published var notchVisible = true
     @Published var orbAccentHex: String = "#5ea2ff"
+    @Published var sttLabEnabled = false {  // panel detallado de STT; off por default
+        didSet { UserDefaults.standard.set(sttLabEnabled, forKey: "niki.sttLabEnabled") }
+    }
+    // Abrir el shell de Niki con doble toque de un modificador (Option por defecto).
+    @Published var doubleTapToOpenEnabled = true {
+        didSet { UserDefaults.standard.set(doubleTapToOpenEnabled, forKey: "niki.doubleTapEnabled") }
+    }
+    @Published var doubleTapModifier = "option" {   // option | command | control | shift
+        didSet { UserDefaults.standard.set(doubleTapModifier, forKey: "niki.doubleTapModifier") }
+    }
 
     private var recorder: AVAudioRecorder?
+    /// Motor de captura de la llamada. Vive lo que dura la conversación entera.
+    private var capture: NikiVoiceCapture?
+    /// Frase que quedó a medias esperando su continuación. Ver NikiTurnAssembler.
+    private var pendingTurnText = ""
+    private var pendingTurnAt = Date.distantPast
+    /// Más allá de esto, lo que llegue ya no es la continuación de nada: es otro tema.
+    /// Retomar tras respirar toma uno o dos segundos; cuatro deja margen de sobra sin
+    /// llegar a pegar dos ideas distintas.
+    private static let continuationWindow: TimeInterval = 4
+    private var utteranceIterator: AsyncStream<NikiVoiceCapture.Utterance>.AsyncIterator?
+    private var utteranceContinuation: AsyncStream<NikiVoiceCapture.Utterance>.Continuation?
     private var recordedFileURL: URL?
     private var audioPlayer: AVAudioPlayer?
     private var currentTtsFileURL: URL?
+    /// Voz nativa del sistema — instantánea, sin ida y vuelta al backend. Se usa durante
+    /// llamadas en vivo (autoVoice) para que la conversación se sienta en tiempo real; el
+    /// backend Qwen3-TTS (más lento, voz personalizada) se reserva para reproducir un
+    /// mensaje puntual desde el botón "Voz" del chat, donde la latencia importa menos.
+    private let speechSynthesizer = AVSpeechSynthesizer()
+    /// Utterances encoladas/sonando de la respuesta actual — 0 significa que Niki terminó
+    /// de hablar del todo. Con TTS por oración, cada respuesta puede encolar varias.
+    private var pendingSpeechCount = 0
+    /// Cuántos caracteres del texto acumulado de la respuesta actual ya se mandaron a
+    /// hablar — evita repetir oraciones ya encoladas a medida que llegan más tokens.
+    private var speechWatermark = 0
+    /// Utterances que todavía consideramos parte de la respuesta en curso. Sirve para
+    /// descartar callbacks tardíos de una respuesta ya cancelada (ver stopAllSpeech).
+    private var ownedUtterances = Set<ObjectIdentifier>()
+    /// Pestillo de silencio: mientras esté puesto, nada se encola aunque sigan llegando
+    /// tokens de la respuesta que se canceló.
+    private var speechSuppressed = false
+    /// Lo que Niki alcanzó a decir antes de que la cortaran. Es lo que permite retomar
+    /// con "seguí" sin repetir desde el principio.
+    private var interruptedReply = ""
     private var runtimeEventsTask: Task<Void, Never>?
     private var activeChatTask: Task<Void, Never>?
     private var titleGenerationTasks: [String: Task<Void, Never>] = [:]
-    private var companionTask: Task<Void, Never>?
-    private var callTask: Task<Void, Never>?
-    private let silenceDuration: TimeInterval = 1.5
-    private let silenceThreshold: Float = -28.0  // dBFS
+    // Umbral de voz del modo conversación. Bajalo (más negativo) si tu mic es bajo.
+    // Las ventanas de silencio viven en NikiVoiceCapture (silenceShort/silenceLong):
+    // son adaptativas y el motor las decide frase a frase.
+    private let sttSilenceThreshold: Float = -38.0   // dBFS
+
+    /// Reloj de un turno de conversación. Cada etapa se marca donde ocurre y al cerrar el
+    /// turno se vuelca una sola línea `[TURN]`. Sin esto cualquier "quedó más rápido" es
+    /// una impresión: lo que importa es `total`, de que dejás de hablar a que Niki suena.
+    struct TurnClock {
+        var voiceEnded: Date?
+        var chunkCut: Date?
+        /// Cuándo el bucle recogió la frase. Puede ser mucho después del corte si el
+        /// turno anterior seguía en curso — el motor captura sin parar, así que sin
+        /// separar esto la métrica de subida mentía (7 s que en realidad eran cola).
+        var pickedUp: Date?
+        var uploadStart: Date?
+        var sttDone: Date?
+        var firstToken: Date?
+        var firstAudio: Date?
+
+        static func ms(_ from: Date?, _ to: Date?) -> String {
+            guard let from, let to else { return "-" }
+            return String(Int(to.timeIntervalSince(from) * 1000))
+        }
+
+        var line: String {
+            "[TURN] endpoint=\(Self.ms(voiceEnded, chunkCut)) queued=\(Self.ms(chunkCut, pickedUp))"
+                + " upload=\(Self.ms(pickedUp, uploadStart))"
+                + " stt=\(Self.ms(uploadStart, sttDone)) ttft=\(Self.ms(sttDone, firstToken))"
+                + " first_audio=\(Self.ms(sttDone, firstAudio)) total=\(Self.ms(voiceEnded, firstAudio))"
+        }
+    }
+    private var turn = TurnClock()
 
     private let configKey = "niki.native.config"
     private let sessionKey = "niki.native.session"
@@ -111,6 +271,7 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
 
     override init() {
         super.init()
+        speechSynthesizer.delegate = self
         loadPersistedState()
         ensureSeedSession()
         Task { await bootstrap() }
@@ -142,6 +303,15 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
             return NikiModuleAvailability(state: .ready, reason: nil)
         }
         return NikiModuleAvailability(state: .hidden, reason: nil)
+    }
+
+    func shouldShowDockModule(_ moduleID: NikiModuleID) -> Bool {
+        switch moduleAvailability(for: moduleID).state {
+        case .ready, .beta, .flagged:
+            return true
+        case .hidden, .disabled:
+            return false
+        }
     }
 
     var client: NikiAPIClient {
@@ -275,7 +445,7 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
         activeSessionID = session.id
     }
 
-    func sendCurrentChat() async {
+    func sendCurrentChat(channel: String = "niki-agent") async {
         guard !chatBusy else { return }
         let prompt = chatInput.trimmingCharacters(in: .whitespacesAndNewlines)
         if prompt.isEmpty && chatAttachments.isEmpty { return }
@@ -315,7 +485,8 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
                 visibleText: visibleText,
                 modelInput: modelInput,
                 requestMessages: requestMessages,
-                attachments: attachments
+                attachments: attachments,
+                channel: channel
             )
         }
     }
@@ -324,6 +495,7 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
         guard chatBusy else { return }
         activeChatTask?.cancel()
         activeChatTask = nil
+        stopAllSpeech()
         finishCancelledChat()
     }
 
@@ -339,13 +511,17 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
         await sendCurrentChat()
     }
 
+    /// Botón "Voz" de un mensaje del chat. Usa la misma voz que la conversación
+    /// (nativa, arranca al instante) en vez del TTS del backend, que tardaba 7-23s
+    /// en devolver el audio. Además habla por oraciones, así empieza a sonar de
+    /// inmediato en lugar de esperar a sintetizar el mensaje entero.
     func speakMessage(_ message: NikiChatMessage) async {
         let text = message.content.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else {
-            voiceError = "No assistant reply yet."
+            voiceError = "Todavía no hay una respuesta de Niki para reproducir."
             return
         }
-        await speak(text: text)
+        speakStreaming(text)
     }
 
     func copyMessage(_ message: NikiChatMessage) {
@@ -360,17 +536,29 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
         visibleText: String,
         modelInput: String,
         requestMessages: [NikiHermesMessage],
-        attachments: [NikiChatAttachment]
+        attachments: [NikiChatAttachment],
+        channel: String = "niki-agent"
     ) async {
+        if autoVoice {
+            stopAllSpeech()
+        }
+        // Después de limpiar la respuesta anterior, esta sí puede hablar.
+        allowSpeech()
         do {
             let final = try await client.streamChat(
                 sessionID: sessionID,
                 input: modelInput,
-                messages: requestMessages
+                messages: requestMessages,
+                channel: channel
             ) { [weak self] visible in
-                self?.replaceAssistantMessage(id: assistantID, in: sessionID, content: visible)
-                self?.agentState = .speaking
-                self?.runtimeSummary = visible
+                guard let self else { return }
+                if self.turn.firstToken == nil { self.turn.firstToken = Date() }
+                self.replaceAssistantMessage(id: assistantID, in: sessionID, content: visible)
+                self.agentState = .speaking
+                self.runtimeSummary = visible
+                if self.autoVoice {
+                    self.speakNewSentences(from: visible)
+                }
             }
             guard !Task.isCancelled else {
                 finishCancelledChat(sessionID: sessionID, assistantID: assistantID)
@@ -380,10 +568,9 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
             finalizeSession(sessionID: sessionID, summaryText: final.isEmpty ? visibleText : final)
             agentState = .success
             if autoVoice, !final.isEmpty {
-                await speak(text: final)
-            } else {
-                scheduleReturnToIdle()
+                speakRemainder(of: final)
             }
+            scheduleReturnToIdle()
         } catch {
             if error is CancellationError || Task.isCancelled {
                 finishCancelledChat(sessionID: sessionID, assistantID: assistantID)
@@ -418,7 +605,7 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
         voiceError = ""
         let granted = await AVCaptureDevice.requestAccess(for: .audio)
         guard granted else {
-            voiceError = "Microphone permission denied."
+            voiceError = "No se concedió permiso para usar el micrófono."
             return
         }
         do {
@@ -435,7 +622,7 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
             recorder?.delegate = self
             recorder?.prepareToRecord()
             guard recorder?.record() == true else {
-                voiceError = "Could not start microphone recording."
+                voiceError = "No se pudo iniciar la grabación del micrófono."
                 recorder = nil
                 recordedFileURL = nil
                 return
@@ -460,13 +647,13 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
             voiceProcessing = true
             let data = try Data(contentsOf: fileURL)
             guard data.count > 256 else {
-                voiceError = "Recording was empty."
+                voiceError = "No detecté voz. Inténtalo de nuevo."
                 voiceProcessing = false
                 return
             }
             let response = try await client.transcribeAudio(data: data, language: "es")
             guard response.ok, let text = response.text?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else {
-                voiceError = response.error ?? "Transcription failed."
+                voiceError = response.error ?? "No pude transcribir lo que dijiste."
                 voiceProcessing = false
                 return
             }
@@ -476,7 +663,7 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
             runtimeSummary = text
             recordedFileURL = nil
             if callModeActive {
-                await sendCurrentChat()
+                await sendCurrentChat(channel: "niki-voice")
             }
         } catch {
             voiceError = error.localizedDescription
@@ -487,17 +674,14 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
     func speakLastAssistantReply() async {
         guard let text = activeMessages.reversed().first(where: { $0.role == .assistant })?.content,
               !text.isEmpty else {
-            voiceError = "No assistant reply yet."
+            voiceError = "Todavía no hay una respuesta de Niki para reproducir."
             return
         }
-        await speak(text: text)
+        speakStreaming(text)
     }
 
     func testVoiceSample() async {
-        let sample = ttsVoice.hasPrefix("es")
-            ? "Hola, soy Niki. En que puedo ayudarte hoy."
-            : "Hello, I am Niki. How can I help you today."
-        await speak(text: sample)
+        speakStreaming("Hola, soy Niki. ¿En qué puedo ayudarte hoy?")
     }
 
     func saveSettings() async {
@@ -548,9 +732,12 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
     func loadShellData() async {
         await refreshRuntimeStatus()
         await refreshRuntimeCapabilities()
+        await refreshComputerCapabilities()
         await refreshComputerRecent()
         await refreshRemoteSessions()
+        await refreshRemoteProfiles()
         await refreshMcpServers()
+        await refreshDiscoverCapabilities()
         await refreshSettingsData()
         connectRuntimeEvents()
     }
@@ -584,20 +771,30 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
                 diagnostics = []
                 latestDiagnostic = nil
             }
+            if moduleAvailability(for: .discover).state == .hidden {
+                discoverCapabilities = []
+            }
+            sanitizeSelectionForCapabilities()
         } catch {
             settingsError = error.localizedDescription
             mcpServers = []
             diagnostics = []
             latestDiagnostic = nil
+            discoverCapabilities = []
+            sanitizeSelectionForCapabilities()
         }
     }
 
-    func respondToApproval(_ approval: NikiRuntimeApprovalRequest, choice: String) async {
+    func respondToApproval(_ approval: NikiRuntimeApprovalRequest, choice: String, resolveAll: Bool = false) async {
+        guard approvalActionBusyID == nil else { return }
+        approvalActionBusyID = approval.id
+        approvalActionError = ""
         do {
-            try await client.respondToApproval(runID: approval.runId, choice: choice)
+            try await client.respondToApproval(runID: approval.runId, choice: choice, resolveAll: resolveAll)
         } catch {
-            settingsError = error.localizedDescription
+            approvalActionError = error.localizedDescription
         }
+        approvalActionBusyID = nil
     }
 
     func refreshComputerRecent() async {
@@ -609,22 +806,219 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
         }
     }
 
+    func refreshComputerCapabilities() async {
+        do {
+            let response = try await client.computerCapabilities()
+            computerCapabilities = response.capabilities
+            computerPermissions = response.permissions
+            computerSurfaceSummary = response.surface?.summary ?? ""
+            computerRecommendedActions = response.surface?.recommendedActions ?? []
+        } catch {
+            computerCapabilities = []
+            computerPermissions = nil
+            computerSurfaceSummary = ""
+            computerRecommendedActions = []
+        }
+    }
+
+    func runComputerAction(_ action: String, params: [String: Any] = [:]) async {
+        guard !computerActionBusy else { return }
+        computerActionBusy = true
+        computerActionError = ""
+        latestComputerResult = ""
+        do {
+            let response = try await client.computerAction(action: action, params: params)
+            if response.ok {
+                absorbComputerActionArtifacts(response)
+                latestComputerResult = summarizeComputerActionResult(response)
+                await refreshComputerRecent()
+            } else {
+                computerActionError = response.error ?? "Computer action failed."
+            }
+        } catch {
+            computerActionError = error.localizedDescription
+        }
+        computerActionBusy = false
+    }
+
+    func refreshComputerViewport() async {
+        guard !computerViewportRefreshing else { return }
+        computerViewportRefreshing = true
+        defer { computerViewportRefreshing = false }
+        do {
+            let response = try await client.computerAction(action: "screen_capture")
+            if response.ok {
+                absorbComputerActionArtifacts(response)
+                computerViewportUpdatedAt = timestampLabel()
+            } else {
+                computerActionError = response.error ?? "Viewport refresh failed."
+            }
+        } catch {
+            computerActionError = error.localizedDescription
+        }
+    }
+
+    func setComputerViewportAutoRefresh(_ enabled: Bool) {
+        computerViewportAutoRefreshEnabled = enabled
+        if enabled {
+            startComputerViewportLoop()
+        } else {
+            stopComputerViewportLoop()
+        }
+    }
+
+    func stopComputerViewportLoop() {
+        computerViewportTask?.cancel()
+        computerViewportTask = nil
+        computerViewportRefreshing = false
+    }
+
+    func maintainComputerViewportLoop() {
+        guard computerViewportAutoRefreshEnabled else {
+            stopComputerViewportLoop()
+            return
+        }
+        if selection == .computer {
+            startComputerViewportLoop()
+        } else {
+            stopComputerViewportLoop()
+        }
+    }
+
+    func computerDraftValue(actionID: String, key: String) -> String {
+        computerActionDrafts[actionID]?[key] ?? ""
+    }
+
+    func setComputerDraftValue(actionID: String, key: String, value: String) {
+        var current = computerActionDrafts[actionID] ?? [:]
+        current[key] = value
+        computerActionDrafts[actionID] = current
+    }
+
+    func runComputerOperatorAction(_ action: NikiComputerOperatorAction) async {
+        var params: [String: Any] = [:]
+        if let base = action.params {
+            for (key, value) in base {
+                params[key] = value
+            }
+        }
+        if let inputs = action.inputs {
+            for input in inputs {
+                let value = computerDraftValue(actionID: action.id, key: input.key)
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                if !value.isEmpty {
+                    params[input.key] = value
+                }
+            }
+        }
+        await runComputerAction(action.capability, params: params)
+    }
+
+    func canRunComputerOperatorAction(_ action: NikiComputerOperatorAction) -> Bool {
+        guard action.state == "ready" else { return false }
+        guard let inputs = action.inputs, !inputs.isEmpty else { return true }
+        return inputs.allSatisfy { input in
+            !computerDraftValue(actionID: action.id, key: input.key)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .isEmpty
+        }
+    }
+
     func refreshRemoteSessions() async {
         do {
+            sessionActionError = ""
             let response = try await client.runtimeSessions()
             remoteSessions = response.sessions
+            reconcileActiveProfile(fromProfiles: remoteProfiles, sessions: response.sessions)
         } catch {
+            sessionActionError = error.localizedDescription
             remoteSessions = []
+        }
+    }
+
+    func refreshRemoteProfiles() async {
+        do {
+            let response = try await client.runtimeProfiles()
+            remoteProfiles = response.profiles
+            reconcileActiveProfile(fromProfiles: response.profiles, sessions: remoteSessions)
+        } catch {
+            remoteProfiles = []
         }
     }
 
     func refreshMcpServers() async {
         do {
+            mcpActionError = ""
             let response = try await client.runtimeMcpServers()
             mcpServers = response.servers
         } catch {
+            mcpActionError = error.localizedDescription
             mcpServers = []
         }
+    }
+
+    func setRuntimeMcpServer(_ server: NikiMcpServer, enabled: Bool) async {
+        guard mcpActionBusyID == nil else { return }
+        mcpActionBusyID = server.id
+        mcpActionError = ""
+        do {
+            let response = try await client.updateRuntimeMcpServer(id: server.id, enabled: enabled)
+            mcpServers = response.servers
+        } catch {
+            mcpActionError = error.localizedDescription
+        }
+        mcpActionBusyID = nil
+    }
+
+    func refreshDiscoverCapabilities() async {
+        do {
+            let response = try await client.runtimeDiscoverCapabilities(profileID: activeProfileID)
+            activeProfileID = response.profileId
+            discoverCapabilities = response.capabilities
+        } catch {
+            discoverCapabilities = []
+        }
+    }
+
+    func useRemoteProfile(_ profileID: String) async {
+        let normalized = profileID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty else { return }
+        activeProfileID = normalized
+        await refreshDiscoverCapabilities()
+    }
+
+    func requestSessionHandoff(_ session: NikiRemoteSession, to platform: String) async {
+        guard sessionActionBusyID == nil else { return }
+        sessionActionBusyID = session.id
+        sessionActionError = ""
+        latestSessionActionSummary = ""
+        do {
+            let response = try await client.requestSessionHandoff(sessionID: session.id, platform: platform)
+            latestSessionActionSummary = "Handoff requested to \(response.platform ?? platform)."
+            await refreshRemoteSessions()
+        } catch {
+            sessionActionError = error.localizedDescription
+        }
+        sessionActionBusyID = nil
+    }
+
+    func requestSessionUndo(_ session: NikiRemoteSession) async {
+        guard sessionActionBusyID == nil else { return }
+        sessionActionBusyID = session.id
+        sessionActionError = ""
+        latestSessionActionSummary = ""
+        do {
+            let response = try await client.requestSessionUndo(sessionID: session.id)
+            if let preview = response.preview, !preview.isEmpty {
+                latestSessionActionSummary = "Undid last exchange: \(preview)"
+            } else {
+                latestSessionActionSummary = "Last Hermes exchange removed."
+            }
+            await refreshRemoteSessions()
+        } catch {
+            sessionActionError = error.localizedDescription
+        }
+        sessionActionBusyID = nil
     }
 
     private func startTitleGenerationIfNeeded(sessionID: String, firstPrompt: String) {
@@ -636,6 +1030,15 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
         titleGenerationTasks[sessionID] = Task { @MainActor [weak self] in
             guard let self else { return }
             defer { self.titleGenerationTasks[sessionID] = nil }
+            // El título sale del MISMO modelo remoto que la respuesta. Lanzarlo en paralelo
+            // durante una conversación de voz le compite recursos al turno que el usuario
+            // está esperando escuchar, así que esperamos a que la respuesta termine.
+            // En chat de texto no molesta, pero el título tampoco corre prisa: en ambos
+            // casos lo dejamos para cuando la conversación esté en reposo.
+            while self.chatBusy || self.speaking {
+                try? await Task.sleep(nanoseconds: 200_000_000)
+                if Task.isCancelled { return }
+            }
             do {
                 let title = try await self.generateChatTitle(sessionID: sessionID, prompt: firstPrompt)
                 guard !Task.isCancelled, !title.isEmpty else { return }
@@ -741,14 +1144,37 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
                 if let payload = envelope.payload {
                     self.operatorCapabilities = payload
                     self.computerAvailability = self.computerAvailabilityFromCapabilities(payload)
+                    self.sanitizeSelectionForCapabilities()
+                    Task { await self.refreshComputerCapabilities() }
                     Task { await self.refreshComputerRecent() }
-                    Task { await self.refreshRemoteSessions() }
-                    Task { await self.refreshMcpServers() }
+                    Task { await self.refreshDiscoverCapabilities() }
+                }
+            case "sessions_snapshot":
+                if let snapshot = envelope.sessionsSnapshot {
+                    self.remoteSessions = snapshot.sessions
+                    self.reconcileActiveProfile(fromProfiles: self.remoteProfiles, sessions: snapshot.sessions)
+                }
+            case "mcp_snapshot":
+                if let snapshot = envelope.mcpSnapshot {
+                    self.mcpServers = snapshot.servers
+                    self.mcpActionBusyID = nil
+                }
+            case "profiles_snapshot":
+                if let snapshot = envelope.profilesSnapshot {
+                    self.remoteProfiles = snapshot.profiles
+                    self.reconcileActiveProfile(fromProfiles: snapshot.profiles, sessions: self.remoteSessions)
+                }
+            case "session_action":
+                if let action = envelope.sessionAction {
+                    self.latestSessionActionSummary = action.summary
+                    self.sessionActionError = action.status == "error" ? (action.detail ?? action.summary) : ""
+                    self.sessionActionBusyID = nil
                 }
             case "approval_request":
                 if let data = envelope.approvalRequest {
                     self.pendingApprovals.removeAll { $0.id == data.id }
                     self.pendingApprovals.insert(data, at: 0)
+                    self.approvalActionBusyID = nil
                     if self.selection == nil {
                         self.selection = .approvals
                     }
@@ -756,6 +1182,7 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
             case "approval_resolved":
                 if let data = envelope.approvalResolution {
                     self.latestApprovalResolution = data
+                    self.approvalActionBusyID = nil
                     self.pendingApprovals.removeAll { $0.id == data.id }
                 }
             case "diagnostics":
@@ -767,9 +1194,28 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
                         self.diagnostics = Array(self.diagnostics.prefix(25))
                     }
                 }
+            case "surface":
+                if let data = envelope.surface {
+                    withAnimation(.spring(response: 0.55, dampingFraction: 0.82)) {
+                        self.activeSurface = data
+                    }
+                }
+            case "surface_clear":
+                withAnimation(.spring(response: 0.45, dampingFraction: 0.86)) {
+                    self.activeSurface = nil
+                }
             default:
                 break
             }
+        }
+    }
+
+    func dismissActiveSurface() {
+        withAnimation(.spring(response: 0.45, dampingFraction: 0.86)) {
+            activeSurface = nil
+        }
+        Task {
+            try? await client.clearSurface()
         }
     }
 
@@ -781,6 +1227,102 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
         )
     }
 
+    private func sanitizeSelectionForCapabilities() {
+        guard let selection else { return }
+        switch selection {
+        case .computer where !shouldShowDockModule(.computer):
+            stopComputerViewportLoop()
+            self.selection = .chat
+        case .approvals where !shouldShowDockModule(.approvals):
+            self.selection = .chat
+        case .sessions where !shouldShowDockModule(.sessions):
+            self.selection = .chat
+        case .mcp where !shouldShowDockModule(.mcp):
+            self.selection = .chat
+        case .diagnostics where !shouldShowDockModule(.diagnostics):
+            self.selection = .chat
+        case .discover where !shouldShowDockModule(.discover):
+            self.selection = .chat
+        default:
+            break
+        }
+    }
+
+    private func startComputerViewportLoop() {
+        guard selection == .computer else { return }
+        if computerViewportTask != nil { return }
+        computerViewportTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            while !Task.isCancelled && self.computerViewportAutoRefreshEnabled && self.selection == .computer {
+                await self.refreshComputerViewport()
+                try? await Task.sleep(for: .seconds(3))
+            }
+            self.computerViewportTask = nil
+            self.computerViewportRefreshing = false
+        }
+    }
+
+    private func timestampLabel() -> String {
+        let formatter = DateFormatter()
+        formatter.timeStyle = .medium
+        formatter.dateStyle = .none
+        return formatter.string(from: Date())
+    }
+
+    private func reconcileActiveProfile(fromProfiles profiles: [NikiRemoteProfile], sessions: [NikiRemoteSession]) {
+        let current = activeProfileID.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !current.isEmpty {
+            let stillInProfiles = profiles.contains(where: { $0.id == current })
+            let stillInSessions = sessions.contains(where: { $0.profileId == current })
+            if stillInProfiles || stillInSessions {
+                return
+            }
+        }
+
+        if let firstProfile = profiles.first?.id, !firstProfile.isEmpty {
+            activeProfileID = firstProfile
+            return
+        }
+        if let firstSessionProfile = sessions.first?.profileId, !firstSessionProfile.isEmpty {
+            activeProfileID = firstSessionProfile
+            return
+        }
+        activeProfileID = "default"
+    }
+
+    private func summarizeComputerActionResult(_ response: NikiComputerActionResponse) -> String {
+        if let text = response.text, !text.isEmpty {
+            return text
+        }
+        if let result = response.result, !result.isEmpty {
+            return result
+        }
+        if let stdout = response.stdout, !stdout.isEmpty {
+            return stdout
+        }
+        if let path = response.path, !path.isEmpty {
+            if let bytes = response.bytes {
+                return "Saved to \(path) (\(bytes) bytes)."
+            }
+            return "Saved to \(path)."
+        }
+        if let raw = response.raw, !raw.isEmpty {
+            return raw
+        }
+        return "Computer action completed."
+    }
+
+    private func absorbComputerActionArtifacts(_ response: NikiComputerActionResponse) {
+        if let imageBase64 = response.imageBase64,
+           let data = Data(base64Encoded: imageBase64),
+           let image = NSImage(data: data) {
+            latestComputerCapture = image
+        }
+        if let path = response.path, !path.isEmpty {
+            latestComputerCapturePath = path
+        }
+    }
+
     private func speak(text: String) async {
         do {
             voiceError = ""
@@ -790,7 +1332,7 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
             }
             let response = try await client.synthesize(text: sanitizeForTts(text), language: "es-ES", voice: ttsVoice)
             guard response.ok, let audio = response.audio, let data = Data(base64Encoded: audio) else {
-                voiceError = response.error ?? "TTS failed."
+                voiceError = response.error ?? "No pude generar la voz de Niki."
                 speaking = false
                 return
             }
@@ -800,155 +1342,709 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
             currentTtsFileURL = fileURL
             audioPlayer = try AVAudioPlayer(contentsOf: fileURL)
             audioPlayer?.delegate = self
+            audioPlayer?.isMeteringEnabled = true
             audioPlayer?.prepareToPlay()
             audioPlayer?.play()
             agentState = .speaking
+            startTtsLevelMonitor()
         } catch {
-            voiceError = error.localizedDescription
+            voiceError = "No pude generar la voz de Niki. Revisa que Qwen3-TTS esté configurado."
             speaking = false
+            stopTtsLevelMonitor()
             if agentState == .speaking {
                 agentState = .idle
             }
         }
     }
 
-    // MARK: - Companion mode
+    /// Síntesis nativa de macOS — arranca a hablar al instante (sin red, sin carga de
+    /// modelo), para que la llamada en vivo se sienta como una conversación real.
+    private func speakNative(text: String) {
+        stopAllSpeech()
+        enqueueSpeech(text)
+    }
 
-    func activateAutoMode() {
-        guard activeMode != .auto else {
-            deactivateMode()
-            return
+    /// Lee un texto ya completo pero **por oraciones**: encola la primera y sigue con
+    /// el resto, en vez de mandar todo el bloque como una sola utterance. Empieza a
+    /// sonar igual de rápido y se puede cortar limpio a mitad de camino.
+    func speakStreaming(_ text: String) {
+        stopAllSpeech()
+        allowSpeech()
+        let clean = sanitizeForTts(text)
+        let (sentences, endIndex) = Self.extractCompleteSentences(from: clean, startingAt: clean.startIndex)
+        for sentence in sentences { enqueueSpeech(sentence) }
+        let tail = String(clean[endIndex...]).trimmingCharacters(in: .whitespacesAndNewlines)
+        if !tail.isEmpty { enqueueSpeech(tail) }
+    }
+
+    /// Corta cualquier reproducción en curso (botón "Voz" de otro mensaje, o el usuario
+    /// que quiere silencio).
+    func stopSpeaking() {
+        stopAllSpeech()
+        finishNativeSpeech()
+    }
+
+    /// Corta toda la cola de habla (utterance actual + encoladas) y resetea el
+    /// seguimiento de la respuesta en curso. Se usa al empezar una respuesta nueva o
+    /// al cancelar el turno actual — nunca queremos que Niki siga hablando algo viejo.
+    ///
+    /// Ojo: `stopSpeaking` dispara `didCancel` de forma ASÍNCRONA para cada utterance
+    /// encolada. Al vaciar `ownedUtterances` acá, esos callbacks tardíos ya no
+    /// encuentran su utterance y se ignoran — si no, llegarían después de que la
+    /// respuesta siguiente ya arrancó y apagarían `speaking` mientras Niki todavía
+    /// habla (y el loop de conversación se pondría a grabar encima de su propia voz).
+    private func stopAllSpeech() {
+        ownedUtterances.removeAll()
+        if speechSynthesizer.isSpeaking {
+            speechSynthesizer.stopSpeaking(at: .immediate)
         }
-        deactivateMode()
-        activeMode = .auto
-        autoVoice = true
+        pendingSpeechCount = 0
+        speechWatermark = 0
+        // Callar la cola no alcanzaba. El stream del modelo sigue llegando y, con el
+        // watermark en 0, la siguiente tanda de tokens hacía que Niki empezara a hablar
+        // la respuesta OTRA VEZ desde el principio — que es exactamente lo que se veía
+        // al pedirle que parara. El pestillo dura hasta que arranca una respuesta nueva.
+        speechSuppressed = true
+    }
+
+    /// Habilita de nuevo la voz. Solo lo llama el arranque de una respuesta nueva.
+    private func allowSpeech() {
+        speechSuppressed = false
+    }
+
+    /// Encola una oración (o el texto que sea) para hablar. Si ya hay algo sonando,
+    /// se suma a la cola de AVSpeechSynthesizer en vez de interrumpirlo — así una
+    /// respuesta puede hablarse oración por oración a medida que llega, en vez de
+    /// esperar a que el LLM termine de generar todo el texto.
+    private func enqueueSpeech(_ text: String) {
+        guard !speechSuppressed else { return }
+        let trimmed = sanitizeForTts(text).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
         voiceError = ""
-        companionTask?.cancel()
-        companionTask = Task { @MainActor [weak self] in
-            await self?.companionLoop()
+        if turn.firstAudio == nil { turn.firstAudio = Date() }
+        if pendingSpeechCount == 0 {
+            speaking = true
+            agentState = .speaking
+            startNativeTtsLevelAnimation()
+        }
+        pendingSpeechCount += 1
+        let utterance = AVSpeechUtterance(string: trimmed)
+        utterance.voice = AVSpeechSynthesisVoice(language: "es-ES") ?? AVSpeechSynthesisVoice(language: "es-US")
+        utterance.rate = AVSpeechUtteranceDefaultSpeechRate
+        utterance.pitchMultiplier = 1.02
+        ownedUtterances.insert(ObjectIdentifier(utterance))
+        sttLog("[TTS] encolando (\(pendingSpeechCount)): \"\(trimmed.prefix(50))\"")
+        speechSynthesizer.speak(utterance)
+    }
+
+    /// Revisa el texto acumulado de la respuesta en curso desde el último watermark y
+    /// encola cualquier oración completa nueva (termina en . ! ? …) — el resto (una
+    /// oración a medio escribir) queda para la próxima llamada o para speakRemainder.
+    private func speakNewSentences(from visible: String) {
+        let count = visible.count
+        guard speechWatermark < count else { return }
+        let startIndex = visible.index(visible.startIndex, offsetBy: speechWatermark)
+        var (sentences, newIndex) = Self.extractCompleteSentences(from: visible, startingAt: startIndex)
+
+        // Arranque temprano: para la PRIMERA frase de la respuesta no esperamos al punto
+        // final — cortamos en la primera pausa natural (coma, punto y coma, guion) una vez
+        // que hay material suficiente. El modelo tarda ~3,5s en el primer token, así que
+        // este atajo adelanta casi un segundo el momento en que Niki empieza a sonar.
+        // A partir de la segunda ya vamos por oraciones completas, que suenan mejor.
+        if sentences.isEmpty, speechWatermark == 0, pendingSpeechCount == 0 {
+            if let opener = Self.earlyClause(in: visible, minLength: 28) {
+                sentences = [String(visible[..<opener]).trimmingCharacters(in: .whitespacesAndNewlines)]
+                newIndex = opener
+            }
+        }
+
+        guard !sentences.isEmpty else { return }
+        speechWatermark = visible.distance(from: visible.startIndex, to: newIndex)
+        for sentence in sentences {
+            enqueueSpeech(sentence)
         }
     }
 
-    func activateCallMode() {
-        guard activeMode != .call else {
-            deactivateMode()
-            return
-        }
-        deactivateMode()
-        activeMode = .call
-        autoVoice = true
-        voiceError = ""
-        callTask = Task { @MainActor [weak self] in
-            await self?.callLoop()
-        }
-    }
-
-    private func callLoop() async {
-        while activeMode == .call, !Task.isCancelled {
-            guard !voiceRecording, !voiceProcessing, !chatBusy, !speaking else {
-                try? await Task.sleep(for: .milliseconds(200))
-                continue
-            }
-            await startVoiceRecording()
-            // wait until recording stops (user or VAD)
-            while voiceRecording, activeMode == .call, !Task.isCancelled {
-                try? await Task.sleep(for: .milliseconds(150))
-            }
-            // wait for transcription + send + speak to finish
-            while (voiceProcessing || chatBusy || speaking), activeMode == .call, !Task.isCancelled {
-                try? await Task.sleep(for: .milliseconds(200))
-            }
+    /// Al terminar el stream, habla lo que haya quedado sin puntuación de cierre (la
+    /// cola de la respuesta), o la respuesta completa si nunca se encoló nada (p.ej.
+    /// una respuesta corta de una sola frase sin punto final).
+    private func speakRemainder(of finalText: String) {
+        let count = finalText.count
+        if speechWatermark < count {
+            let startIndex = finalText.index(finalText.startIndex, offsetBy: speechWatermark)
+            let remainder = String(finalText[startIndex...])
+            speechWatermark = count
+            enqueueSpeech(remainder)
+        } else if pendingSpeechCount == 0 {
+            enqueueSpeech(finalText)
         }
     }
 
-    func deactivateMode() {
-        activeMode = .none
-        autoVoice = false
-        companionTask?.cancel()
-        companionTask = nil
-        callTask?.cancel()
-        callTask = nil
-        recorder?.stop()
-        recorder = nil
-        audioPlayer?.stop()
-        voiceRecording = false
-        speaking = false
-        agentState = .idle
-        audioLevel = 0
-        voiceError = ""
+    /// Corta en oraciones completas a partir de startingAt. No es un parser perfecto —
+    /// cubre los finales comunes (. ! ? … ¡ ¿ en pares) y evita cortar en decimales
+    /// tipo "3.14". Devuelve las oraciones encontradas y hasta dónde se procesó.
+    /// Primera pausa natural (`,` `;` `:` `—`) pasada `minLength`, para poder empezar a
+    /// hablar antes de que llegue el punto final. Devuelve el índice justo después de la
+    /// pausa, o nil si todavía no hay material suficiente.
+    private static func earlyClause(in text: String, minLength: Int) -> String.Index? {
+        guard text.count >= minLength else { return nil }
+        let breakers: Set<Character> = [",", ";", ":", "—", "–"]
+        var i = text.index(text.startIndex, offsetBy: minLength)
+        while i < text.endIndex {
+            if breakers.contains(text[i]) { return text.index(after: i) }
+            i = text.index(after: i)
+        }
+        return nil
     }
 
-    // Loop principal: escucha → STT → agente → TTS → escucha
-    private func companionLoop() async {
-        while activeMode == .auto && !Task.isCancelled {
-            // --- Fase 1: Escuchar con VAD ---
-            let audioData = await recordWithVAD()
-            guard activeMode == .auto, !Task.isCancelled else { break }
-            guard let data = audioData else {
-                // Sin audio suficiente (silencio puro) → volver a escuchar
-                continue
-            }
+    private static func extractCompleteSentences(from text: String, startingAt start: String.Index) -> (sentences: [String], newIndex: String.Index) {
+        var sentences: [String] = []
+        var lastBreak = start
+        var i = start
+        let enders: Set<Character> = [".", "!", "?", "…"]
+        let closers: Set<Character> = ["\"", "”", "’", "'", ")"]
 
-            // --- Fase 2: STT ---
-            agentState = .thinking
-            runtimeSummary = "Procesando voz…"
-            voiceProcessing = true
-            let transcription: String
-            do {
-                let response = try await client.transcribeAudio(data: data, language: "es")
-                voiceProcessing = false
-                guard response.ok, let text = response.text?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else {
+        while i < text.endIndex {
+            let c = text[i]
+            if enders.contains(c) {
+                let isDecimalPoint = c == "."
+                    && i > text.startIndex
+                    && text[text.index(before: i)].isNumber
+                    && text.index(after: i) < text.endIndex
+                    && text[text.index(after: i)].isNumber
+                if !isDecimalPoint {
+                    var end = text.index(after: i)
+                    while end < text.endIndex, closers.contains(text[end]) {
+                        end = text.index(after: end)
+                    }
+                    let sentence = String(text[lastBreak..<end]).trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !sentence.isEmpty {
+                        sentences.append(sentence)
+                    }
+                    lastBreak = end
+                    i = end
                     continue
                 }
-                transcription = text
-            } catch {
-                voiceProcessing = false
-                voiceError = "STT: \(error.localizedDescription)"
-                try? await Task.sleep(nanoseconds: 1_000_000_000)
-                continue
             }
+            i = text.index(after: i)
+        }
+        return (sentences, lastBreak)
+    }
 
-            guard activeMode == .auto, !Task.isCancelled else { break }
-            voiceTranscript = transcription
-            runtimeSummary = transcription
-
-            // --- Fase 3: Chat (async, no esperamos su tarea interna) ---
-            chatInput = transcription
-            await sendCurrentChat()
-
-            // --- Fase 4: Esperar que Niki hable (autoVoice = true) ---
-            // Esperamos hasta que speaking=true (TTS comenzó) y luego hasta que termina
-            var waited = 0
-            while waited < 120 && activeMode == .auto && !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 100_000_000)  // 100ms
-                waited += 1
-                if speaking { break }  // TTS comenzó
-            }
-            // Ahora esperar que speaking=false (TTS terminó)
-            while speaking && activeMode == .auto && !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 100_000_000)
-            }
-
-            // Pausa mínima antes de escuchar de nuevo
-            try? await Task.sleep(nanoseconds: 400_000_000)
+    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
+        let id = ObjectIdentifier(utterance)
+        Task { @MainActor [weak self] in
+            self?.decrementPendingSpeech(id)
         }
     }
 
-    // Graba audio hasta detectar silencio (VAD). Retorna nil si no hay voz real.
-    private func recordWithVAD() async -> Data? {
-        voiceError = ""
+    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
+        let id = ObjectIdentifier(utterance)
+        Task { @MainActor [weak self] in
+            self?.decrementPendingSpeech(id)
+        }
+    }
+
+    /// Solo cuenta utterances que seguimos considerando "nuestras". Un callback de una
+    /// respuesta ya cancelada llega tarde y debe ignorarse (ver stopAllSpeech).
+    private func decrementPendingSpeech(_ id: ObjectIdentifier) {
+        guard ownedUtterances.remove(id) != nil else { return }
+        pendingSpeechCount = max(0, pendingSpeechCount - 1)
+        if pendingSpeechCount == 0 {
+            sttLog("[TTS] terminó de hablar")
+            finishNativeSpeech()
+        }
+    }
+
+    private func finishNativeSpeech() {
+        speaking = false
+        stopTtsLevelMonitor()
+        // Volver solo a la forma de reposo. Antes solo se reseteaba desde `.speaking`,
+        // pero al terminar un turno el estado ya es `.success` (se setea antes de hablar),
+        // así que el orbe se quedaba clavado en esa figura hasta el turno siguiente.
+        if agentState == .speaking || agentState == .success {
+            agentState = .idle
+        }
+    }
+
+    /// Como AVSpeechSynthesizer no expone amplitud real, animamos audioLevel con un pulso
+    /// suave mientras habla — el orbe se sigue sintiendo vivo aunque no sea metering exacto.
+    private func startNativeTtsLevelAnimation() {
+        ttsLevelTask?.cancel()
+        ttsLevelTask = Task { @MainActor [weak self] in
+            var t: Double = 0
+            while let self, self.speechSynthesizer.isSpeaking, !Task.isCancelled {
+                t += 0.06
+                self.audioLevel = Float(0.35 + 0.28 * abs(sin(t * 3.4)))
+                try? await Task.sleep(nanoseconds: 60_000_000)
+            }
+            self?.audioLevel = 0
+        }
+    }
+
+    /// Alimenta audioLevel con el volumen de la voz de Niki mientras suena el TTS,
+    /// para que el orbe reaccione cuando Niki habla (igual que reacciona a tu voz al grabar).
+    private func startTtsLevelMonitor() {
+        ttsLevelTask?.cancel()
+        ttsLevelTask = Task { @MainActor [weak self] in
+            while let self, self.audioPlayer?.isPlaying == true, !Task.isCancelled {
+                self.audioPlayer?.updateMeters()
+                let power = self.audioPlayer?.averagePower(forChannel: 0) ?? -160
+                self.audioLevel = Float(max(0, min(1, (power + 50.0) / 50.0)))
+                try? await Task.sleep(nanoseconds: 60_000_000)  // ~16 fps
+            }
+            self?.audioLevel = 0
+        }
+    }
+
+    private func stopTtsLevelMonitor() {
+        ttsLevelTask?.cancel()
+        ttsLevelTask = nil
+        audioLevel = 0
+    }
+
+    // MARK: - Mic device enumeration (CoreAudio)
+
+    func refreshMicDevices() {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDevices,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var dataSize: UInt32 = 0
+        AudioObjectGetPropertyDataSize(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &dataSize)
+        let count = Int(dataSize) / MemoryLayout<AudioDeviceID>.size
+        var ids = [AudioDeviceID](repeating: 0, count: count)
+        AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &dataSize, &ids)
+
+        var found: [(id: AudioDeviceID, name: String)] = []
+        for deviceID in ids {
+            var inputAddr = AudioObjectPropertyAddress(
+                mSelector: kAudioDevicePropertyStreamConfiguration,
+                mScope: kAudioDevicePropertyScopeInput,
+                mElement: kAudioObjectPropertyElementMain
+            )
+            var sz: UInt32 = 0
+            AudioObjectGetPropertyDataSize(deviceID, &inputAddr, 0, nil, &sz)
+            guard sz > 0 else { continue }
+
+            var nameAddr = AudioObjectPropertyAddress(
+                mSelector: kAudioObjectPropertyName,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            )
+            var nameRef: CFString = "" as CFString
+            var nameSz = UInt32(MemoryLayout<CFString>.size)
+            AudioObjectGetPropertyData(deviceID, &nameAddr, 0, nil, &nameSz, &nameRef)
+            found.append((id: deviceID, name: nameRef as String))
+        }
+        sttLog("[STT] mics disponibles: \(found.map { "\($0.name)(id=\($0.id))" }.joined(separator: ", "))")
+        availableMicDevices = found
+    }
+
+    private func nativeMicSampleRate() -> Double {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultInputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var deviceID: AudioDeviceID = kAudioObjectUnknown
+        var sz = UInt32(MemoryLayout<AudioDeviceID>.size)
+        AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &sz, &deviceID)
+
+        if deviceID == kAudioObjectUnknown { return 44_100 }
+
+        var rateAddr = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyNominalSampleRate,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var rate: Float64 = 44_100
+        var rateSz = UInt32(MemoryLayout<Float64>.size)
+        AudioObjectGetPropertyData(deviceID, &rateAddr, 0, nil, &rateSz, &rate)
+        return rate > 0 ? rate : 44_100
+    }
+
+    func selectMicDevice(_ deviceID: AudioDeviceID) {
+        selectedMicDeviceID = deviceID
+        sttLog("[STT] mic seleccionado: id=\(deviceID) name=\(availableMicDevices.first(where: { $0.id == deviceID })?.name ?? "?")")
+        if deviceID == 0 { return }
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultInputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var mutableID = deviceID
+        let status = AudioObjectSetPropertyData(
+            AudioObjectID(kAudioObjectSystemObject), &address, 0, nil,
+            UInt32(MemoryLayout<AudioDeviceID>.size), &mutableID
+        )
+        sttLog("[STT] setDefaultInputDevice status=\(status)")
+    }
+
+    // MARK: - STT Lab (chunked real-time testing)
+
+    func toggleSttLab() {
+        if sttLabActive {
+            stopSttLab()
+        } else {
+            startSttLab()
+        }
+    }
+
+    /// Silencia/reactiva tu micrófono durante la conversación (Niki deja de escucharte).
+    func toggleCallMute() {
+        callMuted.toggle()
+        if callMuted {
+            sttLabStatus = "Micrófono silenciado"
+        }
+    }
+
+    /// Crea una sesión de chat nueva y deja el shell en el panel de chat.
+    func startFreshChatSession() {
+        createChatSession(seedText: nil)
+        selection = .chat
+    }
+
+    func startSttLab() {
+        guard !sttLabActive else { return }
+        refreshMicDevices()
+        sttLabStatus = "Escuchando…"
+        sttMicPermission = "?"
+        sttLog("[STT] ▶ startSttLab (modo conversación)  mic=\(selectedMicDeviceID)")
+        sttLabActive = true
+        sttLabChunks = []
+        sttLabError = ""
+        sttLabChunkIndex = 0
+        callMuted = false
+        autoVoice = true  // Niki responde por voz en la conversación
+        // Arrancar una llamada limpia cualquier resto del turno anterior. Sin esto, una
+        // llamada que terminó con Niki callada a la fuerza empezaría muda.
+        speechSuppressed = false
+        pendingTurnText = ""
+        interruptedReply = ""
+        sttLabTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            guard await self.startCapture() else { return }
+            await self.sttLabLoop()
+        }
+    }
+
+    /// Levanta el motor de captura para toda la llamada. Devuelve false si no hay
+    /// permiso o si CoreAudio no puede abrir la entrada.
+    private func startCapture() async -> Bool {
+        // Una sola vez por llamada. Antes se pedía en cada frase: un XPC por turno para
+        // preguntar algo que no cambia.
         let granted = await AVCaptureDevice.requestAccess(for: .audio)
+        sttMicPermission = granted ? "granted" : "denied"
         guard granted else {
-            voiceError = "Permiso de micrófono denegado."
-            activeMode = .none
+            sttLabStatus = "⚠️ Micrófono denegado — Ajustes del Sistema > Privacidad > Micrófono"
+            sttLog("[STT] mic DENEGADO")
+            sttLabActive = false
+            return false
+        }
+        guard sttLabActive, !Task.isCancelled else { return false }
+
+        let engine = NikiVoiceCapture()
+        engine.voiceThresholdDb = sttSilenceThreshold
+
+        let (stream, continuation) = AsyncStream<NikiVoiceCapture.Utterance>.makeStream(
+            bufferingPolicy: .bufferingNewest(2)
+        )
+        utteranceContinuation = continuation
+        utteranceIterator = stream.makeAsyncIterator()
+
+        engine.onUtterance = { [weak self] utterance in
+            continuation.yield(utterance)
+            Task { @MainActor in self?.noteIncomingSpeech() }
+        }
+        engine.onLevel = { [weak self] level in
+            Task { @MainActor in
+                guard let self else { return }
+                // Un solo dueño del nivel a la vez. Mientras Niki habla manda la
+                // animación del TTS; el mic sigue abierto para barge-in y estaría
+                // publicando el eco de su propia voz, y los dos escribiendo el mismo
+                // valor a 30 y 16 Hz es lo que hacía saltar el orbe.
+                guard !self.speaking else { return }
+                self.audioLevel = level
+            }
+        }
+        engine.onLog = { line in sttLog(line) }
+        engine.onBargeIn = { [weak self] in
+            Task { @MainActor in self?.handleBargeIn() }
+        }
+
+        // `engine.start()` puede bloquear arrancando el dispositivo — nunca en el MainActor.
+        let started = await Task.detached(priority: .userInitiated) { () -> String? in
+            do {
+                try engine.start()
+                return nil
+            } catch {
+                return error.localizedDescription
+            }
+        }.value
+
+        if let started {
+            sttLabStatus = "⚠️ No se pudo abrir el micrófono: \(started)"
+            sttLog("[STT] motor de captura falló: \(started)")
+            sttLabError = started
+            sttLabActive = false
+            return false
+        }
+
+        capture = engine
+        voiceRecording = true
+        syncCapturePhase()
+        return true
+    }
+
+    /// El motor necesita saber de quién es el turno: en `.listening` corta frases por
+    /// silencio, en `.speaking` queda armado para barge-in.
+    private func syncCapturePhase() {
+        guard let capture else { return }
+        capture.muted = callMuted
+        capture.phase = speaking ? .speaking : (sttLabActive ? .listening : .idle)
+    }
+
+    /// Corta la respuesta en curso y se queda con lo que Niki alcanzó a decir. Ese texto
+    /// es lo que hace posible retomar con "seguí" desde donde iba, en vez de que el
+    /// modelo reciba la misma petición y repita el discurso entero.
+    private func interruptCurrentReply() {
+        let saidSoFar = activeMessages.last(where: { $0.role == .assistant })?.content
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !saidSoFar.isEmpty { interruptedReply = saidSoFar }
+        if chatBusy {
+            cancelCurrentChat()
+        } else {
+            stopAllSpeech()
+            finishNativeSpeech()
+        }
+    }
+
+    /// Llegó una frase nueva mientras el turno anterior seguía vivo. Si lo anterior había
+    /// quedado a medias, esto es su continuación: cortar ya lo que Niki esté pensando o
+    /// diciendo evita que conteste medio pregunta y deja al bucle recogerla y unirla.
+    /// Sin esto había que esperar a que terminara la respuesta equivocada.
+    private func noteIncomingSpeech() {
+        guard sttLabActive, chatBusy || speaking else { return }
+        guard !pendingTurnText.isEmpty,
+              Date().timeIntervalSince(pendingTurnAt) < Self.continuationWindow else { return }
+        sttLog("[STT] llegó continuación — cortando la respuesta a medias")
+        interruptCurrentReply()
+    }
+
+    /// El usuario habló encima de Niki. Se corta lo que esté diciendo y lo que quede
+    /// del turno; la frase nueva ya viene capturada desde su primera sílaba porque el
+    /// motor guarda medio segundo de pre-roll.
+    private func handleBargeIn() {
+        guard sttLabActive, speaking || chatBusy else { return }
+        sttLog("[STT] barge-in — cortando a Niki")
+        interruptCurrentReply()
+    }
+
+    func stopSttLab() {
+        sttLog("[STT] ■ stopSttLab")
+        sttLabActive = false
+        notchCallDismissed = false
+        autoVoice = false
+        sttLabTask?.cancel()
+        sttLabTask = nil
+        let engine = capture
+        capture = nil
+        utteranceContinuation?.finish()
+        utteranceContinuation = nil
+        utteranceIterator = nil
+        // Igual que al arrancar: parar el dispositivo puede bloquear, así que no acá.
+        if let engine {
+            Task.detached(priority: .utility) { engine.stop() }
+        }
+        recorder?.stop()
+        recorder = nil
+        voiceRecording = false
+        audioLevel = 0
+        sttLabStatus = ""
+        if audioPlayer?.isPlaying == true { audioPlayer?.stop() }
+        stopTtsLevelMonitor()
+        speaking = false
+    }
+
+    private static let whisperHallucinations: Set<String> = [
+        ".", "..", "...", "♪", "♫", "[música]", "[music]", "[silencio]", "[silence]",
+        "subtítulos realizados por la comunidad de amara.org",
+        "subtitles by the amara.org community", ".", "..", "...",
+        "♪", "♫", "[música]", "[music]", "[silencio]", "[silence]",
+    ]
+
+    private func sttLabLoop() async {
+        sttLog("[STT] loop conversación start")
+        while sttLabActive, !Task.isCancelled {
+            // Silenciado: no grabamos hasta que se reactive el micrófono.
+            if callMuted {
+                sttLabStatus = "🔇 Silenciado — reactivá para hablar"
+                agentState = .idle
+                audioLevel = 0
+                try? await Task.sleep(nanoseconds: 200_000_000)
+                continue
+            }
+            // --- 1. Escuchar hasta que te calles (VAD) ---
+            turn = TurnClock()
+            sttLabStatus = "Escuchando…"
+            agentState = .listening
+            syncCapturePhase()
+            guard let utterance = await nextUtterance() else { break }
+            guard sttLabActive, !Task.isCancelled else { break }
+            turn.voiceEnded = utterance.voiceEndedAt
+            turn.chunkCut = utterance.cutAt
+            turn.pickedUp = Date()
+            sttLog(String(format: "[STT] frase: %d bytes  %.1fs  peak=%.1f dBFS",
+                          utterance.wav.count, utterance.seconds, utterance.peakDb))
+            let audio = utterance.wav
+            guard audio.count > 2048 else { continue }
+
+            // --- 2. Transcribir ---
+            sttLabStatus = "Transcribiendo…"
+            agentState = .thinking
+            let idx = sttLabChunkIndex
+            let t0 = Date()
+            turn.uploadStart = t0
+            let userText: String
+            do {
+                let res = try await client.transcribeAudio(data: audio, language: "es")
+                turn.sttDone = Date()
+                let ms = Int(Date().timeIntervalSince(t0) * 1000)
+                guard sttLabActive, !Task.isCancelled else { break }
+                // El backend devuelve HTTP 200 incluso al fallar (ok:false) — validarlo
+                // o el error queda invisible y se ve como silencio.
+                guard res.ok else {
+                    let err = res.error ?? "el backend falló sin mensaje"
+                    sttLabStatus = "⚠️ Error: \(err)"
+                    sttLabError = err
+                    sttLog("[STT] backend ok:false error=\(err)")
+                    try? await Task.sleep(nanoseconds: 800_000_000)
+                    continue
+                }
+                // whisper devuelve el texto segmentado en líneas. Sin aplanarlo, el
+                // ensamblador ve un salto de línea como último carácter y la
+                // puntuación de cierre se le escapa.
+                let text = (res.text ?? "")
+                    .components(separatedBy: .whitespacesAndNewlines)
+                    .filter { !$0.isEmpty }
+                    .joined(separator: " ")
+                sttLog("[STT] dijiste: \"\(text)\" \(ms)ms provider=\(res.provider ?? "?")")
+                if text.isEmpty || Self.whisperHallucinations.contains(text.lowercased()) {
+                    sttLabStatus = "No te entendí, hablá de nuevo…"
+                    continue
+                }
+                // Orden de callarse: se ejecuta acá, sin pasar por el modelo. Mandarla a
+                // Hermes significaba que la respuesta llegaba cuando Niki ya había
+                // terminado de decir aquello que le pediste que dejara de decir.
+                if NikiTurnAssembler.isStopCommand(text) {
+                    sttLog("[STT] orden de parar: \"\(text)\"")
+                    interruptCurrentReply()
+                    pendingTurnText = ""
+                    sttLabStatus = "Te escucho…"
+                    agentState = .listening
+                    continue
+                }
+
+                // "Seguí" retoma lo cortado. Sin esto el modelo recibía una petición
+                // idéntica a la de antes y volvía a empezar el mismo discurso.
+                if NikiTurnAssembler.isResumeCommand(text), !interruptedReply.isEmpty {
+                    sttLog("[STT] retomando lo interrumpido (\(interruptedReply.count) chars de contexto)")
+                    userText = NikiTurnAssembler.resumePrompt(interrupted: interruptedReply)
+                    interruptedReply = ""
+                    pendingTurnText = ""
+                } else {
+                    // Armado del turno: si lo anterior quedó a medias, esto es su
+                    // continuación y va como una sola frase. Lo que el modelo recibe es
+                    // la idea entera, no el pedazo que sobrevivió al silencio.
+                    let continuable = !pendingTurnText.isEmpty
+                        && Date().timeIntervalSince(pendingTurnAt) < Self.continuationWindow
+                    if continuable {
+                        let merged = NikiTurnAssembler.merge(pendingTurnText, text)
+                        sttLog("[STT] turno unido: \"\(merged)\"")
+                        interruptCurrentReply()
+                        userText = merged
+                    } else {
+                        userText = text
+                    }
+                    pendingTurnText = NikiTurnAssembler.looksUnfinished(userText) ? userText : ""
+                    pendingTurnAt = Date()
+                }
+                voiceTranscript = text
+                sttLabChunkIndex += 1
+                sttLabChunks.append(NikiSttChunk(text: voiceTranscript, latencyMs: ms, provider: "tú", index: idx))
+            } catch {
+                sttLabStatus = "Error STT: \(error.localizedDescription)"
+                sttLog("[STT] error STT: \(error.localizedDescription)")
+                try? await Task.sleep(nanoseconds: 700_000_000)
+                continue
+            }
+
+            // --- 3. Esperar si el chat anterior sigue ocupado ---
+            while chatBusy, sttLabActive, !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 100_000_000)
+            }
+            guard sttLabActive, !Task.isCancelled else { break }
+
+            // --- 4. Enviar a Niki (canal de voz: respuestas habladas cortas) ---
+            sttLabStatus = "Niki está pensando…"
+            chatInput = userText
+            await sendCurrentChat(channel: "niki-voice")
+
+            // --- 5. Esperar respuesta completa (LLM + voz) ---
+            while (chatBusy || speaking), sttLabActive, !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 100_000_000)
+            }
+            guard sttLabActive, !Task.isCancelled else { break }
+
+            // --- 6. Mostrar la respuesta de Niki en el panel ---
+            if let reply = activeMessages.last(where: { $0.role == .assistant })?.content
+                .trimmingCharacters(in: .whitespacesAndNewlines), !reply.isEmpty {
+                sttLabChunks.append(NikiSttChunk(text: reply, latencyMs: 0, provider: "niki", index: sttLabChunkIndex))
+                sttLabChunkIndex += 1
+                sttLog("[STT] niki: \"\(reply.prefix(60))\"")
+            }
+            sttLog(turn.line)
+
+            // Antes había una pausa de 400 ms acá para que el mic no captara la cola de
+            // su propia voz. Ya no hace falta: el motor sabe cuándo habla Niki y en esa
+            // fase no cierra frases, solo vigila barge-in.
+            sttLabStatus = "Escuchando…"
+            agentState = .listening
+        }
+        sttLabStatus = ""
+        sttLog("[STT] loop conversación end")
+    }
+
+    /// Siguiente frase del motor. El iterador se guarda entre llamadas para no perder
+    /// las frases que llegan mientras el turno anterior todavía se procesa.
+    private func nextUtterance() async -> NikiVoiceCapture.Utterance? {
+        guard var iterator = utteranceIterator else { return nil }
+        let value = await iterator.next()
+        utteranceIterator = iterator
+        return value
+    }
+
+    private func recordChunkFixed(duration: TimeInterval) async -> (Data, Bool)? {
+        let granted = await AVCaptureDevice.requestAccess(for: .audio)
+        sttMicPermission = granted ? "granted" : "denied"
+        sttLog("[STT] mic permission: \(granted ? "granted" : "DENIED")")
+        guard granted else {
+            sttLabStatus = "⚠️ Micrófono DENEGADO — ve a Ajustes del Sistema > Privacidad > Micrófono"
             return nil
         }
-        guard activeMode == .auto, !Task.isCancelled else { return nil }
+        guard sttLabActive, !Task.isCancelled else { return nil }
 
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent("niki-\(UUID().uuidString).wav")
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("niki-lab-\(UUID().uuidString).wav")
+
+        // Usar la tasa nativa del dispositivo — 16kHz puede fallar en macs con hw a 48kHz
+        let nativeSampleRate = nativeMicSampleRate()
+        sttLog("[STT] nativeSampleRate=\(Int(nativeSampleRate))")
         let settings: [String: Any] = [
             AVFormatIDKey: Int(kAudioFormatLinearPCM),
-            AVSampleRateKey: 44_100,
+            AVSampleRateKey: nativeSampleRate,
             AVNumberOfChannelsKey: 1,
             AVLinearPCMBitDepthKey: 16,
             AVLinearPCMIsBigEndianKey: false,
@@ -958,66 +2054,59 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
         do {
             let rec = try AVAudioRecorder(url: url, settings: settings)
             rec.isMeteringEnabled = true
-            rec.prepareToRecord()
+            let prepared = rec.prepareToRecord()
+            sttLog("[STT] prepareToRecord=\(prepared)")
             guard rec.record() else {
-                voiceError = "No se pudo iniciar el micrófono."
+                sttLabStatus = "⚠️ AVAudioRecorder.record() = false (sampleRate=\(Int(nativeSampleRate)))"
+                sttLog("[STT] ⚠️ rec.record() failed  sampleRate=\(Int(nativeSampleRate))")
                 return nil
             }
+            sttLog("[STT] grabando en \(url.lastPathComponent)  rate=\(Int(nativeSampleRate))")
             recorder = rec
-            recordedFileURL = url
             voiceRecording = true
-            agentState = .listening
-            runtimeSummary = "Escuchando…"
             audioLevel = 0
+
+            var peakPower: Float = -160
+            let steps = Int(duration / 0.05)
+            for _ in 0..<steps {
+                try? await Task.sleep(nanoseconds: 50_000_000)
+                guard sttLabActive, !Task.isCancelled else {
+                    rec.stop()
+                    recorder = nil
+                    voiceRecording = false
+                    return nil
+                }
+                rec.updateMeters()
+                let power = rec.averagePower(forChannel: 0)
+                peakPower = max(peakPower, power)
+                audioLevel = Float(max(0, min(1, (power + 60.0) / 60.0)))
+            }
+            sttLabPeakDb = peakPower
+
+            rec.stop()
+            recorder = nil
+            voiceRecording = false
+            audioLevel = 0
+            try? await Task.sleep(nanoseconds: 80_000_000)
+
+            guard let data = try? Data(contentsOf: url) else {
+                sttLog("[STT] ⚠️ no se pudo leer el WAV de \(url.lastPathComponent)")
+                return nil
+            }
+            sttLog("[STT] WAV listo: \(data.count) bytes  peakPower=\(String(format: "%.1f", peakPower)) dBFS")
+            return (data, true)
         } catch {
-            voiceError = error.localizedDescription
+            sttLabStatus = "⚠️ AVAudioRecorder error: \(error.localizedDescription)"
+            sttLog("[STT] ⚠️ AVAudioRecorder catch: \(error.localizedDescription)")
+            voiceRecording = false
+            audioLevel = 0
             return nil
         }
-
-        // VAD: polling con sleep corto — fiable en cualquier run loop mode
-        var lastSoundTime = Date()
-        var hasHeardVoice = false
-
-        while voiceRecording, activeMode == .auto, !Task.isCancelled {
-            try? await Task.sleep(nanoseconds: 100_000_000)  // 100ms
-
-            guard let rec = recorder else { break }
-            rec.updateMeters()
-            let power = rec.averagePower(forChannel: 0)
-            let level = Float(max(0, min(1, (power + 60.0) / 60.0)))
-            audioLevel = level
-
-            if power > silenceThreshold {
-                lastSoundTime = Date()
-                hasHeardVoice = true
-            }
-
-            // Para después de silenceDuration de silencio, pero solo si oyó algo real
-            if hasHeardVoice, Date().timeIntervalSince(lastSoundTime) >= silenceDuration {
-                break
-            }
-
-            // Tiempo máximo de grabación: 30s
-            if rec.currentTime > 30 { break }
-        }
-
-        // Detener grabación
-        recorder?.stop()
-        recorder = nil
-        voiceRecording = false
-        audioLevel = 0
-        try? await Task.sleep(nanoseconds: 150_000_000)  // buffer de cierre
-
-        guard hasHeardVoice else { return nil }
-        guard let fileURL = recordedFileURL else { return nil }
-        let data = try? Data(contentsOf: fileURL)
-        recordedFileURL = nil
-        guard let d = data, d.count > 1024 else { return nil }
-        return d
     }
 
     func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
         speaking = false
+        stopTtsLevelMonitor()
         scheduleReturnToIdle(delay: 0.18)
         if let currentTtsFileURL {
             try? FileManager.default.removeItem(at: currentTtsFileURL)
@@ -1094,10 +2183,17 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
 
     private func sanitizeForTts(_ text: String) -> String {
         text
+            .replacingOccurrences(of: #"```[\s\S]*?```"#, with: "", options: .regularExpression)
+            .replacingOccurrences(of: #"https?://\S+"#, with: "", options: .regularExpression)
+            .replacingOccurrences(of: #"^\s{0,3}#{1,6}\s*"#, with: "", options: [.regularExpression, .caseInsensitive])
+            .replacingOccurrences(of: #"^\s*[-*+]\s+"#, with: "", options: [.regularExpression, .caseInsensitive])
+            .replacingOccurrences(of: #"^\s*\d+[.)]\s+"#, with: "", options: [.regularExpression, .caseInsensitive])
             .replacingOccurrences(of: #"(\*\*|__)(.+?)\1"#, with: "$2", options: .regularExpression)
             .replacingOccurrences(of: #"(\*|_)(.+?)\1"#, with: "$2", options: .regularExpression)
             .replacingOccurrences(of: #"`([^`]+)`"#, with: "$1", options: .regularExpression)
             .replacingOccurrences(of: #"\[\[[^\]]+\]\]"#, with: "", options: .regularExpression)
+            .replacingOccurrences(of: #"\[([^\]]+)\]\([^\)]+\)"#, with: "$1", options: .regularExpression)
+            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
@@ -1111,11 +2207,21 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
         return "wav"
     }
 
+    /// Devuelve el orbe a su forma de reposo. Espera a que termine lo que esté en curso
+    /// (grabando / hablando / respondiendo) en vez de rendirse al primer intento — antes
+    /// bastaba con que el TTS siguiera sonando para que el orbe no volviera nunca.
     private func scheduleReturnToIdle(delay: Double = 0.7) {
         Task { @MainActor [weak self] in
             guard let self else { return }
             try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
-            guard !self.voiceRecording, !self.speaking, !self.chatBusy else { return }
+            var waited: Double = 0
+            while self.voiceRecording || self.speaking || self.chatBusy {
+                if Task.isCancelled || waited > 60 { return }
+                try? await Task.sleep(nanoseconds: 200_000_000)
+                waited += 0.2
+            }
+            // Si mientras tanto arrancó otro turno, ese turno se encarga de su propio estado.
+            guard self.agentState != .thinking, self.agentState != .acting else { return }
             self.agentState = .idle
         }
     }
@@ -1167,12 +2273,21 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
             runtimeContextLengthOverride = config.runtimeContextLengthOverride
             runtimeCompatibilityMode = config.runtimeCompatibilityMode
             runtimeDiagnosticsEnabled = config.runtimeDiagnosticsEnabled
-            ttsVoice = config.ttsVoice
+            // Migrate the previous Piper voice ID to Qwen3-TTS's built-in
+            // Spanish-capable voice without invalidating saved preferences.
+            ttsVoice = config.ttsVoice.hasPrefix("es_") ? "Serena" : config.ttsVoice
             autoVoice = config.autoVoice
             orbAccentHex = config.orbAccentHex
             if let personaProfile = config.personaProfile {
                 self.personaProfile = personaProfile
             }
+        }
+        sttLabEnabled = UserDefaults.standard.bool(forKey: "niki.sttLabEnabled")
+        if UserDefaults.standard.object(forKey: "niki.doubleTapEnabled") != nil {
+            doubleTapToOpenEnabled = UserDefaults.standard.bool(forKey: "niki.doubleTapEnabled")
+        }
+        if let mod = UserDefaults.standard.string(forKey: "niki.doubleTapModifier"), !mod.isEmpty {
+            doubleTapModifier = mod
         }
         if let data = UserDefaults.standard.data(forKey: sessionKey),
            let session = try? JSONDecoder().decode(NikiStoredSession.self, from: data) {

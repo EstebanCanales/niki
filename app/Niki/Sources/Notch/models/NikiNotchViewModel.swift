@@ -197,9 +197,19 @@ class NikiNotchViewModel: NSObject, ObservableObject {
         MusicManager.shared.forceUpdate()
     }
 
-    func close() {
+    /// - Parameter force: ignora los anclajes. Lo usa el botón ✕ del modo llamada, que
+    ///   colapsa el notch a propósito sin cortar la conversación.
+    func close(force: Bool = false) {
         // Do not close while a share picker or sharing service is active
-        if SharingStateManager.shared.preventNotchClose {
+        if !force, SharingStateManager.shared.preventNotchClose {
+            return
+        }
+        // Durante una llamada el notch queda anclado abierto: sacar el mouse, el
+        // auto-cierre de 3s del atajo y closeNotch() no deben colapsarlo. Solo lo suelta
+        // el ✕ (que marca `notchCallDismissed`) o colgar.
+        if !force,
+           NikiAppModel.shared.sttLabActive,
+           !NikiAppModel.shared.notchCallDismissed {
             return
         }
         self.notchSize = getClosedNotchSize(screenUUID: self.screenUUID)

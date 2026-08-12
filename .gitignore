@@ -32,3 +32,9 @@ backend/piper/models/
 backend/piper/piper/
 backend/piper/*.tar.gz
 backend/whisper/models/
+app/backend/venv-qwen3-tts/
+# Pesos de modelos: se descargan, no se versionan. Las reglas de arriba apuntan a
+# backend/ y el proyecto vive en app/backend/, así que ggml-base.bin (144 MB) se
+# colaba — y GitHub rechaza cualquier archivo de más de 100 MB.
+app/backend/whisper/models/
+app/backend/piper/models/

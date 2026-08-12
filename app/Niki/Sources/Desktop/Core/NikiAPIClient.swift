@@ -111,6 +111,99 @@ struct NikiAPIClient {
         try await decodeResponse(NikiRuntimeConfigResponse.self, from: try request("/runtime/config"))
     }
 
+    func runtimeCapabilities() async throws -> NikiRuntimeCapabilitiesResponse {
+        try await decodeResponse(NikiRuntimeCapabilitiesResponse.self, from: try request("/runtime/capabilities"))
+    }
+
+    func computerCapabilities() async throws -> NikiComputerCapabilitiesResponse {
+        try await decodeResponse(NikiComputerCapabilitiesResponse.self, from: try request("/computer/capabilities"))
+    }
+
+    func respondToApproval(runID: String, choice: String, resolveAll: Bool = false) async throws {
+        let body = try JSONSerialization.data(withJSONObject: [
+            "runId": runID,
+            "choice": choice,
+            "all": resolveAll,
+        ])
+        _ = try await decodeResponse(
+            NikiRuntimeCapabilitiesResponsePlaceholder.self,
+            from: try request("/runtime/approvals/respond", method: "POST", body: body)
+        )
+    }
+
+    func clearSurface() async throws {
+        _ = try await decodeResponse(
+            NikiRuntimeCapabilitiesResponsePlaceholder.self,
+            from: try request("/runtime/surface/clear", method: "POST")
+        )
+    }
+
+    func computerRecent(limit: Int = 10) async throws -> NikiComputerRecentResponse {
+        try await decodeResponse(NikiComputerRecentResponse.self, from: try request("/computer/recent?limit=\(limit)"))
+    }
+
+    func computerAction(action: String, params: [String: Any] = [:]) async throws -> NikiComputerActionResponse {
+        let body = try JSONSerialization.data(withJSONObject: [
+            "action": action,
+            "params": params,
+        ])
+        return try await decodeResponse(
+            NikiComputerActionResponse.self,
+            from: try request("/computer/action", method: "POST", body: body)
+        )
+    }
+
+    func runtimeSessions() async throws -> NikiRemoteSessionsResponse {
+        try await decodeResponse(NikiRemoteSessionsResponse.self, from: try request("/runtime/sessions"))
+    }
+
+    func runtimeProfiles() async throws -> NikiRemoteProfilesResponse {
+        try await decodeResponse(NikiRemoteProfilesResponse.self, from: try request("/runtime/profiles"))
+    }
+
+    func requestSessionHandoff(sessionID: String, platform: String) async throws -> NikiSessionHandoffResponse {
+        let body = try JSONSerialization.data(withJSONObject: [
+            "sessionId": sessionID,
+            "platform": platform,
+        ])
+        return try await decodeResponse(
+            NikiSessionHandoffResponse.self,
+            from: try request("/runtime/sessions/handoff", method: "POST", body: body)
+        )
+    }
+
+    func requestSessionUndo(sessionID: String) async throws -> NikiSessionUndoResponse {
+        let body = try JSONSerialization.data(withJSONObject: [
+            "sessionId": sessionID,
+        ])
+        return try await decodeResponse(
+            NikiSessionUndoResponse.self,
+            from: try request("/runtime/sessions/undo", method: "POST", body: body)
+        )
+    }
+
+    func runtimeMcpServers() async throws -> NikiMcpServersResponse {
+        try await decodeResponse(NikiMcpServersResponse.self, from: try request("/runtime/mcp"))
+    }
+
+    func updateRuntimeMcpServer(id: String, enabled: Bool) async throws -> NikiMcpServersResponse {
+        let body = try JSONSerialization.data(withJSONObject: [
+            "id": id,
+            "enabled": enabled,
+        ])
+        return try await decodeResponse(
+            NikiMcpServersResponse.self,
+            from: try request("/runtime/mcp/server", method: "POST", body: body)
+        )
+    }
+
+    func runtimeDiscoverCapabilities(profileID: String) async throws -> NikiDiscoverCapabilitiesResponse {
+        try await decodeResponse(
+            NikiDiscoverCapabilitiesResponse.self,
+            from: try request("/runtime/discover?profileId=\(profileID)")
+        )
+    }
+
     func updateRuntimeConfig(
         apiServerURL: String,
         runtimeAPIKey: String,
@@ -206,7 +299,7 @@ struct NikiAPIClient {
     }
 
     func streamRuntimeEvents(
-        onPatch: @escaping @MainActor (NikiRuntimePatch) -> Void
+        onEvent: @escaping @MainActor (NikiRuntimeEventEnvelope) -> Void
     ) -> Task<Void, Never> {
         Task {
             do {
@@ -220,12 +313,10 @@ struct NikiAPIClient {
                     guard line.hasPrefix("data: ") else { continue }
                     let payload = String(line.dropFirst(6)).trimmingCharacters(in: .whitespacesAndNewlines)
                     guard let data = payload.data(using: .utf8),
-                          let envelope = try? decoder.decode(NikiRuntimeEventEnvelope.self, from: data),
-                          envelope.kind == "partial",
-                          let patch = envelope.patch else {
+                          let envelope = try? decoder.decode(NikiRuntimeEventEnvelope.self, from: data) else {
                         continue
                     }
-                    await onPatch(patch)
+                    await onEvent(envelope)
                 }
             } catch {
                 return
@@ -242,6 +333,10 @@ struct NikiAPIClient {
         clean = clean.replacingOccurrences(of: #"\n{3,}"#, with: "\n\n", options: .regularExpression)
         return clean.trimmingCharacters(in: .whitespacesAndNewlines)
     }
+}
+
+private struct NikiRuntimeCapabilitiesResponsePlaceholder: Codable {
+    let ok: Bool
 }
 
 private extension Data {

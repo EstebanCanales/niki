@@ -4,16 +4,27 @@ struct NikiShellView: View {
     @EnvironmentObject private var appModel: NikiAppModel
     @State private var dockVisible = false
 
+    /// Cuando hay una surface activa, el chat se cierra del todo y el orbe se va
+    /// a la esquina junto a los controles del dock — no se superponen.
+    private var orbDocked: Bool { appModel.activeSurface != nil }
+
     var body: some View {
         ZStack {
             Color.black
                 .ignoresSafeArea()
 
-            NikiOrbView(state: appModel.agentState, accentHex: appModel.orbAccentHex)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .offset(y: -6)
+            if let surface = appModel.activeSurface {
+                NikiSurfacePanel(surface: surface, onDismiss: appModel.dismissActiveSurface)
+                    .padding(24)
+                    .padding(.bottom, 86)
+                    .transition(.opacity.combined(with: .scale(scale: 0.97)))
+            } else {
+                NikiOrbView(state: appModel.agentState, accentHex: appModel.orbAccentHex, size: 840)
+                    .offset(y: -6)
+                    .transition(.opacity.combined(with: .scale(scale: 0.9)))
+            }
 
-            if appModel.selection != nil {
+            if !orbDocked, appModel.selection != nil {
                 Color.clear
                     .contentShape(Rectangle())
                     .ignoresSafeArea()
@@ -22,25 +33,27 @@ struct NikiShellView: View {
                             appModel.selection = nil
                         }
                     }
-            }
 
-            HStack(spacing: 0) {
-                if let selection = appModel.selection {
-                    NikiSidebarPanels(selection: selection)
+                HStack(spacing: 0) {
+                    NikiSidebarPanels(selection: appModel.selection!)
                         .frame(width: NikiSidebarLayout.width)
                         .padding(.leading, NikiSidebarLayout.horizontalInset)
                         .padding(.top, NikiSidebarLayout.verticalInset)
                         .padding(.bottom, NikiSidebarLayout.verticalInset)
                         .transition(.move(edge: .leading).combined(with: .opacity))
-                }
 
-                Spacer()
+                    Spacer()
+                }
             }
 
             VStack {
                 Spacer()
-                HStack {
+                HStack(spacing: 10) {
                     Spacer()
+                    if orbDocked {
+                        NikiOrbView(state: appModel.agentState, accentHex: appModel.orbAccentHex, size: 64)
+                            .transition(.scale.combined(with: .opacity))
+                    }
                     NikiDockView(
                         selection: Binding(
                             get: { appModel.selection },
@@ -55,20 +68,13 @@ struct NikiShellView: View {
                 .opacity(dockVisible ? 1 : 0)
             }
         }
+        .animation(.spring(response: 0.5, dampingFraction: 0.85), value: orbDocked)
         .overlay(alignment: .top) {
-            VStack(spacing: 4) {
-                Text(appModel.runtimeModelResolved.isEmpty ? "Niki" : appModel.runtimeModelResolved)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Color.white.opacity(0.48))
-                Text(appModel.runtimeSummary)
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(Color.white.opacity(0.72))
-                    .lineLimit(2)
-
-                NikiModeIndicator(mode: appModel.activeMode)
-                    .animation(.spring(response: 0.35, dampingFraction: 0.8), value: appModel.activeMode == .none)
-            }
-            .padding(.top, 18)
+            // Solo el indicador de llamada. El nombre del modelo y el estado del runtime
+            // eran información de diagnóstico, no algo que aporte al usar la app.
+            NikiModeIndicator(active: appModel.sttLabActive)
+                .animation(.spring(response: 0.35, dampingFraction: 0.8), value: appModel.sttLabActive)
+                .padding(.top, 18)
         }
         .onAppear {
             withAnimation(.spring(response: 0.5, dampingFraction: 0.84).delay(0.04)) {

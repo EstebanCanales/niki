@@ -36,9 +36,14 @@ struct NikiSidebarPanels: View {
                 NikiMcpPanel()
             case .diagnostics:
                 NikiDiagnosticsPanel()
-            case .auto:
-                NikiVoicePanel()
+            case .discover:
+                NikiDiscoverPanel()
             case .call:
+                // El botón de voz no abre panel (controla la conversación). Fallback inocuo.
+                NikiMicPanel()
+            case .mic:
+                NikiMicPanel()
+            case .sttLab:
                 NikiVoicePanel()
             case .settings:
                 NikiSettingsSidebar()
@@ -523,169 +528,354 @@ private var emptyTasks: some View {
 }
 #endif
 
-// MARK: - Voice Panel
+// MARK: - Mic Panel (selector de micrófono + control de llamada)
 
-struct NikiVoicePanel: View {
+struct NikiMicPanel: View {
     @EnvironmentObject private var appModel: NikiAppModel
 
     var body: some View {
-        SidebarShell(eyebrow: "Niki", title: "Modo voz") {
-            // --- Compañera continua ---
+        SidebarShell(eyebrow: "Voz", title: "Micrófono") {
             SidebarCard {
                 VStack(alignment: .leading, spacing: 14) {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Compañera continua")
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundStyle(.white)
-                            Text(appModel.companionActive ? companionStateLabel : "Escucha, responde y vuelve a escuchar sin parar.")
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundStyle(Color.white.opacity(0.5))
+                    Text("Elegí qué micrófono usa Niki para escucharte.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Color.white.opacity(0.5))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                    if !appModel.availableMicDevices.isEmpty {
+                        MicPicker(
+                            devices: appModel.availableMicDevices,
+                            selectedID: appModel.selectedMicDeviceID
+                        ) { id in
+                            appModel.selectMicDevice(id)
                         }
-                        Spacer()
-                        Button {
-                            appModel.activateAutoMode()
-                        } label: {
-                            ZStack {
-                                Capsule()
-                                    .fill(appModel.companionActive
-                                        ? Color(red: 0.1, green: 0.8, blue: 0.4).opacity(0.9)
-                                        : Color.white.opacity(0.1))
-                                    .frame(width: 80, height: 36)
-                                Text(appModel.companionActive ? "Detener" : "Activar")
-                                    .font(.system(size: 13, weight: .semibold))
-                                    .foregroundStyle(.white)
-                            }
-                        }
-                        .buttonStyle(.plain)
+                    } else {
+                        Text("Buscando micrófonos…")
+                            .font(.system(size: 12))
+                            .foregroundStyle(Color.white.opacity(0.4))
                     }
 
-                    // Nivel de audio + estado visual
-                    if appModel.companionActive {
-                        AudioLevelBar(level: CGFloat(appModel.audioLevel))
-                            .frame(height: 6)
-                    }
-                }
-            }
-
-            // --- Transcripción / respuesta reciente ---
-            if appModel.companionActive || !appModel.voiceTranscript.isEmpty {
-                SidebarCard {
-                    VStack(alignment: .leading, spacing: 10) {
-                        if !appModel.voiceTranscript.isEmpty {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("Tú dijiste")
-                                    .font(.system(size: 11, weight: .semibold))
-                                    .foregroundStyle(Color.white.opacity(0.35))
-                                Text(appModel.voiceTranscript)
-                                    .font(.system(size: 13, weight: .medium))
-                                    .foregroundStyle(Color.white.opacity(0.85))
-                            }
+                    // Nivel en vivo del micrófono mientras hay llamada (para confirmar que capta).
+                    if appModel.sttLabActive {
+                        HStack(spacing: 6) {
+                            Text("Nivel:")
+                                .font(.system(size: 10))
+                                .foregroundStyle(Color.white.opacity(0.3))
+                            Text(String(format: "%.1f dBFS", appModel.sttLabPeakDb))
+                                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                                .foregroundStyle(appModel.sttLabPeakDb > -40
+                                    ? Color(red: 0.2, green: 0.9, blue: 0.5)
+                                    : Color(red: 1, green: 0.5, blue: 0.2))
                         }
+                        SttWaveform(level: CGFloat(appModel.audioLevel))
+                            .frame(height: 28)
                     }
                 }
             }
+        }
+        .task { appModel.refreshMicDevices() }
+    }
+}
 
-            // --- Push-to-talk manual ---
+// MARK: - STT Lab + Call Panel
+
+struct NikiVoicePanel: View {
+    @EnvironmentObject private var appModel: NikiAppModel
+    @Namespace private var scroll
+
+    var body: some View {
+        SidebarShell(eyebrow: "Voz", title: "Conversación") {
+
+            // --- STT Lab control ---
             SidebarCard {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("Pulsar para hablar")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(Color.white.opacity(0.6))
-                    HStack(spacing: 10) {
-                        Button {
-                            Task {
-                                if appModel.voiceRecording {
-                                    await appModel.stopVoiceRecordingAndTranscribe()
-                                } else {
-                                    await appModel.startVoiceRecording()
+                    HStack {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Conversación con Niki")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(.white)
+                            Text(appModel.sttLabActive
+                                ? "Hablá normal — cuando te callés, Niki responde"
+                                : "Activa una conversación manos libres con Niki")
+                                .font(.system(size: 11))
+                                .foregroundStyle(Color.white.opacity(0.45))
+                        }
+                        Spacer()
+                        Button { appModel.toggleSttLab() } label: {
+                            HStack(spacing: 6) {
+                                if appModel.sttLabActive {
+                                    RecordingPulse()
                                 }
-                            }
-                        } label: {
-                            HStack(spacing: 8) {
-                                Image(systemName: appModel.voiceRecording ? "stop.circle.fill" : "mic.fill")
-                                    .font(.system(size: 14, weight: .semibold))
-                                Text(appModel.voiceRecording ? "Parar" : (appModel.voiceProcessing ? "Procesando…" : "Grabar"))
-                                    .font(.system(size: 13, weight: .semibold))
+                                Text(appModel.sttLabActive ? "Terminar" : "Llamar")
+                                    .font(.system(size: 12, weight: .semibold))
                             }
                             .foregroundStyle(.white)
-                            .frame(height: 36)
-                            .padding(.horizontal, 16)
+                            .padding(.horizontal, 14)
+                            .frame(height: 32)
                             .background(
-                                Capsule()
-                                    .fill(appModel.voiceRecording
-                                        ? Color(red: 1, green: 0.3, blue: 0.3).opacity(0.85)
-                                        : Color.white.opacity(0.1))
+                                Capsule().fill(appModel.sttLabActive
+                                    ? Color(red: 1, green: 0.3, blue: 0.3).opacity(0.8)
+                                    : Color(red: 0.18, green: 0.46, blue: 1).opacity(0.75))
                             )
                         }
                         .buttonStyle(.plain)
-                        .disabled(appModel.companionActive || appModel.voiceProcessing)
+                    }
 
-                        if appModel.voiceRecording {
-                            RecordingPulse()
+                    // Mic picker
+                    if !appModel.availableMicDevices.isEmpty {
+                        MicPicker(
+                            devices: appModel.availableMicDevices,
+                            selectedID: appModel.selectedMicDeviceID
+                        ) { id in
+                            appModel.selectMicDevice(id)
                         }
                     }
 
-                    if !appModel.voiceError.isEmpty {
-                        Text(appModel.voiceError)
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(Color(red: 1, green: 0.45, blue: 0.45))
+                    // Voice orb + waveform — reacciona a tu voz (verde) y a la de Niki (azul)
+                    if appModel.sttLabActive {
+                        VoiceOrb(
+                            level: CGFloat(appModel.audioLevel),
+                            peakDb: appModel.sttLabPeakDb,
+                            isNiki: appModel.speaking
+                        )
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 140)
+                            .transition(.opacity.combined(with: .scale(scale: 0.85)))
+
+                        SttWaveform(level: CGFloat(appModel.audioLevel))
+                            .frame(height: 28)
+                            .transition(.opacity)
+                    }
+
+                    // Estado diagnóstico en tiempo real
+                    if !appModel.sttLabStatus.isEmpty {
+                        HStack(spacing: 6) {
+                            Circle()
+                                .fill(appModel.sttMicPermission == "denied"
+                                    ? Color(red: 1, green: 0.3, blue: 0.3)
+                                    : Color(red: 0.2, green: 0.85, blue: 0.5))
+                                .frame(width: 6, height: 6)
+                            Text(appModel.sttLabStatus)
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundStyle(Color.white.opacity(0.55))
+                                .lineLimit(2)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+
+                    if !appModel.sttLabError.isEmpty {
+                        Text(appModel.sttLabError)
+                            .font(.system(size: 11))
+                            .foregroundStyle(Color(red: 1, green: 0.4, blue: 0.4))
                     }
                 }
             }
 
-            // --- Voz TTS ---
-            SidebarCard {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Voz de Niki")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(Color.white.opacity(0.6))
-                    Picker("", selection: $appModel.ttsVoice) {
-                        Text("Daniela — ES (AR)").tag("es_AR-daniela")
-                        Text("Dave — ES (ES)").tag("es_ES-davefx")
-                        Text("Sharvard — ES (ES)").tag("es_ES-sharvard")
-                        Text("MLS 10246 — ES").tag("es_ES-mls_10246")
-                        Text("MLS 9972 — ES").tag("es_ES-mls_9972")
-                        Text("Amy — EN (US)").tag("en_US-amy")
-                        Text("Cori — EN (GB)").tag("en_GB-cori")
-                    }
-                    .pickerStyle(.menu)
-                    .tint(.white)
-
-                    HStack(spacing: 10) {
-                        Button {
-                            Task { await appModel.testVoiceSample() }
-                        } label: {
-                            HStack(spacing: 6) {
-                                Image(systemName: appModel.speaking ? "speaker.wave.3.fill" : "speaker.wave.2")
-                                    .font(.system(size: 13))
-                                Text(appModel.speaking ? "Hablando…" : "Probar voz")
-                                    .font(.system(size: 13, weight: .medium))
+            // --- Chunk results ---
+            if !appModel.sttLabChunks.isEmpty {
+                SidebarCard {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("Turnos de conversación")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(Color.white.opacity(0.35))
+                            Spacer()
+                            Button {
+                                appModel.sttLabChunks = []
+                            } label: {
+                                Text("Limpiar")
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(Color.white.opacity(0.3))
                             }
-                            .foregroundStyle(Color.white.opacity(0.75))
-                            .frame(height: 32)
-                            .padding(.horizontal, 14)
-                            .background(Capsule().fill(Color.white.opacity(0.08)))
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
-                        .disabled(appModel.speaking)
 
-                        Toggle("Auto-hablar respuestas", isOn: $appModel.autoVoice)
-                            .font(.system(size: 12))
-                            .foregroundStyle(Color.white.opacity(0.6))
-                            .toggleStyle(.switch)
+                        ForEach(appModel.sttLabChunks.reversed()) { chunk in
+                            SttChunkRow(chunk: chunk)
+                        }
+                    }
+                }
+            } else if appModel.sttLabActive {
+                SidebarCard {
+                    HStack(spacing: 8) {
+                        ProgressView()
                             .controlSize(.small)
+                            .tint(Color.white.opacity(0.5))
+                        Text("Hablá cuando quieras…")
+                            .font(.system(size: 12))
+                            .foregroundStyle(Color.white.opacity(0.4))
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+        }
+        .task { appModel.refreshMicDevices() }
+    }
+
+}
+
+private struct SttChunkRow: View {
+    let chunk: NikiSttChunk
+
+    private var isNiki: Bool { chunk.provider.lowercased() == "niki" }
+
+    var body: some View {
+        HStack {
+            if isNiki { bubble; Spacer(minLength: 24) }
+            else { Spacer(minLength: 24); bubble }
+        }
+    }
+
+    private var bubble: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(isNiki ? "NIKI" : "TÚ")
+                .font(.system(size: 8, weight: .bold))
+                .tracking(1.2)
+                .foregroundStyle(accent)
+            Text(chunk.text)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(Color.white.opacity(0.92))
+                .fixedSize(horizontal: false, vertical: true)
+            if chunk.latencyMs > 0 {
+                Text("\(chunk.latencyMs)ms")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(Color.white.opacity(0.3))
+            }
+        }
+        .padding(.vertical, 8)
+        .padding(.horizontal, 11)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(accent.opacity(0.14))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(accent.opacity(0.22), lineWidth: 1)
+                )
+        )
+    }
+
+    private var accent: Color {
+        isNiki
+            ? Color(red: 0.3, green: 0.6, blue: 1.0)
+            : Color(red: 0.2, green: 0.85, blue: 0.5)
+    }
+}
+
+private struct MicPicker: View {
+    let devices: [(id: UInt32, name: String)]
+    let selectedID: UInt32
+    let onSelect: (UInt32) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("MICRÓFONO")
+                .font(.system(size: 9, weight: .semibold))
+                .tracking(1.8)
+                .foregroundStyle(Color.white.opacity(0.28))
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    micChip(id: 0, name: "Sistema")
+                    ForEach(devices, id: \.id) { dev in
+                        micChip(id: dev.id, name: dev.name)
                     }
                 }
             }
         }
     }
 
-    private var companionStateLabel: String {
-        if appModel.voiceProcessing { return "Procesando voz…" }
-        if appModel.speaking { return "Niki está hablando…" }
-        if appModel.voiceRecording { return "Escuchando (detectando silencio)…" }
-        return "En espera…"
+    private func micChip(id: UInt32, name: String) -> some View {
+        let active = selectedID == id
+        return Button {
+            onSelect(id)
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "mic.fill")
+                    .font(.system(size: 9, weight: .bold))
+                Text(name)
+                    .font(.system(size: 11, weight: .semibold))
+                    .lineLimit(1)
+            }
+            .foregroundStyle(active ? .white : Color.white.opacity(0.5))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(
+                Capsule().fill(active
+                    ? Color(red: 0.18, green: 0.46, blue: 1).opacity(0.7)
+                    : Color.white.opacity(0.06))
+                .overlay(Capsule().stroke(Color.white.opacity(active ? 0.0 : 0.08), lineWidth: 1))
+            )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+private struct VoiceOrb: View {
+    let level: CGFloat
+    let peakDb: Float
+    var isNiki: Bool = false
+
+    var body: some View {
+        VStack(spacing: 6) {
+            NikiThinkingOrbView(
+                state: isNiki ? .composing : .listening,
+                size: 120,
+                accentHex: isNiki ? "#70c9ff" : "#7dffb2",
+                speed: 0.82 + Double(min(1, max(0, level))) * 1.35
+            )
+
+            Text(isNiki ? "NIKI · hablando" : "TÚ · \(String(format: "%.0f dBFS", peakDb))")
+                .font(.system(size: 9, weight: .semibold, design: .rounded))
+                .foregroundStyle(Color.white.opacity(0.42))
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(isNiki ? "Niki está hablando" : "Micrófono activo")
+    }
+}
+
+private struct SttWaveform: View {
+    let level: CGFloat
+    private let barCount = 24
+
+    var body: some View {
+        HStack(spacing: 3) {
+            ForEach(0..<barCount, id: \.self) { i in
+                WaveBar(index: i, level: level, total: barCount)
+            }
+        }
+    }
+}
+
+private struct WaveBar: View {
+    let index: Int
+    let level: CGFloat
+    let total: Int
+    @State private var animOffset: CGFloat = 0
+
+    var body: some View {
+        let base = 0.15 + level * 0.85
+        let position = CGFloat(index) / CGFloat(total)
+        let envelope = 1.0 - abs(position - 0.5) * 1.2
+        let h = max(3, base * envelope * 32 + animOffset)
+
+        Capsule()
+            .fill(
+                LinearGradient(
+                    colors: [Color(red: 0.18, green: 0.6, blue: 1), Color(red: 0.46, green: 0.88, blue: 1)],
+                    startPoint: .bottom,
+                    endPoint: .top
+                )
+            )
+            .frame(width: 3, height: h)
+            .animation(.easeOut(duration: 0.08), value: level)
+            .onAppear {
+                let delay = Double(index) * 0.03
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                    withAnimation(.easeInOut(duration: 0.4 + Double(index % 5) * 0.08).repeatForever(autoreverses: true)) {
+                        animOffset = CGFloat.random(in: -3...3)
+                    }
+                }
+            }
     }
 }
 
@@ -747,24 +937,52 @@ private struct NikiSettingsSidebar: View {
     @State private var healthMessage: String = ""
     @State private var modelInfo: String = ""
 
-    private let ttsOptions: [(value: String, label: String)] = [
-        ("es_AR-daniela", "Daniela · ES (AR)"),
-        ("es_ES-davefx", "Dave · ES (ES)"),
-        ("es_ES-sharvard", "Sharvard · ES (ES)"),
-        ("es_ES-mls_10246", "MLS 10246 · ES (ES)"),
-        ("es_ES-mls_9972", "MLS 9972 · ES (ES)"),
-        ("en_US-amy", "Amy · EN (US)"),
-        ("en_GB-aru", "Aru · EN (GB)"),
-        ("en_GB-cori", "Cori · EN (GB)"),
-        ("en_GB-semaine", "Semaine · EN (GB)")
-    ]
-
     var body: some View {
         SidebarShell(eyebrow: "Settings", title: "Preferences") {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     settingsSection("Profile") {
                         field("Display name", text: $appModel.displayName)
+                    }
+
+                    settingsSection("Voz") {
+                        VStack(alignment: .leading, spacing: 10) {
+                            toggleRow("Mostrar STT Lab", isOn: $appModel.sttLabEnabled)
+                            Text("El STT Lab muestra el panel detallado de transcripción (chunks, latencias, diagnóstico). Apagado por defecto; al activarlo aparece su botón en el dock.")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(Color.white.opacity(0.34))
+                                .fixedSize(horizontal: false, vertical: true)
+                            Text("La voz de Niki se genera localmente con Qwen3-TTS cuando el entorno de voz está configurado.")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(Color.white.opacity(0.34))
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+
+                    settingsSection("Atajo de teclado") {
+                        VStack(alignment: .leading, spacing: 12) {
+                            toggleRow("Abrir Niki con doble toque", isOn: $appModel.doubleTapToOpenEnabled)
+                            if appModel.doubleTapToOpenEnabled {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("Modificador (tocar dos veces)")
+                                        .font(.system(size: 11, weight: .semibold))
+                                        .tracking(1.6)
+                                        .foregroundStyle(Color.white.opacity(0.36))
+                                    Picker("Modificador", selection: $appModel.doubleTapModifier) {
+                                        Text("Option ⌥").tag("option")
+                                        Text("Command ⌘").tag("command")
+                                        Text("Control ⌃").tag("control")
+                                        Text("Shift ⇧").tag("shift")
+                                    }
+                                    .pickerStyle(.segmented)
+                                    .labelsHidden()
+                                }
+                            }
+                            Text("Tocá dos veces seguidas la tecla elegida para abrir la ventana de Niki desde cualquier app. Requiere permiso de Accesibilidad.")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(Color.white.opacity(0.34))
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
 
                     settingsSection("Niki persona") {
@@ -899,24 +1117,6 @@ private struct NikiSettingsSidebar: View {
                         }
                     }
 
-                    settingsSection("Voice") {
-                        VStack(spacing: 12) {
-                            voicePicker
-                            toggleRow("Auto voice", isOn: $appModel.autoVoice)
-                            HStack(spacing: 10) {
-                                actionButton(appModel.speaking ? "Speaking..." : "Test voice") {
-                                    Task { await appModel.testVoiceSample() }
-                                }
-                                if !appModel.voiceTranscript.isEmpty {
-                                    Text(appModel.voiceTranscript)
-                                        .font(.system(size: 12, weight: .medium))
-                                        .foregroundStyle(Color.white.opacity(0.42))
-                                        .lineLimit(1)
-                                }
-                            }
-                        }
-                    }
-
                     if !appModel.settingsError.isEmpty {
                         Text(appModel.settingsError)
                             .font(.system(size: 12, weight: .medium))
@@ -931,33 +1131,6 @@ private struct NikiSettingsSidebar: View {
         }
         .task {
             await appModel.refreshSettingsData()
-        }
-    }
-
-    private var voicePicker: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("TTS Voice")
-                .font(.system(size: 11, weight: .semibold))
-                .tracking(1.6)
-                .foregroundStyle(Color.white.opacity(0.36))
-            Picker("TTS Voice", selection: $appModel.ttsVoice) {
-                ForEach(ttsOptions, id: \.value) { option in
-                    Text(option.label).tag(option.value)
-                }
-            }
-            .pickerStyle(.menu)
-            .tint(.white)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(Color.white.opacity(0.04))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .stroke(Color.white.opacity(0.08), lineWidth: 1)
-                    )
-            )
         }
     }
 

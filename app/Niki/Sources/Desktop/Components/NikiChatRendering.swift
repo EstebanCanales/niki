@@ -42,7 +42,7 @@ struct NikiMessageContentView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             if blocks.isEmpty, message.role == .assistant, message.content.isEmpty {
-                DotmHex10LoaderView(size: 28, dotSize: 3.4, speed: 1.1, bloom: true, colorPreset: .aurora)
+                NikiThinkingOrbView(state: .composing, size: 28, accentHex: "#7bdcff", speed: 1.1)
                     .padding(.horizontal, 4)
                     .padding(.vertical, 8)
             } else {
@@ -87,83 +87,6 @@ struct NikiMessageContentView: View {
                 }
             }
         }
-    }
-}
-
-enum DotmHex10ColorPreset {
-    case aurora
-
-    var colors: [Color] {
-        switch self {
-        case .aurora:
-            return [
-                Color(red: 0.42, green: 0.78, blue: 1.0),
-                Color(red: 0.68, green: 0.98, blue: 0.76),
-                Color(red: 0.92, green: 0.72, blue: 1.0)
-            ]
-        }
-    }
-}
-
-struct DotmHex10LoaderView: View {
-    var size: CGFloat = 32
-    var dotSize: CGFloat = 4
-    var speed: Double = 1
-    var bloom = false
-    var opacityBase: Double = 0.12
-    var opacityMid: Double = 0.42
-    var opacityPeak: Double = 0.95
-    var colorPreset: DotmHex10ColorPreset = .aurora
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    private let activeCells: [(x: Int, y: Int)] = [
-        (1, 0), (2, 0), (3, 0),
-        (0, 1), (1, 1), (2, 1), (3, 1), (4, 1),
-        (0, 2), (1, 2), (2, 2), (3, 2), (4, 2),
-        (0, 3), (1, 3), (2, 3), (3, 3), (4, 3),
-        (1, 4), (2, 4), (3, 4)
-    ]
-
-    var body: some View {
-        TimelineView(.animation) { timeline in
-            let phase = reduceMotion ? 0 : timeline.date.timeIntervalSinceReferenceDate * max(speed, 0.1)
-            ZStack {
-                ForEach(Array(activeCells.enumerated()), id: \.offset) { index, cell in
-                    let opacity = opacity(for: index, phase: phase)
-                    Circle()
-                        .fill(color(for: index).opacity(opacity))
-                        .frame(width: dotSize, height: dotSize)
-                        .shadow(
-                            color: bloom ? color(for: index).opacity(max(0, opacity - 0.35)) : .clear,
-                            radius: bloom ? 6 * opacity : 0
-                        )
-                        .position(position(for: cell))
-                }
-            }
-            .frame(width: size, height: size)
-            .accessibilityLabel("Loading")
-        }
-    }
-
-    private func position(for cell: (x: Int, y: Int)) -> CGPoint {
-        let step = (size - dotSize) / 4
-        return CGPoint(
-            x: dotSize / 2 + CGFloat(cell.x) * step,
-            y: dotSize / 2 + CGFloat(cell.y) * step
-        )
-    }
-
-    private func opacity(for index: Int, phase: Double) -> Double {
-        let wave = (sin(phase * 3.2 + Double(index) * 0.72) + 1) / 2
-        if wave < 0.5 {
-            return opacityBase + (opacityMid - opacityBase) * (wave / 0.5)
-        }
-        return opacityMid + (opacityPeak - opacityMid) * ((wave - 0.5) / 0.5)
-    }
-
-    private func color(for index: Int) -> Color {
-        let colors = colorPreset.colors
-        return colors[index % colors.count]
     }
 }
 

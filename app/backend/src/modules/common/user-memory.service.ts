@@ -9,9 +9,21 @@ export interface StoredMemoryEntry {
   updatedAt: string;
 }
 
+const UNREACHABLE_TTL_MS = 30_000;
+/** Cuánto vive la lista de memoria en caché. Durante una llamada hay varios turnos
+ *  seguidos del mismo usuario y cada uno pagaba dos round-trips a Upstash (KEYS + MGET)
+ *  antes de que el modelo empezara a generar. Escribir invalida, así que el único
+ *  desfase posible es frente a otro proceso escribiendo el mismo Redis. */
+const ENTRIES_CACHE_TTL_MS = 30_000;
+
 @Injectable()
 export class UserMemoryService {
   private readonly logger = new Logger(UserMemoryService.name);
+  private unreachableUntil = 0;
+  private readonly entriesCache = new Map<string, { entries: StoredMemoryEntry[]; expiresAt: number }>();
+  /** Lecturas en vuelo por usuario: si tres llamadores piden memoria a la vez (que es
+   *  justo lo que hace un turno), comparten una sola ida a Upstash en vez de tres. */
+  private readonly entriesInFlight = new Map<string, Promise<StoredMemoryEntry[]>>();
 
   constructor(
     @Inject(AppConfigService)
@@ -29,6 +41,7 @@ export class UserMemoryService {
     const url = `${upstashRedisRestUrl.replace(/\/+$/, "")}${path}`;
     return fetch(url, {
       ...init,
+      signal: AbortSignal.timeout(1_500),
       headers: {
         Authorization: `Bearer ${upstashRedisRestToken}`,
         "Content-Type": "application/json",
@@ -69,12 +82,40 @@ export class UserMemoryService {
   }
 
   async safeListEntries(userId: string) {
-    try {
-      return await this.listEntries(userId);
-    } catch (error) {
-      this.logger.warn(`[memory] safeListEntries failed for ${userId}: ${String(error)}`);
-      return [];
-    }
+    if (Date.now() < this.unreachableUntil) return [];
+
+    const cached = this.entriesCache.get(userId);
+    if (cached && Date.now() < cached.expiresAt) return cached.entries;
+
+    const inFlight = this.entriesInFlight.get(userId);
+    if (inFlight) return inFlight;
+
+    const request = (async () => {
+      try {
+        const result = await this.listEntries(userId);
+        this.unreachableUntil = 0;
+        this.entriesCache.set(userId, {
+          entries: result,
+          expiresAt: Date.now() + ENTRIES_CACHE_TTL_MS,
+        });
+        return result;
+      } catch (error) {
+        this.unreachableUntil = Date.now() + UNREACHABLE_TTL_MS;
+        this.logger.warn(`[memory] safeListEntries failed for ${userId}: ${String(error)}`);
+        return [] as StoredMemoryEntry[];
+      } finally {
+        this.entriesInFlight.delete(userId);
+      }
+    })();
+
+    this.entriesInFlight.set(userId, request);
+    return request;
+  }
+
+  /** Toda escritura tira la caché de ese usuario — si no, un hecho recién guardado no
+   *  existiría para el modelo hasta 30 s después. */
+  private invalidateEntries(userId: string) {
+    this.entriesCache.delete(userId);
   }
 
   async setEntry(userId: string, key: string, value: string, ttl?: number) {
@@ -89,6 +130,7 @@ export class UserMemoryService {
       ? `/set/${encodeURIComponent(redisKey)}/${encodeURIComponent(JSON.stringify(entry))}/ex/${ttl}`
       : `/set/${encodeURIComponent(redisKey)}/${encodeURIComponent(JSON.stringify(entry))}`;
     await this.upstashFetch(setPath);
+    this.invalidateEntries(userId);
     return entry;
   }
 
@@ -104,6 +146,7 @@ export class UserMemoryService {
   async deleteEntry(userId: string, key: string) {
     const redisKey = `niki:memory:${userId}:${key}`;
     await this.upstashFetch(`/del/${encodeURIComponent(redisKey)}`);
+    this.invalidateEntries(userId);
     return { ok: true };
   }
 }

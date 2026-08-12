@@ -61,13 +61,41 @@ export class ConversationContextService {
     private readonly userMemoryService: UserMemoryService,
   ) {}
 
-  async captureUserTurn(userId: string, sessionId: string, channel: string, input: string) {
+  /** Una sola lectura de memoria por turno, compartida entre captureUserTurn/getPersonaProfile/buildRuntimeContext. */
+  async prefetchMemory(userId: string) {
+    return this.userMemoryService.safeListEntries(userId);
+  }
+
+  async captureUserTurn(
+    userId: string,
+    sessionId: string,
+    channel: string,
+    input: string,
+    memoryEntries?: StoredMemoryEntry[],
+  ) {
+    this.captureUserTurnContext(userId, sessionId, channel, input);
+    await this.rememberExplicitFacts(userId, input, memoryEntries);
+  }
+
+  /**
+   * Parte barata del turno: solo memoria de proceso. Tiene que correr **antes** de
+   * `buildRuntimeContext`, que lee este contexto corto.
+   */
+  captureUserTurnContext(userId: string, sessionId: string, channel: string, input: string) {
     this.updateShortContext(userId, sessionId, channel, {
       lastDomain: "chat",
       lastUserRequest: summarizeText(input),
       updatedAt: nowIso(),
     });
-    await this.rememberExplicitFacts(userId, input);
+  }
+
+  /**
+   * Escritura de hechos explícitos a Upstash. Nada de la respuesta en curso la lee, así
+   * que el proxy la lanza en segundo plano en vez de meter un round-trip antes de que
+   * el modelo empiece a generar.
+   */
+  async persistExplicitFacts(userId: string, input: string, memoryEntries?: StoredMemoryEntry[]) {
+    await this.rememberExplicitFacts(userId, input, memoryEntries);
   }
 
   async recordAssistantReply(
@@ -146,17 +174,22 @@ export class ConversationContextService {
     );
   }
 
-  async getPersonaProfile(userId: string) {
-    const entries = await this.userMemoryService.safeListEntries(userId);
+  async getPersonaProfile(userId: string, memoryEntries?: StoredMemoryEntry[]) {
+    const entries = memoryEntries ?? (await this.userMemoryService.safeListEntries(userId));
     return this.parsePersonaProfile(entries);
   }
 
-  async buildRuntimeContext(userId: string, sessionId: string, channel: string) {
+  async buildRuntimeContext(
+    userId: string,
+    sessionId: string,
+    channel: string,
+    memoryEntries?: StoredMemoryEntry[],
+  ) {
     const [me, activities, workItems, memory] = await Promise.all([
       Promise.resolve(this.identityService.me(userId)).catch(() => null),
       Promise.resolve(this.auditService.activities(userId)).catch(() => null),
       Promise.resolve(this.workItemsService.list(userId)).catch(() => null),
-      this.userMemoryService.safeListEntries(userId),
+      memoryEntries ? Promise.resolve(memoryEntries) : this.userMemoryService.safeListEntries(userId),
     ]);
 
     const context = {
@@ -235,11 +268,11 @@ export class ConversationContextService {
     });
   }
 
-  private async rememberExplicitFacts(userId: string, input: string) {
+  private async rememberExplicitFacts(userId: string, input: string, memoryEntries?: StoredMemoryEntry[]) {
     const text = String(input ?? "").trim();
     if (!text) return;
 
-    const existingEntries = await this.userMemoryService.safeListEntries(userId);
+    const existingEntries = memoryEntries ?? (await this.userMemoryService.safeListEntries(userId));
     const currentPersonaProfile = this.parsePersonaProfile(existingEntries);
     const captures: Array<{ key: string; value: string }> = [];
 

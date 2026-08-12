@@ -101,6 +101,8 @@ export function NikiOrb({ className = "", state = "resting" }: NikiOrbProps) {
       data-state={state}
       role="img"
     >
+      <span className="niki-orb__volume" aria-hidden="true" />
+      <span className="niki-orb__texture" aria-hidden="true" />
       <canvas aria-hidden="true" ref={canvasRef} />
       <span className="niki-orb__core" aria-hidden="true" />
     </div>

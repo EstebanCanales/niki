@@ -24,10 +24,19 @@ struct NikiNotchContentView: View {
     private let openAnimation = Animation.spring(response: 0.42, dampingFraction: 0.82, blendDuration: 0)
     private let closeAnimation = Animation.spring(response: 0.45, dampingFraction: 1.0, blendDuration: 0)
 
+    /// En llamada el notch pasa a una tarjeta angosta y casi cuadrada: orbe al centro y
+    /// controles abajo, sin campo de texto ni tabs.
+    private var inCall: Bool { appModel.sttLabActive }
+
+    private var openNotchWidth: CGFloat {
+        inCall ? 300 : openNotchSize.width
+    }
+
     private var tabContentHeight: CGFloat {
+        if inCall { return 186 }
         switch coordinator.currentView {
         case .home:
-            return 186
+            return 132
         case .utils:
             return 176
         case .shelf:
@@ -36,15 +45,24 @@ struct NikiNotchContentView: View {
     }
 
     private var openSurfaceHeight: CGFloat {
-        coordinator.currentView == .utils ? 258 : 270
+        if inCall { return 214 }
+        switch coordinator.currentView {
+        case .home:
+            return 216
+        case .utils:
+            return 258
+        case .shelf:
+            return 270
+        }
     }
 
     private var missionStateLabel: String {
-        if appModel.voiceProcessing { return "Transcribing" }
-        if appModel.voiceRecording { return "Listening" }
-        if appModel.chatBusy { return "Thinking" }
+        if appModel.speaking { return "Hablando" }
+        if appModel.voiceProcessing { return "Transcribiendo" }
+        if appModel.voiceRecording { return "Escuchando" }
+        if appModel.chatBusy { return "Pensando" }
         if !appModel.voiceError.isEmpty { return "Error" }
-        return "Ready"
+        return "Listo"
     }
 
     private var currentNotchShape: NotchShape {
@@ -60,37 +78,44 @@ struct NikiNotchContentView: View {
                 notchBackground
 
                 if vm.notchState == .open {
-                    VStack(spacing: 9) {
-                        NotchTopBar(
-                            state: missionStateLabel,
-                            fileCount: appModel.chatAttachments.count,
-                            voiceActive: appModel.voiceRecording || appModel.voiceProcessing
-                        )
+                    VStack(spacing: inCall ? 0 : 8) {
+                        // Durante la llamada no hay tabs: la vista es solo orbe + controles.
+                        if !inCall {
+                            NotchTopBar(
+                                state: missionStateLabel,
+                                fileCount: appModel.chatAttachments.count,
+                                voiceActive: appModel.voiceRecording || appModel.voiceProcessing || appModel.speaking || appModel.sttLabActive
+                            )
+                        }
 
                         tabContent
                             .frame(
                                 maxWidth: .infinity,
                                 minHeight: tabContentHeight,
                                 maxHeight: tabContentHeight,
-                                alignment: .top
+                                alignment: inCall ? .center : .top
                             )
                     }
-                    .padding(.top, 10)
-                    .padding(.horizontal, 18)
-                    .padding(.bottom, 10)
+                    .padding(.top, inCall ? 6 : 8)
+                    .padding(.horizontal, inCall ? 12 : 16)
+                    .padding(.bottom, inCall ? 6 : 8)
                     .frame(maxWidth: .infinity, alignment: .top)
                     .transition(.opacity.combined(with: .scale(scale: 0.96)))
                 } else {
                     ClosedNotchHandle(
                         state: missionStateLabel,
-                        voiceActive: appModel.voiceRecording || appModel.voiceProcessing
+                        voiceActive: appModel.voiceRecording || appModel.voiceProcessing || appModel.speaking || appModel.sttLabActive,
+                        cutoutWidth: vm.closedNotchSize.width,
+                        inCall: showsClosedCallIndicator,
+                        audioLevel: appModel.audioLevel,
+                        sideWidth: Self.closedIndicatorWidth
                     )
-                    .padding(.top, 8)
+                    .padding(.top, showsClosedCallIndicator ? 0 : 8)
                     .transition(.opacity)
                 }
             }
             .frame(
-                width: vm.notchState == .open ? openNotchSize.width : vm.closedNotchSize.width,
+                width: vm.notchState == .open ? openNotchWidth : closedSurfaceWidth,
                 height: vm.notchState == .open ? openSurfaceHeight : max(vm.closedNotchSize.height, 28)
             )
             .clipShape(currentNotchShape)
@@ -106,9 +131,6 @@ struct NikiNotchContentView: View {
         .frame(maxWidth: windowSize.width, maxHeight: windowSize.height, alignment: .top)
         .preferredColorScheme(.dark)
         .environmentObject(vm)
-        .onAppear {
-            notchDebugLog("content appeared")
-        }
     }
 
     private var notchBackground: some View {
@@ -135,37 +157,97 @@ struct NikiNotchContentView: View {
         }
     }
 
+    /// Con el notch cerrado y una llamada en curso lo ensanchamos a ambos lados para
+    /// poder mostrar el indicador junto a la cámara. Simétrico a propósito: si creciera
+    /// solo de un lado, el recorte dejaría de coincidir con la cámara física.
+    private var closedSurfaceWidth: CGFloat {
+        showsClosedCallIndicator
+            ? vm.closedNotchSize.width + 2 * Self.closedIndicatorWidth
+            : vm.closedNotchSize.width
+    }
+
+    private var showsClosedCallIndicator: Bool {
+        vm.notchState == .closed && appModel.sttLabActive
+    }
+
+    private static let closedIndicatorWidth: CGFloat = 44
+
     @ViewBuilder
     private var tabContent: some View {
+        if inCall {
+            callPanel
+        } else {
+            homeContent
+        }
+    }
+
+    /// Modo llamada: orbe al centro, controles abajo. Sin input.
+    private var callPanel: some View {
+        VStack(spacing: 14) {
+            OrbPanel(size: 96, calm: true)
+                .frame(width: 96, height: 96)
+
+            HStack(spacing: 12) {
+                NotchCallButton(
+                    symbol: appModel.callMuted ? "mic.slash.fill" : "mic.fill",
+                    tint: appModel.callMuted ? Color(red: 1, green: 0.55, blue: 0.45) : .white.opacity(0.9),
+                    fill: appModel.callMuted
+                        ? Color(red: 1, green: 0.4, blue: 0.3).opacity(0.18)
+                        : Color.white.opacity(0.07),
+                    help: appModel.callMuted ? "Reactivar micrófono" : "Silenciar micrófono"
+                ) { appModel.toggleCallMute() }
+
+                NotchCallButton(
+                    symbol: "phone.down.fill",
+                    tint: Color(red: 1, green: 0.45, blue: 0.42),
+                    fill: Color(red: 1, green: 0.32, blue: 0.32).opacity(0.16),
+                    help: "Terminar llamada"
+                ) { appModel.endCall() }
+
+                NotchCallButton(
+                    symbol: "xmark",
+                    tint: .white.opacity(0.66),
+                    fill: Color.white.opacity(0.05),
+                    help: "Cerrar el notch (la llamada sigue)"
+                ) {
+                    // Colapsa el notch sin cortar la conversación: el flag suelta el
+                    // anclaje y `force` salta la guarda de close().
+                    appModel.notchCallDismissed = true
+                    vm.close(force: true)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    @ViewBuilder
+    private var homeContent: some View {
         switch coordinator.currentView {
         case .home:
-            HStack(alignment: .top, spacing: 16) {
-                OrbPanel()
-                    .frame(width: 110, height: 154)
+            HStack(alignment: .center, spacing: 14) {
+                // El orbe se dibuja a 146px; antes vivía en un frame de 110 y quedaba
+                // recortado por los costados. Ahora el contenedor lo contiene entero.
+                OrbPanel(size: 88)
+                    .frame(width: 88, height: 88)
 
                 ChatControls(
                     prompt: $prompt,
-                    submitState: missionStateLabel,
                     droppedFiles: appModel.chatAttachments,
                     voiceRecording: appModel.voiceRecording,
                     voiceProcessing: appModel.voiceProcessing,
-                    callModeActive: appModel.activeMode == .call,
+                    speaking: appModel.speaking,
+                    callModeActive: appModel.sttLabActive,
+                    callMuted: appModel.callMuted,
                     promptFocused: _promptFocused,
                     onSubmit: submitPrompt,
-                    onVoice: { toggleVoiceDictation() },
-                    onShowUtils: { coordinator.currentView = .utils },
-                    onShowShelf: { coordinator.currentView = .shelf },
-                    onClear: {
-                        prompt = ""
-                        appModel.chatAttachments = []
-                    },
+                    onCall: { toggleAutonomousConversation() },
                     onDropFiles: { providers in
                         attachProviders(providers)
                     }
                 )
-                .frame(maxWidth: .infinity, minHeight: tabContentHeight, maxHeight: tabContentHeight, alignment: .top)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
             }
-            .frame(maxHeight: .infinity, alignment: .top)
+            .frame(maxHeight: .infinity, alignment: .center)
         case .utils:
             HStack(alignment: .top, spacing: 18) {
                 MusicPlayerView(albumArtNamespace: albumArtNamespace)
@@ -196,6 +278,10 @@ struct NikiNotchContentView: View {
         } else {
             Task { await appModel.startVoiceRecording() }
         }
+    }
+
+    private func toggleAutonomousConversation() {
+        appModel.toggleSttLab()
     }
 
     private func attachProviders(_ providers: [NSItemProvider]) {
@@ -232,7 +318,6 @@ struct NikiNotchContentView: View {
         hoverTask?.cancel()
 
         if hovering {
-            notchDebugLog("hover open")
             vm.open()
             Task { @MainActor in
                 try? await Task.sleep(for: .milliseconds(90))
@@ -242,7 +327,6 @@ struct NikiNotchContentView: View {
             hoverTask = Task { @MainActor in
                 try? await Task.sleep(for: .milliseconds(120))
                 guard !Task.isCancelled, !isHovering else { return }
-                notchDebugLog("hover close")
                 promptFocused = false
                 vm.close()
             }
@@ -253,20 +337,49 @@ struct NikiNotchContentView: View {
 private struct ClosedNotchHandle: View {
     let state: String
     let voiceActive: Bool
+    /// Ancho del recorte físico. Se reserva en el centro para que el indicador quede
+    /// *al lado* de la cámara y no encima (donde sería invisible en una Mac con notch).
+    var cutoutWidth: CGFloat = 0
+    var inCall: Bool = false
+    var audioLevel: Float = 0
+    var sideWidth: CGFloat = 44
 
     var body: some View {
-        // Invisible when closed — blends with hardware notch (black on black)
-        // Show a subtle glow only when voice is active
-        Group {
-            if voiceActive {
-                Circle()
-                    .fill(Color(red: 0.46, green: 0.88, blue: 1).opacity(0.72))
-                    .frame(width: 6, height: 6)
-                    .shadow(color: Color(red: 0.46, green: 0.88, blue: 1).opacity(0.9), radius: 10)
-                    .padding(.vertical, 8)
-            } else {
-                Color.clear
+        if inCall {
+            // Mismo patrón que InlineHUD: hueco | recorte físico | indicador.
+            HStack(spacing: 0) {
+                Color.clear.frame(width: sideWidth)
+                Color.clear.frame(width: cutoutWidth)
+                callIndicator.frame(width: sideWidth)
             }
+            .padding(.vertical, 6)
+        } else if voiceActive {
+            // Invisible when closed — blends with hardware notch (black on black)
+            // Show a subtle glow only when voice is active
+            Circle()
+                .fill(Color(red: 0.46, green: 0.88, blue: 1).opacity(0.72))
+                .frame(width: 6, height: 6)
+                .shadow(color: Color(red: 0.46, green: 0.88, blue: 1).opacity(0.9), radius: 10)
+                .padding(.vertical, 8)
+        } else {
+            Color.clear
+        }
+    }
+
+    private var callIndicator: some View {
+        let level = Double(max(0, min(1, audioLevel)))
+        return HStack(spacing: 5) {
+            Image(systemName: "phone.fill")
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(Color(red: 0.46, green: 0.88, blue: 1))
+
+            Circle()
+                .fill(Color(red: 0.46, green: 0.88, blue: 1))
+                .frame(width: 5, height: 5)
+                .scaleEffect(1 + 0.55 * level)
+                .shadow(color: Color(red: 0.46, green: 0.88, blue: 1).opacity(0.8),
+                        radius: 3 + 5 * level)
+                .animation(.easeOut(duration: 0.12), value: audioLevel)
         }
     }
 }
@@ -300,7 +413,7 @@ private struct NotchTopBar: View {
 
     private var statusTint: Color {
         if voiceActive { return Color(red: 0.46, green: 0.88, blue: 1) }
-        if state == "Thinking" { return Color(red: 0.58, green: 0.77, blue: 1) }
+        if state == "Pensando" { return Color(red: 0.58, green: 0.77, blue: 1) }
         if state == "Error" { return Color(red: 1, green: 0.42, blue: 0.42) }
         return Color.white.opacity(0.74)
     }
@@ -328,218 +441,101 @@ private struct NikiStatusPill: View {
 }
 
 
-private struct NotchOrbDot {
-    let x: Double
-    let y: Double
-    let z: Double
-    let lon: Double
-    let lat: Double
-    let seed: Double
-    let seed2: Double
-}
+/// Botón circular de los controles de llamada del notch.
+private struct NotchCallButton: View {
+    let symbol: String
+    let tint: Color
+    let fill: Color
+    let help: String
+    let action: () -> Void
 
-private struct NotchRenderedDot {
-    let x: CGFloat
-    let y: CGFloat
-    let z: Double
-    let scale: Double
-    let alpha: Double
-    let size: Double
-    let glow: Double
+    @State private var hovered = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(tint)
+                .frame(width: 36, height: 36)
+                .background(
+                    Circle()
+                        .fill(fill)
+                        .overlay(
+                            Circle().strokeBorder(
+                                Color.white.opacity(hovered ? 0.16 : 0.06), lineWidth: 1)
+                        )
+                )
+                .scaleEffect(hovered ? 1.07 : 1)
+        }
+        .buttonStyle(.plain)
+        .help(help)
+        .onHover { inside in
+            withAnimation(.easeOut(duration: 0.16)) { hovered = inside }
+        }
+    }
 }
 
 private struct OrbPanel: View {
-    private let dotCount = 520
-    private let camera = 620.0
+    @EnvironmentObject private var appModel: NikiAppModel
+    /// El orbe se dibuja exactamente a este tamaño. Antes estaba fijo en 146 y el
+    /// contenedor lo recortaba; ahora quien lo usa manda el tamaño real.
+    var size: CGFloat = 88
+    /// En llamada el orbe vive en pantalla todo el rato: gira lento y respira en vez
+    /// de vibrar con cada sílaba.
+    var calm: Bool = false
 
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .fill(Color.white.opacity(0.012))
 
-            TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
-                let loop = timeline.date.timeIntervalSinceReferenceDate / 18.5
-                let t = loop * Double.pi * 2
-
-                ZStack {
-                    Circle()
-                        .fill(
-                            RadialGradient(
-                                colors: [
-                                    Color(red: 0.34, green: 0.58, blue: 1.0).opacity(0.26),
-                                    Color(red: 0.48, green: 0.36, blue: 0.95).opacity(0.08),
-                                    Color.clear
-                                ],
-                                center: .center,
-                                startRadius: 6,
-                                endRadius: 86
-                            )
-                        )
-                        .blur(radius: 18)
-
-                    Circle()
-                        .fill(
-                            RadialGradient(
-                                colors: [
-                                    Color(red: 0.55, green: 0.9, blue: 1.0).opacity(0.20),
-                                    Color.clear
-                                ],
-                                center: .center,
-                                startRadius: 4,
-                                endRadius: 68
-                            )
-                        )
-                        .blur(radius: 8)
-
-                    Canvas { context, size in
-                        let side = min(size.width, size.height)
-                        let radius = Double(side) * 0.31
-                        let center = CGPoint(x: size.width / 2, y: size.height / 2)
-                        let dots = buildDots(radius: radius)
-                        let rotY = t * 0.58
-                        let rotX = 0.14 * sin(t * 0.45)
-
-                        var rendered: [NotchRenderedDot] = []
-                        rendered.reserveCapacity(dots.count)
-
-                        for dot in dots {
-                            var point = rotateY(x: dot.x, y: dot.y, z: dot.z, angle: rotY)
-                            point = rotateX(x: point.x, y: point.y, z: point.z, angle: rotX)
-
-                            let scale = camera / (camera - point.z)
-                            let x = center.x + CGFloat(point.x * scale)
-                            let y = center.y + CGFloat(point.y * scale)
-                            let depth = (point.z + radius) / (2 * radius)
-                            let waveA = 1 - min(1, abs(sin(2.0 * dot.lon - t + dot.seed * 0.8)) / 0.16)
-                            let waveB = 1 - min(1, abs(sin(1.2 * dot.lat + 1.3 * dot.lon + t * 1.2)) / 0.22)
-                            let glow = pow(max(waveA, waveB), 1.15)
-                            let flicker = 0.78 + 0.22 * sin(t * 1.9 + dot.seed2 * Double.pi * 2)
-
-                            rendered.append(
-                                NotchRenderedDot(
-                                    x: x,
-                                    y: y,
-                                    z: point.z,
-                                    scale: scale,
-                                    alpha: min(1, (0.16 + depth * 0.70) * flicker + glow * 0.18),
-                                    size: 0.75 + depth * 1.85 + glow * 1.05,
-                                    glow: glow
-                                )
-                            )
-                        }
-
-                        rendered.sort { $0.z < $1.z }
-                        context.blendMode = .screen
-
-                        for dot in rendered {
-                            let radius = CGFloat(dot.size * dot.scale)
-                            if dot.glow > 0.08 {
-                                context.fill(
-                                    Path(ellipseIn: CGRect(
-                                        x: dot.x - radius * 2.2,
-                                        y: dot.y - radius * 2.2,
-                                        width: radius * 4.4,
-                                        height: radius * 4.4
-                                    )),
-                                    with: .color(Color(red: 0.55, green: 0.9, blue: 1.0).opacity(0.06 * dot.glow))
-                                )
-                            }
-
-                            let color = Color(
-                                red: min(1, 0.36 + 0.10 * dot.glow + 0.04 * dot.alpha),
-                                green: min(1, 0.62 + 0.11 * dot.alpha + 0.06 * dot.glow),
-                                blue: min(1, 0.94 + 0.14 * dot.glow)
-                            )
-                            context.fill(
-                                Path(ellipseIn: CGRect(
-                                    x: dot.x - radius,
-                                    y: dot.y - radius,
-                                    width: radius * 2,
-                                    height: radius * 2
-                                )),
-                                with: .color(color.opacity(dot.alpha))
-                            )
-                        }
-                    }
-                }
-                .padding(8)
-            }
-        }
-    }
-
-    private func buildDots(radius: Double) -> [NotchOrbDot] {
-        (0..<dotCount).map { index in
-            let u = Double(index) / Double(dotCount)
-            let y = 1 - 2 * u
-            let ring = sqrt(max(0, 1 - y * y))
-            let theta = Double.pi * (3 - sqrt(5)) * Double(index)
-            let x = cos(theta) * ring
-            let z = sin(theta) * ring
-
-            return NotchOrbDot(
-                x: x * radius,
-                y: y * radius,
-                z: z * radius,
-                lon: atan2(z, x),
-                lat: asin(y),
-                seed: fract(sin(Double(index) * 91.173) * 43758.5453123),
-                seed2: fract(sin(Double(index + 17) * 51.931) * 24634.63451)
+            NikiThinkingOrbView(
+                state: NikiThinkingOrbState.from(agentState: appModel.agentState),
+                size: size,
+                accentHex: appModel.orbAccentHex,
+                speed: calm ? (appModel.speaking ? 0.6 : 0.46) : (appModel.speaking ? 1.2 : 1),
+                liveLevel: Double(appModel.audioLevel),
+                calm: calm
             )
         }
-    }
-
-    private func rotateY(x: Double, y: Double, z: Double, angle: Double) -> (x: Double, y: Double, z: Double) {
-        let c = cos(angle)
-        let s = sin(angle)
-        return (x * c + z * s, y, -x * s + z * c)
-    }
-
-    private func rotateX(x: Double, y: Double, z: Double, angle: Double) -> (x: Double, y: Double, z: Double) {
-        let c = cos(angle)
-        let s = sin(angle)
-        return (x, y * c - z * s, y * s + z * c)
-    }
-
-    private func fract(_ value: Double) -> Double {
-        value - floor(value)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Estado de Niki: \(NikiThinkingOrbState.from(agentState: appModel.agentState).label)")
     }
 }
 
 private struct ChatControls: View {
     @Binding var prompt: String
-    let submitState: String
     let droppedFiles: [NikiChatAttachment]
     let voiceRecording: Bool
     let voiceProcessing: Bool
+    let speaking: Bool
     let callModeActive: Bool
+    let callMuted: Bool
     @FocusState var promptFocused: Bool
     @State private var dropTargeted = false
     let onSubmit: () -> Void
-    let onVoice: () -> Void
-    let onShowUtils: () -> Void
-    let onShowShelf: () -> Void
-    let onClear: () -> Void
+    let onCall: () -> Void
     var onDropFiles: (([NSItemProvider]) -> Void)?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            captureTopBar
+        // Solo lo esencial: el orbe, el campo de texto, enviar y llamar. Antes había
+        // cuatro filas apiladas (barra de estado, tarjeta de conversación, composer y
+        // fila de acciones) en muy poca altura y todo quedaba apretado.
+        VStack(spacing: 0) {
+            Spacer(minLength: 0)
             composerRow
-            actionRow
-
-            if !droppedFiles.isEmpty {
-                attachedFilesRow
-            }
-
             Spacer(minLength: 0)
         }
-        .padding(12)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        // Sin tarjeta de fondo: el campo ya tiene la suya y una segunda caja alrededor
+        // solo dejaba un rectángulo vacío enorme. Al arrastrar archivos sí se marca.
         .background(
             RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .fill(dropTargeted ? Color.white.opacity(0.07) : Color.white.opacity(0.022))
+                .fill(dropTargeted ? Color.white.opacity(0.06) : Color.clear)
                 .overlay(
                     RoundedRectangle(cornerRadius: 22, style: .continuous)
-                        .stroke(dropTargeted ? Color.white.opacity(0.24) : Color.white.opacity(0.06), lineWidth: 1)
+                        .stroke(dropTargeted ? Color.white.opacity(0.24) : Color.clear, lineWidth: 1)
                 )
         )
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -552,88 +548,44 @@ private struct ChatControls: View {
         }
     }
 
-    private var captureTopBar: some View {
-        HStack(spacing: 7) {
-            NikiStatusPill(icon: "command", label: "Capture", tint: Color.white.opacity(0.78))
 
-            if !droppedFiles.isEmpty {
-                NikiStatusPill(
-                    icon: "doc.fill",
-                    label: "\(droppedFiles.count) file\(droppedFiles.count == 1 ? "" : "s")",
-                    tint: Color(red: 0.58, green: 0.77, blue: 1)
-                )
-            }
-
-            Spacer(minLength: 8)
-
-            Text(stateCopy)
-                .font(.system(size: 11, weight: .semibold, design: .rounded))
-                .foregroundStyle(stateTint)
-        }
-    }
 
     private var composerRow: some View {
         HStack(alignment: .center, spacing: 10) {
-            MessageGlyph()
+            HStack(alignment: .center, spacing: 10) {
+                TextField("Escribe a Niki…", text: $prompt)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 15, weight: .medium, design: .rounded))
+                    .foregroundStyle(.white)
+                    .focused($promptFocused)
+                    .onSubmit { onSubmit() }
 
-            TextField("Ask anything", text: $prompt)
-                .textFieldStyle(.plain)
-                .font(.system(size: 16, weight: .medium, design: .rounded))
-                .foregroundStyle(.white)
-                .focused($promptFocused)
-                .onSubmit {
-                    notchDebugLog("textfield submit chars=\(prompt.trimmingCharacters(in: .whitespacesAndNewlines).count)")
-                    onSubmit()
-                }
-                .onChange(of: prompt) { _, newValue in
-                    if newValue.count == 1 || newValue.isEmpty {
-                        notchDebugLog("textfield changed chars=\(newValue.count)")
-                    }
-                }
-
-            NotchSendButton(canSubmit: canSubmit) {
-                notchDebugLog("send button tapped chars=\(prompt.trimmingCharacters(in: .whitespacesAndNewlines).count)")
-                onSubmit()
+                NotchSendButton(canSubmit: canSubmit, action: onSubmit)
             }
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background(composerBackground)
-    }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(composerBackground)
 
-    private var actionRow: some View {
-        HStack(spacing: 7) {
-            if callModeActive {
-                NotchActionButton(
-                    icon: voiceIcon,
-                    label: voiceRecording ? "Stop" : voiceProcessing ? "Voice" : "Mic",
-                    active: voiceRecording || voiceProcessing,
-                    action: onVoice
-                )
+            // Llamar / colgar, al lado del campo para que no compita por altura.
+            Button(action: onCall) {
+                Image(systemName: callModeActive ? "phone.down.fill" : "phone.fill")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(callModeActive ? Color(red: 1, green: 0.45, blue: 0.42) : .white.opacity(0.9))
+                    .frame(width: 40, height: 40)
+                    .background(
+                        Circle()
+                            .fill(callModeActive
+                                ? Color(red: 1, green: 0.32, blue: 0.32).opacity(0.18)
+                                : Color.white.opacity(0.07))
+                            .overlay(Circle().strokeBorder(Color.white.opacity(0.08), lineWidth: 1))
+                    )
             }
-            NotchActionButton(icon: "square.grid.2x2.fill", label: "Shelf", action: onShowShelf)
-            NotchActionButton(icon: "sparkles", label: "Utils", action: onShowUtils)
-
-            Spacer(minLength: 8)
-
-            NotchActionButton(icon: "xmark", label: "Clear", quiet: true, action: onClear)
+            .buttonStyle(.plain)
+            .help(callModeActive ? "Terminar llamada" : "Llamar a Niki")
         }
     }
 
-    private var attachedFilesRow: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "paperclip")
-                .font(.system(size: 11, weight: .semibold))
-            Text(attachedFileSummary)
-                .lineLimit(1)
-            if droppedFiles.count > 2 {
-                Text("+\(droppedFiles.count - 2)")
-            }
-        }
-        .font(.system(size: 11, weight: .medium, design: .rounded))
-        .foregroundStyle(Color.white.opacity(0.48))
-        .padding(.horizontal, 10)
-    }
+
 
     private var composerBackground: some View {
         RoundedRectangle(cornerRadius: 20, style: .continuous)
@@ -648,30 +600,12 @@ private struct ChatControls: View {
         !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !droppedFiles.isEmpty
     }
 
-    private var attachedFileSummary: String {
-        droppedFiles.prefix(2).map(\.name).joined(separator: ", ")
-    }
 
-    private var voiceIcon: String {
-        if voiceProcessing { return "waveform" }
-        return voiceRecording ? "stop.fill" : "mic.fill"
-    }
 
-    private var stateCopy: String {
-        if voiceProcessing { return "Transcribing" }
-        if voiceRecording { return "Listening" }
-        return submitState
-    }
 
-    private var stateTint: Color {
-        if voiceRecording || voiceProcessing {
-            return Color(red: 0.46, green: 0.88, blue: 1)
-        }
-        if submitState == "Error" || submitState == "Voice error" || submitState == "Mic denied" {
-            return Color(red: 1, green: 0.42, blue: 0.42)
-        }
-        return Color.white.opacity(0.46)
-    }
+
+
+
 
 }
 
@@ -682,7 +616,7 @@ private struct NotchSendButton: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 7) {
-                Text("Send")
+                Text("Enviar")
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
                 Image(systemName: "arrow.up")
                     .font(.system(size: 11, weight: .bold))
@@ -733,8 +667,10 @@ private struct NotchActionButton: View {
             HStack(spacing: 7) {
                 Image(systemName: icon)
                     .font(.system(size: 11, weight: .semibold))
-                Text(label)
-                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                if !label.isEmpty {
+                    Text(label)
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                }
             }
             .foregroundStyle(active ? Color.white : Color.white.opacity(quiet ? 0.42 : 0.76))
             .padding(.horizontal, 9)
@@ -848,7 +784,6 @@ private struct NikiFileShareView: View {
 
     @MainActor
     private func handleClick() async {
-        notchDebugLog("quick share picker open provider=\(selectedProvider.id)")
         await quickShare.showFilePicker(for: selectedProvider, from: hostView)
     }
 
@@ -856,9 +791,7 @@ private struct NikiFileShareView: View {
     private func handleDrop(_ providers: [NSItemProvider]) async {
         isProcessing = true
         defer { isProcessing = false }
-        notchDebugLog("drop received providers=\(providers.count)")
         await quickShare.shareDroppedFiles(providers, using: selectedProvider, from: hostView)
-        notchDebugLog("quick share drop handled provider=\(selectedProvider.id)")
     }
 }
 
@@ -912,35 +845,6 @@ private struct CalendarCard: View {
     }
 }
 
-private func notchDebugLog(_ message: String) {
-    let line = "\(ISO8601DateFormatter().string(from: Date())) [swift] \(message)\n"
-    print("[niki-notch] \(message)")
-
-    let fileManager = FileManager.default
-    let path = fileManager.homeDirectoryForCurrentUser
-        .appendingPathComponent(".niki/notch-debug.log")
-
-    do {
-        try fileManager.createDirectory(
-            at: path.deletingLastPathComponent(),
-            withIntermediateDirectories: true
-        )
-
-        if !fileManager.fileExists(atPath: path.path) {
-            try line.write(to: path, atomically: true, encoding: .utf8)
-            return
-        }
-
-        let handle = try FileHandle(forWritingTo: path)
-        defer { try? handle.close() }
-        try handle.seekToEnd()
-        if let data = line.data(using: .utf8) {
-            try handle.write(contentsOf: data)
-        }
-    } catch {
-        print("[niki-notch] debug log write failed \(error.localizedDescription)")
-    }
-}
 
 
 #Preview {

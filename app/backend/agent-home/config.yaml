@@ -1,0 +1,35 @@
+# Config del runtime del agente de Niki.
+#
+# Proveedor: por ahora kimi-coding, igual que el Hermes original — es el que sabe
+# hablar el formato de herramientas que Hermes espera. El proveedor
+# "openai-compatible" que agregamos al fork funciona y está probado para generar
+# texto; para el bucle de agente con herramientas, ver la nota al final.
+model:
+  default: kimi-k2.5
+  provider: kimi-coding
+  base_url: https://api.kimi.com/coding
+  context_length: 256000
+
+providers: {}
+
+# Recorte medido: con todo por defecto son 30 herramientas y ~21.500 tokens fijos por
+# turno. Con estos toolsets son 7 herramientas y ~4.200. El uso real en 159 sesiones
+# fue terminal 477, read_file 110, execute_code 20, search_files 12, process 6.
+toolsets:
+- terminal
+- file
+- code_execution
+
+agent:
+  max_turns: 20
+  reasoning_effort: low
+
+# Para usar OpenAI (o cualquier endpoint compatible) en vez de Kimi:
+#   model.provider: openai-compatible
+#   model.base_url: https://api.openai.com/v1
+#   y OPENAI_API_KEY (o OPENAI_COMPATIBLE_API_KEY) en el entorno.
+#
+# Con Groq (https://api.groq.com/openai/v1) la generación de texto anda, pero el bucle
+# de agente no: llama-3.3-70b falla al emitir llamadas a función en el formato de
+# Hermes, gpt-oss exige un campo "reasoning" que Hermes no envía, y el tramo gratuito
+# tiene un tope de 12.000 tokens por minuto que un turno con herramientas se come solo.

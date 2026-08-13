@@ -1,0 +1,112 @@
+{
+  "resumen": {
+    "home": "./agent-home",
+    "sesiones": 11,
+    "mediana_chars": 63354,
+    "mediana_tokens_aprox": 15838,
+    "min_tokens_aprox": 3541,
+    "max_tokens_aprox": 21469,
+    "herramientas_mediana": 25
+  },
+  "sesiones": [
+    {
+      "sesion": "session_20260813_113023_bb8cb0.json",
+      "modelo": "llama-3.3-70b-versatile",
+      "prompt_chars": 37088,
+      "herramientas": 29,
+      "esquemas_chars": 48546,
+      "total_chars": 85634,
+      "tokens_aprox": 21408
+    },
+    {
+      "sesion": "session_20260813_113251_d1b996.json",
+      "modelo": "llama-3.3-70b-versatile",
+      "prompt_chars": 3005,
+      "herramientas": 7,
+      "esquemas_chars": 13591,
+      "total_chars": 16596,
+      "tokens_aprox": 4149
+    },
+    {
+      "sesion": "session_20260813_113055_a4ed54.json",
+      "modelo": "llama-3.3-70b-versatile",
+      "prompt_chars": 37088,
+      "herramientas": 29,
+      "esquemas_chars": 48546,
+      "total_chars": 85634,
+      "tokens_aprox": 21408
+    },
+    {
+      "sesion": "session_20260813_113013_73dd46.json",
+      "modelo": "llama-3.3-70b-versatile",
+      "prompt_chars": 37088,
+      "herramientas": 29,
+      "esquemas_chars": 48546,
+      "total_chars": 85634,
+      "tokens_aprox": 21408
+    },
+    {
+      "sesion": "session_20260813_113103_1f0a71.json",
+      "modelo": "llama-3.3-70b-versatile",
+      "prompt_chars": 36576,
+      "herramientas": 30,
+      "esquemas_chars": 49300,
+      "total_chars": 85876,
+      "tokens_aprox": 21469
+    },
+    {
+      "sesion": "session_20260813_113550_b1d1ae.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 2991,
+      "herramientas": 6,
+      "esquemas_chars": 11192,
+      "total_chars": 14183,
+      "tokens_aprox": 3545
+    },
+    {
+      "sesion": "session_20260813_113039_c52358.json",
+      "modelo": "",
+      "prompt_chars": 36545,
+      "herramientas": 30,
+      "esquemas_chars": 49300,
+      "total_chars": 85845,
+      "tokens_aprox": 21461
+    },
+    {
+      "sesion": "session_run_fb40ddb1901a42e883d6f615f4bca926.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 16669,
+      "herramientas": 25,
+      "esquemas_chars": 46685,
+      "total_chars": 63354,
+      "tokens_aprox": 15838
+    },
+    {
+      "sesion": "session_20260813_113349_5874bf.json",
+      "modelo": "openai/gpt-oss-120b",
+      "prompt_chars": 6523,
+      "herramientas": 6,
+      "esquemas_chars": 11192,
+      "total_chars": 17715,
+      "tokens_aprox": 4428
+    },
+    {
+      "sesion": "session_run_c9c16b58b8e44eefb09e545a95a9baaa.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 16669,
+      "herramientas": 25,
+      "esquemas_chars": 46685,
+      "total_chars": 63354,
+      "tokens_aprox": 15838
+    },
+    {
+      "sesion": "session_20260813_113528_910465.json",
+      "modelo": "",
+      "prompt_chars": 2974,
+      "herramientas": 6,
+      "esquemas_chars": 11192,
+      "total_chars": 14166,
+      "tokens_aprox": 3541
+    }
+  ]
+}

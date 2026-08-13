@@ -454,6 +454,26 @@ PROVIDER_REGISTRY: Dict[str, ProviderConfig] = {
         api_key_env_vars=("AZURE_FOUNDRY_API_KEY",),
         base_url_env_var="AZURE_FOUNDRY_BASE_URL",
     ),
+    # NIKI: proveedor genérico para cualquier endpoint que hable el protocolo de OpenAI.
+    # El registro trae 37 proveedores y ninguno es OpenAI a secas ni Groq: "openai-codex"
+    # es otra cosa (la API de ChatGPT Codex, con OAuth). Con esta entrada quedan cubiertos
+    # los dos y cualquier servicio compatible, que a esta altura son casi todos —
+    # apuntando base_url y clave, sin agregar un proveedor nuevo por cada uno.
+    #
+    # El orden de las variables importa: la específica primero, para poder apuntar a un
+    # endpoint sin que se cuele la clave de otro que esté en el entorno por otra razón.
+    "openai-compatible": ProviderConfig(
+        id="openai-compatible",
+        name="OpenAI-compatible (OpenAI, Groq, cualquier /v1)",
+        auth_type="api_key",
+        inference_base_url="https://api.openai.com/v1",
+        api_key_env_vars=(
+            "OPENAI_COMPATIBLE_API_KEY",
+            "OPENAI_API_KEY",
+            "GROQ_API_KEY",
+        ),
+        base_url_env_var="OPENAI_COMPATIBLE_BASE_URL",
+    ),
 }
 
 # Auto-extend PROVIDER_REGISTRY with any api-key provider registered in

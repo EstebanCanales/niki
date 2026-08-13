@@ -47,6 +47,7 @@ app/agent-runtime/**/__pycache__/
 app/backend/agent-home/*
 !app/backend/agent-home/skills/
 !app/backend/agent-home/SOUL.md
+!app/backend/agent-home/config.yaml
 # La memoria NO se versiona. Son notas sobre una persona y van a ir creciendo con
 # cosas suyas — agenda, contactos, lo que le preocupa. Eso no pertenece a un repo que
 # se empuja a GitHub. El runtime la crea sola en el primer arranque.

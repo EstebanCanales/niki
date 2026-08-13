@@ -46,5 +46,8 @@ app/agent-runtime/**/__pycache__/
 # memoria y el SOUL de Niki sí se versionan — se agregan explícitamente.
 app/backend/agent-home/*
 !app/backend/agent-home/skills/
-!app/backend/agent-home/memories/
 !app/backend/agent-home/SOUL.md
+# La memoria NO se versiona. Son notas sobre una persona y van a ir creciendo con
+# cosas suyas — agenda, contactos, lo que le preocupa. Eso no pertenece a un repo que
+# se empuja a GitHub. El runtime la crea sola en el primer arranque.
+app/backend/agent-home/memories/

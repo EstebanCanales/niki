@@ -47,6 +47,19 @@ def main() -> int:
             }
         )
 
+    # Upstream registra alias del mismo servicio con distinto id (novita, novita-ai,
+    # novitaai...). En una lista para elegir eso es ruido: se queda el primero de cada
+    # grupo que comparte nombre, endpoint y credencial.
+    vistos = set()
+    unicos = []
+    for p in salida:
+        clave = (p["name"], p["baseUrl"], tuple(p["apiKeyEnvVars"]))
+        if clave in vistos:
+            continue
+        vistos.add(clave)
+        unicos.append(p)
+    salida = unicos
+
     salida.sort(key=lambda p: (not p["credentialReady"], p["name"].lower()))
     json.dump({"ok": True, "providers": salida}, sys.stdout, ensure_ascii=False)
     return 0

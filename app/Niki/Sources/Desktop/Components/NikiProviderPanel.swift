@@ -157,25 +157,88 @@ struct NikiProviderPanel: View {
                 .font(.system(size: 10, weight: .bold))
                 .foregroundStyle(Color.white.opacity(0.3))
                 .padding(.leading, 2)
-            SidebarCard {
-                VStack(alignment: .leading, spacing: 6) {
-                    // No se listan los 36 uno por uno: sería una pared. Lo útil es saber
-                    // que están y qué variable haría falta.
-                    Text(sinCredencial.prefix(8).map(\.name).joined(separator: " · "))
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(Color.white.opacity(0.4))
-                        .fixedSize(horizontal: false, vertical: true)
-                    if sinCredencial.count > 8 {
-                        Text("y \(sinCredencial.count - 8) más")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(Color.white.opacity(0.28))
+
+            // Cada proveedor es su propia fila. Antes iban todos juntos en un párrafo,
+            // y así no servían para nada: no se podía ver cuál es cuál ni qué le falta.
+            ForEach(sinCredencial) { p in
+                filaSinCredencial(p)
+            }
+        }
+    }
+
+    /// Fila de un proveedor que todavía no se puede usar. Se despliega igual que los
+    /// otros, pero en vez del campo de modelo muestra exactamente qué variable poner.
+    private func filaSinCredencial(_ p: NikiAgentProvider) -> some View {
+        let abierto = seleccionado == p.id
+        return SidebarCard {
+            VStack(alignment: .leading, spacing: 10) {
+                Button {
+                    seleccionado = abierto ? nil : p.id
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "circle.dotted")
+                            .font(.system(size: 13))
+                            .foregroundStyle(Color.white.opacity(0.22))
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(p.name)
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(Color.white.opacity(0.55))
+                            Text(etiquetaAuth(p))
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundStyle(Color.white.opacity(0.28))
+                        }
+                        Spacer()
+                        Image(systemName: abierto ? "chevron.up" : "chevron.down")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(Color.white.opacity(0.22))
                     }
-                    Text("Para usar uno, poné su clave en app/backend/.env y reiniciá el backend.")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(Color.white.opacity(0.3))
-                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .buttonStyle(.plain)
+
+                if abierto {
+                    VStack(alignment: .leading, spacing: 6) {
+                        if p.apiKeyEnvVars.isEmpty {
+                            Text("Se autentica con \(p.authType). Configuralo desde el runtime del agente.")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(Color.white.opacity(0.45))
+                                .fixedSize(horizontal: false, vertical: true)
+                        } else {
+                            Text("Poné en app/backend/.env:")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(Color.white.opacity(0.4))
+                            ForEach(p.apiKeyEnvVars, id: \.self) { v in
+                                Text("\(v)=…")
+                                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                                    .foregroundStyle(Color.white.opacity(0.6))
+                                    .padding(.horizontal, 7)
+                                    .padding(.vertical, 4)
+                                    .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 5))
+                            }
+                            Text("Cualquiera de esas sirve. Después reiniciá el backend.")
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundStyle(Color.white.opacity(0.3))
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        if !p.baseUrl.isEmpty {
+                            Text(p.baseUrl)
+                                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                                .foregroundStyle(Color.white.opacity(0.25))
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
                 }
             }
+        }
+    }
+
+    /// Cómo se autentica, en cristiano. "api_key" no le dice nada a nadie.
+    private func etiquetaAuth(_ p: NikiAgentProvider) -> String {
+        switch p.authType {
+        case "api_key": return p.apiKeyEnvVars.first ?? "clave de API"
+        case "oauth_device_code", "oauth_external", "oauth_minimax": return "requiere iniciar sesión"
+        case "aws_sdk": return "credenciales de AWS"
+        case "external_process": return "proceso externo"
+        default: return p.authType
         }
     }
 

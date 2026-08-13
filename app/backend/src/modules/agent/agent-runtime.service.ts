@@ -25,6 +25,19 @@ export type AgentRuntimeState =
   | "restarting"
   | "failed";
 
+/** Un proveedor de inferencia que el runtime sabe usar. */
+export type AgentProvider = {
+  id: string;
+  name: string;
+  authType: string;
+  baseUrl: string;
+  apiKeyEnvVars: string[];
+  baseUrlEnvVar: string;
+  /** Si hay credencial en el entorno — nunca se expone el valor. */
+  credentialReady: boolean;
+  credentialFrom: string | null;
+};
+
 export type AgentRuntimeStatus = {
   state: AgentRuntimeState;
   baseUrl: string;
@@ -105,6 +118,109 @@ export class AgentRuntimeService implements OnModuleInit, OnModuleDestroy {
     this.stopping = true;
     if (this.restartTimer) clearTimeout(this.restartTimer);
     this.kill();
+  }
+
+  // ── Proveedores y modelo ──────────────────────────────────────────────────
+  //
+  // El fork trae 38 proveedores (openrouter, anthropic, gemini, kimi, minimax, bedrock,
+  // el openai-compatible que agregamos…). Esto los expone para poder elegir con cuál
+  // piensa Niki sin editar YAML a mano.
+
+  async listProviders(): Promise<AgentProvider[]> {
+    const python = this.pythonPath();
+    if (!python) return [];
+    const script = path.join(REPO_ROOT, "app", "backend", "scripts", "listar-proveedores.py");
+    try {
+      const out = await this.runPython(python, [script]);
+      const parsed = JSON.parse(out) as { ok?: boolean; providers?: AgentProvider[] };
+      return parsed.providers ?? [];
+    } catch (error) {
+      this.logger.warn(`[agente] no se pudieron listar proveedores: ${String(error)}`);
+      return [];
+    }
+  }
+
+  /** Proveedor y modelo activos, leídos de la config del runtime. */
+  currentModel(): { provider: string; model: string; baseUrl: string } {
+    const cfg = this.readConfig();
+    const model = (cfg.model ?? {}) as Record<string, string>;
+    return {
+      provider: String(model.provider ?? ""),
+      model: String(model.default ?? ""),
+      baseUrl: String(model.base_url ?? ""),
+    };
+  }
+
+  /**
+   * Cambia proveedor y modelo, y reinicia el runtime para que tome el cambio.
+   *
+   * Se reescribe solo el bloque `model` y se deja el resto del YAML como está: el
+   * archivo tiene comentarios que explican el recorte de herramientas y por qué Groq no
+   * sirve para el bucle de agente, y reescribirlo entero los borraría.
+   */
+  async setModel(provider: string, model: string, baseUrl?: string): Promise<void> {
+    const cfg = this.readConfig();
+    cfg.model = {
+      ...(cfg.model as Record<string, unknown> | undefined),
+      provider,
+      default: model,
+      ...(baseUrl ? { base_url: baseUrl } : {}),
+    };
+    this.writeConfigModelBlock(cfg.model as Record<string, unknown>);
+    this.logger.log(`[agente] proveedor → ${provider} / ${model}; reiniciando runtime`);
+    this.restarts = 0;
+    this.kill();
+    // El kill es asíncrono; se deja respirar antes de levantarlo de nuevo.
+    await new Promise((r) => setTimeout(r, 1_500));
+    this.start();
+  }
+
+  private configPath(): string {
+    return path.join(AGENT_HOME, "config.yaml");
+  }
+
+  /** Lectura mínima del YAML: solo se necesita el bloque `model`, que es plano. */
+  private readConfig(): Record<string, unknown> {
+    try {
+      const raw = fs.readFileSync(this.configPath(), "utf8");
+      const model: Record<string, string> = {};
+      let inModel = false;
+      for (const line of raw.split("\n")) {
+        if (/^model:\s*$/.test(line)) { inModel = true; continue; }
+        if (inModel && /^\S/.test(line)) break;
+        if (!inModel) continue;
+        const m = line.match(/^\s+([a-z_]+):\s*(.+?)\s*$/);
+        if (m) model[m[1]] = m[2];
+      }
+      return { model };
+    } catch {
+      return { model: {} };
+    }
+  }
+
+  private writeConfigModelBlock(model: Record<string, unknown>) {
+    const raw = fs.readFileSync(this.configPath(), "utf8");
+    const lines = raw.split("\n");
+    const start = lines.findIndex((l) => /^model:\s*$/.test(l));
+    if (start < 0) throw new Error("config.yaml sin bloque model");
+    let end = start + 1;
+    while (end < lines.length && (lines[end].startsWith(" ") || lines[end].trim() === "")) end += 1;
+    const block = ["model:", ...Object.entries(model).map(([k, v]) => `  ${k}: ${String(v)}`)];
+    fs.writeFileSync(this.configPath(), [...lines.slice(0, start), ...block, ...lines.slice(end)].join("\n"));
+  }
+
+  private runPython(python: string, args: string[]): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const proc = spawn(python, args, { cwd: REPO_ROOT, env: process.env });
+      let out = "";
+      let err = "";
+      proc.stdout.on("data", (c: Buffer) => (out += c.toString()));
+      proc.stderr.on("data", (c: Buffer) => (err += c.toString()));
+      proc.on("error", reject);
+      proc.on("close", (code) =>
+        code === 0 ? resolve(out) : reject(new Error(err.slice(0, 300) || `código ${code}`)),
+      );
+    });
   }
 
   private pythonPath(): string | null {

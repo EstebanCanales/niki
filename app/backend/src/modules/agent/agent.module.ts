@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 
+import { AgentController } from "./agent.controller";
 import { AgentRuntimeService } from "./agent-runtime.service";
 
 /**
@@ -7,6 +8,7 @@ import { AgentRuntimeService } from "./agent-runtime.service";
  * arrancado y supervisado por el backend en vez de a mano.
  */
 @Module({
+  controllers: [AgentController],
   providers: [AgentRuntimeService],
   exports: [AgentRuntimeService],
 })

@@ -74,8 +74,18 @@ Python >= 3.11. Las dependencias las declara el propio proyecto en `pyproject.to
 ```bash
 cd app/agent-runtime
 python3 -m venv venv
-./venv/bin/pip install -e .
+./venv/bin/pip install -e . aiohttp "mcp==1.26.0"
 ```
+
+Dos dependencias que no vienen en las básicas y Niki sí necesita:
+
+- **aiohttp** — sin él el gateway arranca pero no sirve `/v1/runs`; avisa con un warning
+  fácil de pasar por alto. Está en el extra `[messaging]`, que arrastra Telegram y
+  Discord; se instala suelto.
+- **mcp==1.26.0** — la versión exacta que pide `pyproject.toml`. Con la 2.0 las
+  herramientas MCP fallan con `'CallToolResult' object has no attribute 'isError'`: el
+  SDK renombró el campo a `is_error` y el runtime todavía usa el nombre viejo. El error
+  aparece recién al invocar una herramienta, no al conectar.
 
 El `venv/` está en `.gitignore`.
 

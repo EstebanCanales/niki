@@ -74,3 +74,14 @@ agent:
 # `yolo` queda apagado a propósito. Encenderlo saltea los 52 de aprobación (los 12
 # HARDLINE siguen firmes) y tiene sentido cuando el modelo delibera mucho; con modelos
 # rápidos, menos.
+
+# Control de la máquina, por MCP. El runtime trae terminal y archivos pero no puede mover
+# el mouse, tipear ni capturar pantalla: eso necesita el helper de entrada del backend de
+# Niki. Se expone por MCP en vez de duplicar 24 capacidades dentro del fork, que sería
+# código nuestro en algo que queremos poder rebasar contra upstream.
+mcp_servers:
+  niki:
+    command: node
+    args:
+    - /Users/estebancanales/Work/agente/app/backend/scripts/mcp-niki.mjs
+    enabled: true

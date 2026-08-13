@@ -9,7 +9,6 @@ model:
   provider: kimi-coding
   base_url: https://api.kimi.com/coding
   context_length: 256000
-
 providers: {}
 
 # Recorte medido: con todo por defecto son 30 herramientas y ~21.500 tokens fijos por
@@ -43,3 +42,20 @@ agent:
 # de agente no: llama-3.3-70b falla al emitir llamadas a función en el formato de
 # Hermes, gpt-oss exige un campo "reasoning" que Hermes no envía, y el tramo gratuito
 # tiene un tope de 12.000 tokens por minuto que un turno con herramientas se come solo.
+
+# Política del terminal — no hizo falta escribir ningún guardia: el fork ya trae dos
+# niveles, verificados en tools/approval.py.
+#
+#   libre        open -a Canva, ls, git status, cat, echo…  corren sin preguntar,
+#                que es el flujo al que Esteban está acostumbrado.
+#   aprobación   52 patrones marcados (chmod -R 777, curl|sh, dd…) emiten un
+#                approval.request y esperan. Verificado en vivo: el agente intentó
+#                chmod -R 777 sobre un directorio de prueba, el guardia lo frenó y los
+#                permisos quedaron intactos.
+#   bloqueado    12 patrones HARDLINE que no se saltean ni con yolo: rm -rf sobre raíz,
+#                directorios de sistema o el home, mkfs, dd a dispositivo, fork bomb,
+#                kill -9 -1, shutdown/reboot.
+#
+# `yolo` queda apagado a propósito. Encenderlo saltea los 52 de aprobación (los 12
+# HARDLINE siguen firmes) y tiene sentido cuando el modelo delibera mucho; con modelos
+# rápidos, menos.

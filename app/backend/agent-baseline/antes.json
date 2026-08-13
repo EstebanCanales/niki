@@ -1,0 +1,958 @@
+{
+  "resumen": {
+    "home": "~/.hermes",
+    "sesiones": 105,
+    "mediana_chars": 64953,
+    "mediana_tokens_aprox": 16238,
+    "min_tokens_aprox": 15822,
+    "max_tokens_aprox": 16350,
+    "herramientas_mediana": 28
+  },
+  "sesiones": [
+    {
+      "sesion": "session_D38A6132-EB4B-4665-B422-9092E264C22B.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15509,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 64949,
+      "tokens_aprox": 16237
+    },
+    {
+      "sesion": "session_C9F8858D-FD2A-4A45-87E3-78F43DB5CE95-title.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15508,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 64948,
+      "tokens_aprox": 16237
+    },
+    {
+      "sesion": "session_5DE269F4-CCA4-4094-925D-37F0DCB817AC-title.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15920,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 65360,
+      "tokens_aprox": 16340
+    },
+    {
+      "sesion": "session_FD4D78B2-45D2-4E81-8655-9A833085E72D.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15920,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 65360,
+      "tokens_aprox": 16340
+    },
+    {
+      "sesion": "session_488E2100-E8B6-473E-8B43-8188A8CF25FC.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15627,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 65067,
+      "tokens_aprox": 16266
+    },
+    {
+      "sesion": "session_FA9F8D28-3985-4596-8CB2-30E0BA7E0874.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15151,
+      "herramientas": 29,
+      "esquemas_chars": 48138,
+      "total_chars": 63289,
+      "tokens_aprox": 15822
+    },
+    {
+      "sesion": "session_24C3294A-9044-4EDC-BDC3-2F45E82EB0B9-title.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15513,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 64953,
+      "tokens_aprox": 16238
+    },
+    {
+      "sesion": "session_45053015-0F69-497A-83F5-538AC6A28E12-title.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15513,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 64953,
+      "tokens_aprox": 16238
+    },
+    {
+      "sesion": "session_FB8538AF-5167-414D-8956-2A61C17D3DD8-title.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15512,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 64952,
+      "tokens_aprox": 16238
+    },
+    {
+      "sesion": "session_B531EF99-80E7-4EB0-B147-5AD7A6794A37.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15513,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 64953,
+      "tokens_aprox": 16238
+    },
+    {
+      "sesion": "session_ACF10F05-5347-40B5-9E69-58ACC1B0D491.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15146,
+      "herramientas": 29,
+      "esquemas_chars": 50257,
+      "total_chars": 65403,
+      "tokens_aprox": 16350
+    },
+    {
+      "sesion": "session_930B7163-2D25-40B1-AC22-BB35E70F1136.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15512,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 64952,
+      "tokens_aprox": 16238
+    },
+    {
+      "sesion": "session_7022F540-9B16-439A-B421-900567B3A3CD.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15512,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 64952,
+      "tokens_aprox": 16238
+    },
+    {
+      "sesion": "session_BC276CFC-F528-4824-BA7B-C23FABBB9739-title.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15512,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 64952,
+      "tokens_aprox": 16238
+    },
+    {
+      "sesion": "session_8E79406D-39F9-445E-82CD-22ED42398281-title.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15512,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 64952,
+      "tokens_aprox": 16238
+    },
+    {
+      "sesion": "session_FB8538AF-5167-414D-8956-2A61C17D3DD8.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15512,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 64952,
+      "tokens_aprox": 16238
+    },
+    {
+      "sesion": "session_8C9F78B3-9C25-40C7-BD59-35BC54EE61F9.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15151,
+      "herramientas": 29,
+      "esquemas_chars": 48138,
+      "total_chars": 63289,
+      "tokens_aprox": 15822
+    },
+    {
+      "sesion": "session_D38A6132-EB4B-4665-B422-9092E264C22B-title.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15509,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 64949,
+      "tokens_aprox": 16237
+    },
+    {
+      "sesion": "session_F484005B-669E-48C4-AF42-20D410A509BF.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15513,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 64953,
+      "tokens_aprox": 16238
+    },
+    {
+      "sesion": "session_985463C4-739D-4660-8D9D-0EA3AB4DE7B5.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15920,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 65360,
+      "tokens_aprox": 16340
+    },
+    {
+      "sesion": "session_45737314-9E98-44E5-9DCF-C5FB6968D573.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15510,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 64950,
+      "tokens_aprox": 16237
+    },
+    {
+      "sesion": "session_BFA86B59-02E1-4354-B4B5-0A5B6BBAF6F8-title.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15513,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 64953,
+      "tokens_aprox": 16238
+    },
+    {
+      "sesion": "session_4BDF9C59-A6F3-48B1-8BCA-10B28F28905D.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15513,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 64953,
+      "tokens_aprox": 16238
+    },
+    {
+      "sesion": "session_FB1290D0-BAA5-4084-AC61-6F6327F74A60.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15627,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 65067,
+      "tokens_aprox": 16266
+    },
+    {
+      "sesion": "session_B531EF99-80E7-4EB0-B147-5AD7A6794A37-title.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15513,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 64953,
+      "tokens_aprox": 16238
+    },
+    {
+      "sesion": "session_5E4D1EED-3056-42CB-988F-D70B0ED6D02E.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15512,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 64952,
+      "tokens_aprox": 16238
+    },
+    {
+      "sesion": "session_BAA9B2A9-5BBF-490C-BD55-C1FC7A3AB9EE.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15151,
+      "herramientas": 29,
+      "esquemas_chars": 48138,
+      "total_chars": 63289,
+      "tokens_aprox": 15822
+    },
+    {
+      "sesion": "session_B60D68DB-F9EE-4AB3-AE94-95CCF9C7622A.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15627,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 65067,
+      "tokens_aprox": 16266
+    },
+    {
+      "sesion": "session_2D3E3BA1-99ED-4C3B-A2D3-F50B62C2BE3A-title.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15512,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 64952,
+      "tokens_aprox": 16238
+    },
+    {
+      "sesion": "session_FB1290D0-BAA5-4084-AC61-6F6327F74A60-title.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15627,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 65067,
+      "tokens_aprox": 16266
+    },
+    {
+      "sesion": "session_B82EAD7E-1575-4621-8FDE-B7D410AF6C25-title.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15509,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 64949,
+      "tokens_aprox": 16237
+    },
+    {
+      "sesion": "session_985463C4-739D-4660-8D9D-0EA3AB4DE7B5-title.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15920,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 65360,
+      "tokens_aprox": 16340
+    },
+    {
+      "sesion": "session_94A2186D-F7E7-4CE0-BC7C-C98DD0132DB4.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15513,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 64953,
+      "tokens_aprox": 16238
+    },
+    {
+      "sesion": "session_1D076C68-7C1E-442B-A260-68BBFC640FDA.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15151,
+      "herramientas": 29,
+      "esquemas_chars": 48138,
+      "total_chars": 63289,
+      "tokens_aprox": 15822
+    },
+    {
+      "sesion": "session_2394BEDA-8B7E-4FFE-8E28-F1C03C893BFC.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15146,
+      "herramientas": 29,
+      "esquemas_chars": 50257,
+      "total_chars": 65403,
+      "tokens_aprox": 16350
+    },
+    {
+      "sesion": "session_B14A0221-A305-4E43-A948-17CD130B029E-title.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15513,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 64953,
+      "tokens_aprox": 16238
+    },
+    {
+      "sesion": "session_01FC3EE0-576D-440F-9D07-0005A88146A6-title.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15513,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 64953,
+      "tokens_aprox": 16238
+    },
+    {
+      "sesion": "session_CAE42683-B561-4A40-8F5B-B2A9E38DD4D1-title.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15513,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 64953,
+      "tokens_aprox": 16238
+    },
+    {
+      "sesion": "session_01FC3EE0-576D-440F-9D07-0005A88146A6.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15513,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 64953,
+      "tokens_aprox": 16238
+    },
+    {
+      "sesion": "session_F49B9858-225E-46D9-A37A-D70160EAFB9A.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15513,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 64953,
+      "tokens_aprox": 16238
+    },
+    {
+      "sesion": "session_B60D68DB-F9EE-4AB3-AE94-95CCF9C7622A-title.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15627,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 65067,
+      "tokens_aprox": 16266
+    },
+    {
+      "sesion": "session_6ECEA25C-8363-42B1-AAAA-EC06A51B54F5.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15151,
+      "herramientas": 29,
+      "esquemas_chars": 48138,
+      "total_chars": 63289,
+      "tokens_aprox": 15822
+    },
+    {
+      "sesion": "session_0BF57CB8-FB21-4275-807A-7BBA036FBD6F.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15151,
+      "herramientas": 29,
+      "esquemas_chars": 48138,
+      "total_chars": 63289,
+      "tokens_aprox": 15822
+    },
+    {
+      "sesion": "session_0C39C39A-92B9-495D-94D2-C4D3F469BD82.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15512,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 64952,
+      "tokens_aprox": 16238
+    },
+    {
+      "sesion": "session_45053015-0F69-497A-83F5-538AC6A28E12.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15513,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 64953,
+      "tokens_aprox": 16238
+    },
+    {
+      "sesion": "session_43617297-4BDB-41E8-BAE6-3CFF9C5D4A22.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15513,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 64953,
+      "tokens_aprox": 16238
+    },
+    {
+      "sesion": "session_F49B9858-225E-46D9-A37A-D70160EAFB9A-title.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15513,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 64953,
+      "tokens_aprox": 16238
+    },
+    {
+      "sesion": "session_448E224C-C838-4D07-A170-9C1BDD89E603-title.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15509,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 64949,
+      "tokens_aprox": 16237
+    },
+    {
+      "sesion": "session_35ECE031-215C-49F8-8BE1-72BCD9204E83.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15151,
+      "herramientas": 29,
+      "esquemas_chars": 48138,
+      "total_chars": 63289,
+      "tokens_aprox": 15822
+    },
+    {
+      "sesion": "session_FD4D78B2-45D2-4E81-8655-9A833085E72D-title.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15920,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 65360,
+      "tokens_aprox": 16340
+    },
+    {
+      "sesion": "session_43617297-4BDB-41E8-BAE6-3CFF9C5D4A22-title.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15513,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 64953,
+      "tokens_aprox": 16238
+    },
+    {
+      "sesion": "session_957347ED-6C40-4699-8886-3885006739CE.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15627,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 65067,
+      "tokens_aprox": 16266
+    },
+    {
+      "sesion": "session_8D1FE256-921A-4DFA-9ED1-C172F2198D68-title.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15513,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 64953,
+      "tokens_aprox": 16238
+    },
+    {
+      "sesion": "session_F484005B-669E-48C4-AF42-20D410A509BF-title.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15513,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 64953,
+      "tokens_aprox": 16238
+    },
+    {
+      "sesion": "session_3BAC70B2-1C50-4F13-9702-03D27966AFA9-title.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15513,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 64953,
+      "tokens_aprox": 16238
+    },
+    {
+      "sesion": "session_esc.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15919,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 65359,
+      "tokens_aprox": 16339
+    },
+    {
+      "sesion": "session_6A049141-B4EE-4E34-A3CC-D75A2BF2D6B4-title.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15510,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 64950,
+      "tokens_aprox": 16237
+    },
+    {
+      "sesion": "session_4BDF9C59-A6F3-48B1-8BCA-10B28F28905D-title.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15513,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 64953,
+      "tokens_aprox": 16238
+    },
+    {
+      "sesion": "session_perf2.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15513,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 64953,
+      "tokens_aprox": 16238
+    },
+    {
+      "sesion": "session_7D687B6D-FDEE-4314-BB92-CF372922DD3C.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15627,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 65067,
+      "tokens_aprox": 16266
+    },
+    {
+      "sesion": "session_2D3E3BA1-99ED-4C3B-A2D3-F50B62C2BE3A.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15512,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 64952,
+      "tokens_aprox": 16238
+    },
+    {
+      "sesion": "session_0C39C39A-92B9-495D-94D2-C4D3F469BD82-title.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15512,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 64952,
+      "tokens_aprox": 16238
+    },
+    {
+      "sesion": "session_E8F0E5C1-5071-4A48-8F32-EECC3E316CB6-title.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15920,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 65360,
+      "tokens_aprox": 16340
+    },
+    {
+      "sesion": "session_perf-test.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15513,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 64953,
+      "tokens_aprox": 16238
+    },
+    {
+      "sesion": "session_BC276CFC-F528-4824-BA7B-C23FABBB9739.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15512,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 64952,
+      "tokens_aprox": 16238
+    },
+    {
+      "sesion": "session_CDBA4210-3A48-4298-9CFC-01408308B742.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15151,
+      "herramientas": 29,
+      "esquemas_chars": 48138,
+      "total_chars": 63289,
+      "tokens_aprox": 15822
+    },
+    {
+      "sesion": "session_ACF10F05-5347-40B5-9E69-58ACC1B0D491-title.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15146,
+      "herramientas": 29,
+      "esquemas_chars": 50257,
+      "total_chars": 65403,
+      "tokens_aprox": 16350
+    },
+    {
+      "sesion": "session_3C76EF8E-A0E6-4966-8409-3365E144B1E8.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15918,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 65358,
+      "tokens_aprox": 16339
+    },
+    {
+      "sesion": "session_2F9EF624-C6E2-4E1C-8925-7FC536F25446-title.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15513,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 64953,
+      "tokens_aprox": 16238
+    },
+    {
+      "sesion": "session_957347ED-6C40-4699-8886-3885006739CE-title.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15627,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 65067,
+      "tokens_aprox": 16266
+    },
+    {
+      "sesion": "session_B14A0221-A305-4E43-A948-17CD130B029E.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15513,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 64953,
+      "tokens_aprox": 16238
+    },
+    {
+      "sesion": "session_6A049141-B4EE-4E34-A3CC-D75A2BF2D6B4.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15510,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 64950,
+      "tokens_aprox": 16237
+    },
+    {
+      "sesion": "session_C73CBA58-BAD1-4B01-A0CD-803EB7DB96E9.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15146,
+      "herramientas": 29,
+      "esquemas_chars": 50257,
+      "total_chars": 65403,
+      "tokens_aprox": 16350
+    },
+    {
+      "sesion": "session_448E224C-C838-4D07-A170-9C1BDD89E603.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15509,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 64949,
+      "tokens_aprox": 16237
+    },
+    {
+      "sesion": "session_662AED35-307E-4125-8417-A02D3AAB006B.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15510,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 64950,
+      "tokens_aprox": 16237
+    },
+    {
+      "sesion": "session_FC09099D-675D-4505-8FCF-EC229B0C3A8F.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15509,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 64949,
+      "tokens_aprox": 16237
+    },
+    {
+      "sesion": "session_7D687B6D-FDEE-4314-BB92-CF372922DD3C-title.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15627,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 65067,
+      "tokens_aprox": 16266
+    },
+    {
+      "sesion": "session_94A56C71-1D35-44F1-9531-39A0CC83591D.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15151,
+      "herramientas": 29,
+      "esquemas_chars": 48138,
+      "total_chars": 63289,
+      "tokens_aprox": 15822
+    },
+    {
+      "sesion": "session_8E79406D-39F9-445E-82CD-22ED42398281.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15512,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 64952,
+      "tokens_aprox": 16238
+    },
+    {
+      "sesion": "session_930B7163-2D25-40B1-AC22-BB35E70F1136-title.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15512,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 64952,
+      "tokens_aprox": 16238
+    },
+    {
+      "sesion": "session_45737314-9E98-44E5-9DCF-C5FB6968D573-title.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15510,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 64950,
+      "tokens_aprox": 16237
+    },
+    {
+      "sesion": "session_api-25f140a6575bf25c.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15919,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 65359,
+      "tokens_aprox": 16339
+    },
+    {
+      "sesion": "session_CAE42683-B561-4A40-8F5B-B2A9E38DD4D1.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15513,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 64953,
+      "tokens_aprox": 16238
+    },
+    {
+      "sesion": "session_3BAC70B2-1C50-4F13-9702-03D27966AFA9.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15513,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 64953,
+      "tokens_aprox": 16238
+    },
+    {
+      "sesion": "session_94A2186D-F7E7-4CE0-BC7C-C98DD0132DB4-title.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15513,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 64953,
+      "tokens_aprox": 16238
+    },
+    {
+      "sesion": "session_8D1FE256-921A-4DFA-9ED1-C172F2198D68.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15513,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 64953,
+      "tokens_aprox": 16238
+    },
+    {
+      "sesion": "session_FAF3EF46-D35F-4280-8FF1-9F4AF94EE87B.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15627,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 65067,
+      "tokens_aprox": 16266
+    },
+    {
+      "sesion": "session_FAF3EF46-D35F-4280-8FF1-9F4AF94EE87B-title.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15627,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 65067,
+      "tokens_aprox": 16266
+    },
+    {
+      "sesion": "session_7022F540-9B16-439A-B421-900567B3A3CD-title.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15512,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 64952,
+      "tokens_aprox": 16238
+    },
+    {
+      "sesion": "session_70340549-995D-4B0B-9A86-AE13D214CE16.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15151,
+      "herramientas": 29,
+      "esquemas_chars": 48138,
+      "total_chars": 63289,
+      "tokens_aprox": 15822
+    },
+    {
+      "sesion": "session_C9F8858D-FD2A-4A45-87E3-78F43DB5CE95.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15508,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 64948,
+      "tokens_aprox": 16237
+    },
+    {
+      "sesion": "session_662AED35-307E-4125-8417-A02D3AAB006B-title.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15510,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 64950,
+      "tokens_aprox": 16237
+    },
+    {
+      "sesion": "session_7D2884A2-3C04-41FA-B833-1188645137E9.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15509,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 64949,
+      "tokens_aprox": 16237
+    },
+    {
+      "sesion": "session_2F9EF624-C6E2-4E1C-8925-7FC536F25446.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15513,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 64953,
+      "tokens_aprox": 16238
+    },
+    {
+      "sesion": "session_E8F0E5C1-5071-4A48-8F32-EECC3E316CB6.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15920,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 65360,
+      "tokens_aprox": 16340
+    },
+    {
+      "sesion": "session_7D2884A2-3C04-41FA-B833-1188645137E9-title.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15509,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 64949,
+      "tokens_aprox": 16237
+    },
+    {
+      "sesion": "session_B82EAD7E-1575-4621-8FDE-B7D410AF6C25.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15509,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 64949,
+      "tokens_aprox": 16237
+    },
+    {
+      "sesion": "session_5DE269F4-CCA4-4094-925D-37F0DCB817AC.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15920,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 65360,
+      "tokens_aprox": 16340
+    },
+    {
+      "sesion": "session_3C76EF8E-A0E6-4966-8409-3365E144B1E8-title.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15918,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 65358,
+      "tokens_aprox": 16339
+    },
+    {
+      "sesion": "session_FC09099D-675D-4505-8FCF-EC229B0C3A8F-title.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15509,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 64949,
+      "tokens_aprox": 16237
+    },
+    {
+      "sesion": "session_5E4D1EED-3056-42CB-988F-D70B0ED6D02E-title.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15512,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 64952,
+      "tokens_aprox": 16238
+    },
+    {
+      "sesion": "session_BFA86B59-02E1-4354-B4B5-0A5B6BBAF6F8.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15513,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 64953,
+      "tokens_aprox": 16238
+    },
+    {
+      "sesion": "session_5C7DAA6A-4A23-407A-9C48-2D8DB0B286BF.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15151,
+      "herramientas": 29,
+      "esquemas_chars": 48138,
+      "total_chars": 63289,
+      "tokens_aprox": 15822
+    },
+    {
+      "sesion": "session_24C3294A-9044-4EDC-BDC3-2F45E82EB0B9.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15513,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 64953,
+      "tokens_aprox": 16238
+    },
+    {
+      "sesion": "session_perf-herm.json",
+      "modelo": "kimi-k2.5",
+      "prompt_chars": 15919,
+      "herramientas": 28,
+      "esquemas_chars": 49440,
+      "total_chars": 65359,
+      "tokens_aprox": 16339
+    }
+  ]
+}

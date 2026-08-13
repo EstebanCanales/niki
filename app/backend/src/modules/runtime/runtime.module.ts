@@ -8,11 +8,12 @@ import { ConversationContextService } from "./conversation-context.service";
 import { RuntimeController } from "./runtime.controller";
 import { RuntimeService } from "./runtime.service";
 import { RuntimeSurfaceIntentService } from "./runtime-surface-intent.service";
+import { NikiVoiceRuntimeService } from "./niki-voice-runtime.service";
 
 @Module({
   imports: [IdentityModule, AuditModule, WorkItemsModule, ComputerModule],
   controllers: [RuntimeController],
-  providers: [RuntimeService, ConversationContextService, RuntimeSurfaceIntentService],
-  exports: [RuntimeService, RuntimeSurfaceIntentService],
+  providers: [RuntimeService, ConversationContextService, RuntimeSurfaceIntentService, NikiVoiceRuntimeService],
+  exports: [RuntimeService, RuntimeSurfaceIntentService, NikiVoiceRuntimeService],
 })
 export class RuntimeModule {}

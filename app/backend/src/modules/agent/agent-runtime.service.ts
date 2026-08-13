@@ -259,8 +259,16 @@ export class AgentRuntimeService implements OnModuleInit, OnModuleDestroy {
     fs.mkdirSync(AGENT_HOME, { recursive: true });
 
     this.state = this.restarts > 0 ? "restarting" : "starting";
-    const proc = spawn(python, ["-m", "hermes_cli.main", "gateway", "run"], {
-      cwd: RUNTIME_DIR,
+    // `--replace` no es opcional: el gateway deja un lock con su pid en HERMES_HOME y se
+    // niega a arrancar ("Gateway already running") si lo encuentra. Tras un kill -9 el
+    // lock queda huérfano y cada reintento moría con código 1 — un bucle de reinicios
+    // cada 20s que igual respondía, porque una instancia sí había llegado a levantar.
+    const proc = spawn(python, ["-m", "hermes_cli.main", "gateway", "run", "--replace"], {
+      // El agente trabaja desde la raíz del proyecto, no desde el fuente del fork.
+      // Con cwd en app/agent-runtime, "leé package.json" contestaba que no existe
+      // porque estaba parado dentro del código de Hermes. El paquete está instalado
+      // en modo editable, así que resuelve igual desde cualquier directorio.
+      cwd: process.env.NIKI_AGENT_CWD || REPO_ROOT,
       env: {
         ...process.env,
         // Todo el estado del agente vive dentro del proyecto. Es la línea que hace

@@ -29,6 +29,12 @@ platform_toolsets:
   - file
   - code_execution
 
+# Dónde trabaja el agente. Sin esto la herramienta terminal arranca en el home del
+# usuario y "leé package.json" contesta que no existe — parada fuera del proyecto.
+# El gateway puentea esta clave a TERMINAL_CWD (no ponerla en .env: avisa y la ignora).
+terminal:
+  cwd: /Users/estebancanales/Work/agente
+
 agent:
   max_turns: 20
   reasoning_effort: low

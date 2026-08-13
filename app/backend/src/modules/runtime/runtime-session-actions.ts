@@ -1,6 +1,6 @@
+import { resolve } from "path";
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
-import { homedir } from "node:os";
 
 export type RuntimeSessionHandoffResult = {
   ok: boolean;
@@ -31,13 +31,25 @@ type HermesProcessEntry = {
   exited?: unknown;
 };
 
+/**
+ * Estado del agente de Niki. Apunta al runtime interno (`app/backend/agent-home`), no al
+ * Hermes personal de `~/.hermes`: la última fuga que quedaba hacia afuera. Se detectó
+ * buscando referencias a ".hermes" en el código después de dar el corte por terminado.
+ */
+function nikiAgentHome(): string {
+  return (
+    process.env.NIKI_AGENT_HOME?.trim() ||
+    resolve(__dirname, "..", "..", "..", "agent-home")
+  );
+}
+
 export function requestHermesSessionHandoff(
   input: { sessionId?: string; platform?: string },
   options?: { dbPath?: string },
 ): RuntimeSessionHandoffResult {
   const sessionId = normalizeSessionId(input.sessionId);
   const platform = normalizePlatform(input.platform);
-  const dbPath = options?.dbPath?.trim() || `${homedir()}/.hermes/state.db`;
+  const dbPath = options?.dbPath?.trim() || `${nikiAgentHome()}/state.db`;
   if (!existsSync(dbPath)) {
     return {
       ok: false,
@@ -122,12 +134,12 @@ export function undoHermesSessionLastExchange(
   },
 ): RuntimeSessionUndoResult {
   const sessionId = normalizeSessionId(input.sessionId);
-  const hermesHome = `${homedir()}/.hermes`;
+  const hermesHome = nikiAgentHome();
   const dbPath = options?.dbPath?.trim() || `${hermesHome}/state.db`;
   const sessionsDir = options?.sessionsDir?.trim() || `${hermesHome}/sessions`;
   const processesPath = options?.processesPath?.trim() || `${hermesHome}/processes.json`;
   const sessionsIndexPath = options?.sessionsIndexPath?.trim() || `${sessionsDir}/sessions.json`;
-  const hermesRoot = options?.hermesRoot?.trim() || `${hermesHome}/hermes-agent`;
+  const hermesRoot = options?.hermesRoot?.trim() || resolve(__dirname, "..", "..", "..", "..", "agent-runtime");
 
   if (!existsSync(dbPath)) {
     return { ok: false, sessionId, removed: 0, error: "Hermes state.db is not available." };

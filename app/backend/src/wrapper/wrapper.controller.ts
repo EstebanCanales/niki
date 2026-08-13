@@ -1,3 +1,4 @@
+import { actingUserIdFrom } from "../modules/common/request-context";
 import {
   Body,
   Controller,
@@ -342,7 +343,7 @@ export class WrapperController {
       // saber quién habló no cuesta tiempo de reloj.
       const [result, speaker] = await Promise.all([
         this.voiceService.transcribe(audioBuffer, language, prompt),
-        this.speakerService.verify(String(body?.userId ?? "esteban"), audioBuffer),
+        this.speakerService.verify(actingUserIdFrom(req), audioBuffer),
       ]);
       return { ...result, speaker };
     } catch (err) {
@@ -356,7 +357,7 @@ export class WrapperController {
   async speakerStatus(@Req() req: Request, @Query("userId") userId?: string) {
     this.wrapperService.assertAuthorized(req);
     if (!this.speakerService.available) return { ok: true, available: false, enrolled: false };
-    const r = await this.speakerService.status(String(userId ?? "esteban"));
+    const r = await this.speakerService.status(userId?.trim() || actingUserIdFrom(req));
     return { available: true, ...r };
   }
 
@@ -375,7 +376,7 @@ export class WrapperController {
     if (samples.length < 3) {
       return { ok: false, error: "Hacen falta al menos 3 tomas." };
     }
-    return this.speakerService.enroll(String(body?.userId ?? "esteban"), samples);
+    return this.speakerService.enroll(body?.userId?.trim() || actingUserIdFrom(req), samples);
   }
 
   @Post("voice/synthesize")

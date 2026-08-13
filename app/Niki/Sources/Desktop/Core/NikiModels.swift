@@ -735,3 +735,19 @@ struct NikiAgentStatus: Codable {
     let lastError: String?
     let model: NikiAgentModelSelection?
 }
+
+
+/// Estado de la huella de voz.
+struct NikiSpeakerStatus: Codable {
+    let available: Bool
+    let enrolled: Bool
+    let threshold: Double?
+    let samples: Int?
+}
+
+struct NikiSpeakerEnrollResponse: Codable {
+    let ok: Bool
+    let error: String?
+    let threshold: Double?
+    let samples: Int?
+}

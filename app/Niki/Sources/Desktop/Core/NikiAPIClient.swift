@@ -360,6 +360,27 @@ private extension Data {
     }
 }
 
+// MARK: - Huella de voz
+
+extension NikiAPIClient {
+    func speakerStatus() async throws -> NikiSpeakerStatus {
+        try await decodeResponse(NikiSpeakerStatus.self, from: try request("/voice/speaker"))
+    }
+
+    /// Registra la voz con varias tomas. El backend saca el umbral de cuánto varían
+    /// entre sí, así que mandar pocas o muy parecidas empeora el resultado.
+    func enrollSpeaker(samples: [Data]) async throws -> NikiSpeakerEnrollResponse {
+        let payload = try JSONSerialization.data(withJSONObject: [
+            "samples": samples.map { $0.base64EncodedString() },
+        ])
+        return try await decodeResponse(
+            NikiSpeakerEnrollResponse.self,
+            from: try request("/voice/speaker/enroll", method: "POST",
+                              body: payload, contentType: "application/json")
+        )
+    }
+}
+
 // MARK: - Proveedor del agente
 
 extension NikiAPIClient {

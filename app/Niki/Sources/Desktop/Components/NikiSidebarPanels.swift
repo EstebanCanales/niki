@@ -532,11 +532,90 @@ private var emptyTasks: some View {
 
 // MARK: - Mic Panel (selector de micrófono + control de llamada)
 
+/// Huella de voz: que Niki responda solo a vos.
+///
+/// Vive junto al micrófono porque es la misma conversación — qué escucha y a quién le
+/// hace caso.
+struct NikiSpeakerPanel: View {
+    @EnvironmentObject private var appModel: NikiAppModel
+
+    var body: some View {
+        SidebarCard {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 8) {
+                    Image(systemName: appModel.speakerEnrolled ? "person.crop.circle.badge.checkmark" : "person.crop.circle.dashed")
+                        .font(.system(size: 14))
+                        .foregroundStyle(appModel.speakerEnrolled ? Color.green.opacity(0.8) : Color.white.opacity(0.3))
+                    Text(appModel.speakerEnrolled ? "Niki reconoce tu voz" : "Tu voz no está registrada")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.white.opacity(0.85))
+                }
+
+                if !appModel.speakerAvailable {
+                    Text("La huella de voz no está instalada en el backend.")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Color.white.opacity(0.4))
+                        .fixedSize(horizontal: false, vertical: true)
+                } else if appModel.speakerEnrolled {
+                    Text("Registrada con \(appModel.speakerSamples) tomas. Las voces que no coincidan se descartan; si no coincidiera la tuya, volvé a registrarla.")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Color.white.opacity(0.42))
+                        .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    Text("Mientras no la registres, Niki le responde a cualquiera. Registrarla toma unos segundos: se graban \(appModel.enrollTotal) frases cortas.")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Color.white.opacity(0.42))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                if appModel.enrolling {
+                    VStack(alignment: .leading, spacing: 6) {
+                        ProgressView(value: Double(appModel.enrollProgress), total: Double(appModel.enrollTotal))
+                            .tint(Color.white.opacity(0.6))
+                        Text(appModel.speakerStatusText)
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(Color.white.opacity(0.6))
+                    }
+                } else if !appModel.speakerStatusText.isEmpty {
+                    Text(appModel.speakerStatusText)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Color.white.opacity(0.55))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                if appModel.speakerAvailable {
+                    Button {
+                        Task { await appModel.enrollSpeaker() }
+                    } label: {
+                        Text(appModel.speakerEnrolled ? "Volver a registrar" : "Registrar mi voz")
+                            .font(.system(size: 12, weight: .semibold))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                            .background(Color.white.opacity(0.09), in: RoundedRectangle(cornerRadius: 8))
+                            .foregroundStyle(Color.white.opacity(0.85))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(appModel.enrolling || appModel.sttLabActive)
+                    if appModel.sttLabActive {
+                        Text("Cortá la llamada para poder registrar la voz — el micrófono está ocupado.")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(Color.orange.opacity(0.7))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+        }
+        .task { await appModel.loadSpeakerStatus() }
+    }
+}
+
 struct NikiMicPanel: View {
     @EnvironmentObject private var appModel: NikiAppModel
 
     var body: some View {
         SidebarShell(eyebrow: "Voz", title: "Micrófono") {
+            VStack(alignment: .leading, spacing: 12) {
+            NikiSpeakerPanel()
             SidebarCard {
                 VStack(alignment: .leading, spacing: 14) {
                     Text("Elegí qué micrófono usa Niki para escucharte.")
@@ -573,6 +652,7 @@ struct NikiMicPanel: View {
                             .frame(height: 28)
                     }
                 }
+            }
             }
         }
         .task { appModel.refreshMicDevices() }

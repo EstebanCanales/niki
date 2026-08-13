@@ -197,6 +197,65 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
     }
 
     private var recorder: AVAudioRecorder?
+    // MARK: - Huella de voz
+    @Published var speakerAvailable = false
+    @Published var speakerEnrolled = false
+    @Published var speakerThreshold: Double?
+    @Published var speakerSamples = 0
+    /// Cuántas tomas se grabaron en el registro en curso.
+    @Published var enrollProgress = 0
+    @Published var enrollTotal = 5
+    @Published var enrolling = false
+    @Published var speakerStatusText = ""
+
+    func loadSpeakerStatus() async {
+        guard let s = try? await client.speakerStatus() else { return }
+        speakerAvailable = s.available
+        speakerEnrolled = s.enrolled
+        speakerThreshold = s.threshold
+        speakerSamples = s.samples ?? 0
+    }
+
+    /// Graba las tomas de registro, una por una, y las manda juntas.
+    ///
+    /// Se graban seguidas y no de a una con confirmación porque el umbral sale de cuánto
+    /// varía la voz entre tomas: si se hacen muy separadas o leyendo la misma frase con
+    /// la misma entonación, la dispersión es artificialmente baja y el umbral queda
+    /// demasiado estricto para el uso real.
+    func enrollSpeaker() async {
+        guard !enrolling else { return }
+        enrolling = true
+        enrollProgress = 0
+        speakerStatusText = ""
+        defer { enrolling = false }
+
+        var tomas: [Data] = []
+        for i in 0..<enrollTotal {
+            speakerStatusText = "Hablá normal… (\(i + 1) de \(enrollTotal))"
+            guard let (audio, _) = await recordChunkFixed(duration: 3.0), audio.count > 4096 else {
+                speakerStatusText = "No se pudo grabar. Revisá el micrófono."
+                return
+            }
+            tomas.append(audio)
+            enrollProgress = i + 1
+            // Un respiro entre tomas: si van pegadas se graba la misma entonación.
+            try? await Task.sleep(nanoseconds: 700_000_000)
+        }
+
+        speakerStatusText = "Procesando…"
+        do {
+            let r = try await client.enrollSpeaker(samples: tomas)
+            if r.ok {
+                speakerStatusText = "Listo. Niki ya reconoce tu voz."
+                await loadSpeakerStatus()
+            } else {
+                speakerStatusText = r.error ?? "No se pudo registrar la voz."
+            }
+        } catch {
+            speakerStatusText = error.localizedDescription
+        }
+    }
+
     // MARK: - Proveedor del agente
     @Published var agentProviders: [NikiAgentProvider] = []
     @Published var agentSelection: NikiAgentModelSelection?

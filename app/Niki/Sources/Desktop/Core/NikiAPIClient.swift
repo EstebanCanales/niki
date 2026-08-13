@@ -392,6 +392,14 @@ extension NikiAPIClient {
         try await decodeResponse(NikiAgentProvidersResponse.self, from: try request("/agent/providers"))
     }
 
+    /// ¿Ya está iniciada la sesión de ese proveedor?
+    func providerLoginStatus(_ providerID: String) async throws -> NikiProviderLoginStatus {
+        try await decodeResponse(
+            NikiProviderLoginStatus.self,
+            from: try request("/agent/providers/\(providerID)/login")
+        )
+    }
+
     /// Arranca el inicio de sesión y devuelve la URL y el código para mostrarlos.
     func startProviderLogin(_ providerID: String) async throws -> NikiProviderLogin {
         try await decodeResponse(

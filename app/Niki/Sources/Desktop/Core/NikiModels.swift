@@ -761,3 +761,10 @@ struct NikiProviderLogin: Codable {
     let code: String?
     let waiting: Bool
 }
+
+
+/// Si la sesión de un proveedor ya está iniciada, y por qué no si no lo está.
+struct NikiProviderLoginStatus: Codable {
+    let loggedIn: Bool
+    let detail: String?
+}

@@ -274,6 +274,7 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
             agentError = error.localizedDescription
         }
         await refreshAgentStatus()
+        await refreshLoginStatus()
     }
 
     func refreshAgentStatus() async {
@@ -284,26 +285,65 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
 
     /// Inicio de sesión en curso: la URL y el código que hay que abrir.
     @Published var pendingLogin: NikiProviderLogin?
-    @Published var loginStarting = false
+    /// Qué proveedor está arrancando su login. Es el id y no un bool: con un bool
+    /// compartido, tocar "conectar" en uno cambiaba el botón de todos.
+    @Published var loginStartingFor: String?
+    /// Sesión iniciada, por proveedor. Cada fila muestra lo suyo.
+    @Published var loginConnected: [String: Bool] = [:]
+    /// Cuál está esperando la aprobación en el navegador.
+    @Published var loginWaitingFor: String?
 
-    /// Arranca el inicio de sesión y deja a mano la URL y el código.
-    ///
-    /// El proceso queda esperando la aprobación del otro lado; cuando aceptás en el
-    /// navegador, la credencial se guarda sola en agent-home.
-    func startProviderLogin(_ p: NikiAgentProvider) async {
-        guard !loginStarting else { return }
-        loginStarting = true
-        agentError = ""
-        pendingLogin = nil
-        defer { loginStarting = false }
-        do {
-            pendingLogin = try await client.startProviderLogin(p.id)
-        } catch {
-            agentError = error.localizedDescription
+    /// Consulta el estado de sesión de los proveedores que van por suscripción.
+    func refreshLoginStatus() async {
+        let porSuscripcion = agentProviders.filter { !$0.credentialReady && $0.authType != "api_key" }
+        for p in porSuscripcion {
+            if let r = try? await client.providerLoginStatus(p.id) {
+                loginConnected[p.id] = r.loggedIn
+            }
         }
     }
 
-    func dismissLogin() { pendingLogin = nil }
+    /// Arranca el inicio de sesión de UN proveedor y espera a que se complete.
+    ///
+    /// El proceso del runtime queda esperando la aprobación del otro lado; acá se
+    /// sondea hasta que la sesión aparece, para poder confirmarlo en pantalla en vez de
+    /// dejar al usuario adivinando si funcionó.
+    func startProviderLogin(_ p: NikiAgentProvider) async {
+        guard loginStartingFor == nil else { return }
+        loginStartingFor = p.id
+        agentError = ""
+        pendingLogin = nil
+        do {
+            pendingLogin = try await client.startProviderLogin(p.id)
+            loginWaitingFor = p.id
+        } catch {
+            agentError = error.localizedDescription
+            loginStartingFor = nil
+            return
+        }
+        loginStartingFor = nil
+
+        // Hasta 5 minutos: es lo que suele durar un código de dispositivo.
+        for _ in 0..<100 {
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            guard loginWaitingFor == p.id else { return }   // lo cerró a mano
+            if let r = try? await client.providerLoginStatus(p.id), r.loggedIn {
+                loginConnected[p.id] = true
+                loginWaitingFor = nil
+                pendingLogin = nil
+                agentError = "Listo: \(p.name) quedó conectado."
+                await loadAgentProviders()
+                return
+            }
+        }
+        loginWaitingFor = nil
+        agentError = "No llegó la confirmación de \(p.name). Si aprobaste en el navegador, recargá el panel."
+    }
+
+    func dismissLogin() {
+        pendingLogin = nil
+        loginWaitingFor = nil
+    }
 
     /// Cambia el proveedor y espera a que el runtime vuelva a estar listo.
     ///

@@ -248,28 +248,57 @@ struct NikiProviderPanel: View {
                 .padding(.leading, 2)
 
             ForEach(porSuscripcion) { p in
-                SidebarCard {
-                    HStack(spacing: 8) {
-                        Image(systemName: "person.crop.circle.badge.questionmark")
-                            .font(.system(size: 13))
-                            .foregroundStyle(Color.white.opacity(0.28))
-                        Text(p.name)
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(Color.white.opacity(0.62))
-                        Spacer()
-                        Button {
-                            Task { await appModel.startProviderLogin(p) }
-                        } label: {
-                            Text(appModel.loginStarting ? "Abriendo…" : "Iniciar sesión")
-                                .font(.system(size: 11, weight: .semibold))
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 5)
-                                .background(Color.white.opacity(0.09), in: RoundedRectangle(cornerRadius: 6))
-                                .foregroundStyle(Color.white.opacity(0.8))
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(appModel.loginStarting)
+                filaSuscripcion(p)
+            }
+        }
+    }
+
+    /// Fila de un proveedor por suscripción. Cada una lleva su propio estado: antes el
+    /// botón era compartido y tocar "conectar" en uno los ponía a todos en "Abriendo…".
+    private func filaSuscripcion(_ p: NikiAgentProvider) -> some View {
+        let conectado = appModel.loginConnected[p.id] == true
+        let arrancando = appModel.loginStartingFor == p.id
+        let esperando = appModel.loginWaitingFor == p.id
+
+        return SidebarCard {
+            HStack(spacing: 8) {
+                Image(systemName: conectado ? "person.crop.circle.badge.checkmark" : "person.crop.circle.badge.questionmark")
+                    .font(.system(size: 13))
+                    .foregroundStyle(conectado ? Color.green.opacity(0.8) : Color.white.opacity(0.28))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(p.name)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(Color.white.opacity(conectado ? 0.85 : 0.62))
+                    if conectado {
+                        Text("conectado")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(Color.green.opacity(0.7))
+                    } else if esperando {
+                        Text("esperando que apruebes…")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(Color.yellow.opacity(0.7))
                     }
+                }
+                Spacer()
+                if conectado {
+                    // Ya conectado: lo que falta es elegir el modelo, no volver a entrar.
+                    Text("listo")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Color.green.opacity(0.7))
+                } else {
+                    Button {
+                        Task { await appModel.startProviderLogin(p) }
+                    } label: {
+                        Text(arrancando ? "Abriendo…" : (esperando ? "Reintentar" : "Iniciar sesión"))
+                            .font(.system(size: 11, weight: .semibold))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(Color.white.opacity(0.09), in: RoundedRectangle(cornerRadius: 6))
+                            .foregroundStyle(Color.white.opacity(0.8))
+                    }
+                    .buttonStyle(.plain)
+                    // Solo se bloquea el que está arrancando, no todos.
+                    .disabled(arrancando || appModel.loginStartingFor != nil)
                 }
             }
         }
@@ -277,7 +306,7 @@ struct NikiProviderPanel: View {
 
     private var resto: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("SIN CREDENCIAL (\(sinCredencial.count))")
+            Text("ESPERAN CLAVE (\(sinCredencial.count))")
                 .font(.system(size: 10, weight: .bold))
                 .foregroundStyle(Color.white.opacity(0.3))
                 .padding(.leading, 2)

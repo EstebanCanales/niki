@@ -1,6 +1,16 @@
+import { resolve } from "path";
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
-import { homedir } from "node:os";
+
+/**
+ * Estado del agente de Niki: `app/backend/agent-home`, no el `~/.hermes` personal.
+ */
+function nikiAgentHome(): string {
+  return (
+    process.env.NIKI_AGENT_HOME?.trim() ||
+    resolve(__dirname, "..", "..", "..", "agent-home")
+  );
+}
 
 export type RuntimeSessionSummary = {
   id: string;
@@ -51,7 +61,7 @@ export type HermesSessionDbRow = {
 };
 
 export function readHermesSessionsIndex() {
-  const filePath = `${homedir()}/.hermes/sessions/sessions.json`;
+  const filePath = `${nikiAgentHome()}/sessions/sessions.json`;
   if (!existsSync(filePath)) {
     return {};
   }
@@ -63,7 +73,7 @@ export function readHermesSessionsIndex() {
 }
 
 export function readHermesChannelDirectoryPlatforms() {
-  const filePath = `${homedir()}/.hermes/channel_directory.json`;
+  const filePath = `${nikiAgentHome()}/channel_directory.json`;
   if (!existsSync(filePath)) return [] as string[];
   try {
     const parsed = JSON.parse(readFileSync(filePath, "utf8")) as HermesChannelDirectory;
@@ -78,7 +88,7 @@ export function readHermesChannelDirectoryPlatforms() {
 }
 
 export function readHermesSessionDbRows(): HermesSessionDbRow[] {
-  const filePath = `${homedir()}/.hermes/state.db`;
+  const filePath = `${nikiAgentHome()}/state.db`;
   if (!existsSync(filePath)) return [];
 
   const query = [

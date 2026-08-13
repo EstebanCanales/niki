@@ -1,5 +1,15 @@
+import { resolve } from "path";
 import { existsSync, readFileSync } from "node:fs";
-import { homedir } from "node:os";
+
+/**
+ * Estado del agente de Niki: `app/backend/agent-home`, no el `~/.hermes` personal.
+ */
+function nikiAgentHome(): string {
+  return (
+    process.env.NIKI_AGENT_HOME?.trim() ||
+    resolve(__dirname, "..", "..", "..", "agent-home")
+  );
+}
 
 export type HermesMcpServerConfig = {
   id: string;
@@ -32,7 +42,7 @@ export type RuntimeMcpServer = {
 };
 
 export function readHermesMcpConfigRaw() {
-  const filePath = process.env.HERMES_CONFIG_PATH?.trim() || `${homedir()}/.hermes/config.yaml`;
+  const filePath = process.env.HERMES_CONFIG_PATH?.trim() || `${nikiAgentHome()}/config.yaml`;
   if (!existsSync(filePath)) return "";
   try {
     return readFileSync(filePath, "utf8");

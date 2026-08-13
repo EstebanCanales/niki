@@ -282,16 +282,28 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
         if let m = s.model { agentSelection = m }
     }
 
-    /// Abre el inicio de sesión de un proveedor por suscripción.
+    /// Inicio de sesión en curso: la URL y el código que hay que abrir.
+    @Published var pendingLogin: NikiProviderLogin?
+    @Published var loginStarting = false
+
+    /// Arranca el inicio de sesión y deja a mano la URL y el código.
+    ///
+    /// El proceso queda esperando la aprobación del otro lado; cuando aceptás en el
+    /// navegador, la credencial se guarda sola en agent-home.
     func startProviderLogin(_ p: NikiAgentProvider) async {
+        guard !loginStarting else { return }
+        loginStarting = true
         agentError = ""
+        pendingLogin = nil
+        defer { loginStarting = false }
         do {
-            try await client.startProviderLogin(p.id)
-            agentError = "Se abrió una Terminal para iniciar sesión en \(p.name). Cuando termines, volvé y recargá."
+            pendingLogin = try await client.startProviderLogin(p.id)
         } catch {
             agentError = error.localizedDescription
         }
     }
+
+    func dismissLogin() { pendingLogin = nil }
 
     /// Cambia el proveedor y espera a que el runtime vuelva a estar listo.
     ///

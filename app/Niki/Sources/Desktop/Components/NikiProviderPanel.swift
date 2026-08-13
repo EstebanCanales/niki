@@ -17,6 +17,7 @@ struct NikiProviderPanel: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
                     activo
+                    if let login = appModel.pendingLogin { tarjetaLogin(login) }
                     if !appModel.agentError.isEmpty { error }
                     listos
                     if !porSuscripcion.isEmpty { suscripciones }
@@ -160,6 +161,81 @@ struct NikiProviderPanel: View {
         }
     }
 
+    /// Lo que hay que abrir y tipear para completar el inicio de sesión.
+    /// Se muestra acá y no en una Terminal: mandar a otro lado a copiar un código es
+    /// justo lo que la app puede evitar.
+    private func tarjetaLogin(_ login: NikiProviderLogin) -> some View {
+        SidebarCard {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text("INICIAR SESIÓN\(login.provider.map { " · \($0)" } ?? "")")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(Color.white.opacity(0.4))
+                    Spacer()
+                    Button { appModel.dismissLogin() } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(Color.white.opacity(0.35))
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                Text("1. Abrí este link")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(Color.white.opacity(0.5))
+                Button {
+                    if let u = URL(string: login.url) { NSWorkspace.shared.open(u) }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "safari")
+                        Text(login.url)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                    .font(.system(size: 11, weight: .medium))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 7)
+                    .background(Color.blue.opacity(0.18), in: RoundedRectangle(cornerRadius: 7))
+                    .foregroundStyle(Color.blue.opacity(0.95))
+                }
+                .buttonStyle(.plain)
+
+                if let code = login.code {
+                    Text("2. Poné este código")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Color.white.opacity(0.5))
+                    Button {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(code, forType: .string)
+                    } label: {
+                        HStack {
+                            Text(code)
+                                .font(.system(size: 18, weight: .bold, design: .monospaced))
+                                .foregroundStyle(Color.white.opacity(0.92))
+                            Spacer()
+                            Image(systemName: "doc.on.doc")
+                                .font(.system(size: 11))
+                                .foregroundStyle(Color.white.opacity(0.35))
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 9)
+                        .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 7))
+                    }
+                    .buttonStyle(.plain)
+                    Text("Tocá el código para copiarlo.")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(Color.white.opacity(0.28))
+                }
+
+                Text("Cuando apruebes en el navegador, la sesión queda guardada sola. Después recargá este panel.")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(Color.white.opacity(0.35))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
     private var suscripciones: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("POR SUSCRIPCIÓN (\(porSuscripcion.count))")
@@ -184,7 +260,7 @@ struct NikiProviderPanel: View {
                         Button {
                             Task { await appModel.startProviderLogin(p) }
                         } label: {
-                            Text("Iniciar sesión")
+                            Text(appModel.loginStarting ? "Abriendo…" : "Iniciar sesión")
                                 .font(.system(size: 11, weight: .semibold))
                                 .padding(.horizontal, 10)
                                 .padding(.vertical, 5)
@@ -192,6 +268,7 @@ struct NikiProviderPanel: View {
                                 .foregroundStyle(Color.white.opacity(0.8))
                         }
                         .buttonStyle(.plain)
+                        .disabled(appModel.loginStarting)
                     }
                 }
             }

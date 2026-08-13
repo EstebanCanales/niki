@@ -38,6 +38,13 @@ export type AgentProvider = {
   credentialFrom: string | null;
 };
 
+/** URL y código que hay que abrir para completar el inicio de sesión. */
+export type ProviderLogin = {
+  url: string;
+  code: string | null;
+  waiting: boolean;
+};
+
 export type AgentRuntimeStatus = {
   state: AgentRuntimeState;
   baseUrl: string;
@@ -176,36 +183,36 @@ export class AgentRuntimeService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Abre el flujo de inicio de sesión de un proveedor de suscripción en una Terminal.
+   * Arranca el inicio de sesión de un proveedor por suscripción y devuelve la URL y el
+   * código para mostrarlos en la app.
    *
-   * Los proveedores por suscripción (ChatGPT/Codex, Nous, Qwen, Grok, Gemini, MiniMax,
-   * Copilot) no usan una clave: cada uno tiene su propio OAuth, y son flujos distintos
-   * entre sí — device code, navegador con callback local, CLI de terceros. Reimplementar
-   * seis flujos dentro de Niki sería mucho código frágil para algo que el runtime ya
-   * sabe hacer; se lanza el suyo, apuntado al HERMES_HOME de Niki para que la sesión
-   * quede acá y no en el Hermes personal.
-   *
-   * Va por Terminal a propósito: el flujo es interactivo y necesita que la persona vea
-   * el código y apruebe en el navegador.
+   * Antes esto abría una Terminal, que era mandar al usuario a otro lado a hacer algo
+   * que la app puede mostrar. Los flujos son de código de dispositivo: el runtime
+   * imprime una URL y un código y se queda esperando la aprobación. El puente los
+   * captura y deja el proceso vivo; cuando aprobás, guarda la credencial solo.
    */
-  async startProviderLogin(providerId: string): Promise<{ command: string }> {
+  async startProviderLogin(providerId: string): Promise<ProviderLogin> {
     const python = this.pythonPath();
     if (!python) throw new Error("El runtime del agente no está instalado.");
+    const script = path.join(REPO_ROOT, "app", "backend", "scripts", "login-proveedor.py");
+    const out = await this.runPython("python3", [script, providerId]);
+    const parsed = JSON.parse(out) as ProviderLogin & { ok: boolean; error?: string };
+    if (!parsed.ok) throw new Error(parsed.error || "No se pudo iniciar sesión.");
+    return parsed;
+  }
 
-    const cmd = [
-      `cd ${JSON.stringify(RUNTIME_DIR)}`,
-      `HERMES_HOME=${JSON.stringify(AGENT_HOME)} ${JSON.stringify(python)} -m hermes_cli.main model`,
-    ].join(" && ");
-
-    // `hermes model` es el selector interactivo que también resuelve el login. Se le
-    // pasa el proveedor por si en el futuro acepta el atajo; hoy se elige en pantalla.
-    this.logger.log(`[agente] abriendo login de ${providerId} en Terminal`);
-    await this.runPython(python, [
-      "-c",
-      "import subprocess,sys; subprocess.run(['osascript','-e','tell application \"Terminal\" to do script \"'+sys.argv[1].replace('\\\\','\\\\\\\\').replace('\"','\\\\\"')+'\"','-e','tell application \"Terminal\" to activate'])",
-      cmd,
-    ]);
-    return { command: cmd };
+  /** ¿Ya está la sesión de ese proveedor? */
+  async providerLoginStatus(providerId: string): Promise<{ loggedIn: boolean; detail?: string }> {
+    const python = this.pythonPath();
+    if (!python) return { loggedIn: false };
+    const script = path.join(REPO_ROOT, "app", "backend", "scripts", "login-proveedor.py");
+    try {
+      const out = await this.runPython("python3", [script, providerId, "--estado"]);
+      const parsed = JSON.parse(out) as { loggedIn?: boolean; detail?: string };
+      return { loggedIn: !!parsed.loggedIn, detail: parsed.detail };
+    } catch {
+      return { loggedIn: false };
+    }
   }
 
   private configPath(): string {

@@ -36,6 +36,12 @@ export class AgentController {
    * es interactivo por naturaleza (hay que ver un código y aprobar en el navegador) y
    * cada proveedor tiene el suyo.
    */
+  /** ¿Ya está iniciada la sesión de ese proveedor? */
+  @Get("providers/:id/login")
+  async loginStatus(@Param("id") id: string) {
+    return this.runtime.providerLoginStatus(id);
+  }
+
   @Post("providers/:id/login")
   async login(@Param("id") id: string) {
     const known = await this.runtime.listProviders();
@@ -47,7 +53,8 @@ export class AgentController {
       );
     }
     const r = await this.runtime.startProviderLogin(id);
-    return { ok: true, ...r };
+    // La URL y el código van a la app: es lo que el usuario tiene que abrir y tipear.
+    return { ok: true, provider: match.name, ...r };
   }
 
   @Put("model")

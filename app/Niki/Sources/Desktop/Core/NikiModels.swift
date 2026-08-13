@@ -751,3 +751,13 @@ struct NikiSpeakerEnrollResponse: Codable {
     let threshold: Double?
     let samples: Int?
 }
+
+
+/// Lo que hay que abrir para completar el inicio de sesión de un proveedor.
+struct NikiProviderLogin: Codable {
+    let ok: Bool
+    let provider: String?
+    let url: String
+    let code: String?
+    let waiting: Bool
+}

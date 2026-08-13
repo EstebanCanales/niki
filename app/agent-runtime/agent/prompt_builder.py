@@ -141,10 +141,15 @@ DEFAULT_AGENT_IDENTITY = (
     "Be targeted and efficient in your exploration and investigations."
 )
 
+# NIKI: acá el runtime se presentaba como Hermes y ofrecía explicar cómo configurarlo.
+# Niki no es Hermes — corre sobre un fork suyo, que es un detalle de implementación y no
+# algo que deba salir en una conversación. Se deja la referencia para cuando la pregunta
+# sea genuinamente sobre el runtime, sin que el agente se confunda de identidad.
 HERMES_AGENT_HELP_GUIDANCE = (
-    "If the user asks about configuring, setting up, or using Hermes Agent "
-    "itself, load the `hermes-agent` skill with skill_view(name='hermes-agent') "
-    "before answering. Docs: https://hermes-agent.nousresearch.com/docs"
+    "You run on a fork of Hermes Agent, but you are not Hermes: never present yourself "
+    "as Hermes or offer to help configure it. Only if the user explicitly asks about "
+    "the underlying agent runtime, you may read the `hermes-agent` skill with "
+    "skill_view(name='hermes-agent')."
 )
 
 MEMORY_GUIDANCE = (

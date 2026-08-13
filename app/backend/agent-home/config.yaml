@@ -15,10 +15,20 @@ providers: {}
 # Recorte medido: con todo por defecto son 30 herramientas y ~21.500 tokens fijos por
 # turno. Con estos toolsets son 7 herramientas y ~4.200. El uso real en 159 sesiones
 # fue terminal 477, read_file 110, execute_code 20, search_files 12, process 6.
+# El API server NO lee esta clave: resuelve sus herramientas desde
+# platform_toolsets.api_server (ver hermes_cli/tools_config.py:_get_platform_tools).
+# Se deja igual para el resto de superficies.
 toolsets:
 - terminal
 - file
 - code_execution
+
+# Este es el que manda para el camino que usa Niki.
+platform_toolsets:
+  api_server:
+  - terminal
+  - file
+  - code_execution
 
 agent:
   max_turns: 20

@@ -38,3 +38,7 @@ app/backend/venv-qwen3-tts/
 # colaba — y GitHub rechaza cualquier archivo de más de 100 MB.
 app/backend/whisper/models/
 app/backend/piper/models/
+
+# Fork del runtime del agente: el fuente se versiona, el entorno no.
+app/agent-runtime/venv/
+app/agent-runtime/**/__pycache__/

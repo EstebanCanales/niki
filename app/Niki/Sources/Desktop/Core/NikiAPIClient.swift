@@ -371,6 +371,11 @@ extension NikiAPIClient {
         try await decodeResponse(NikiAgentProvidersResponse.self, from: try request("/agent/providers"))
     }
 
+    /// Abre el flujo de inicio de sesión de un proveedor por suscripción.
+    func startProviderLogin(_ providerID: String) async throws {
+        _ = try await request("/agent/providers/\(providerID)/login", method: "POST")
+    }
+
     /// Cambia con qué piensa Niki. El backend reinicia el runtime, así que después de
     /// esto hay que sondear `agentStatus()` hasta que vuelva a estar `ready`.
     func setAgentModel(provider: String, model: String, baseUrl: String?) async throws {

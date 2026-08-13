@@ -223,6 +223,17 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
         if let m = s.model { agentSelection = m }
     }
 
+    /// Abre el inicio de sesión de un proveedor por suscripción.
+    func startProviderLogin(_ p: NikiAgentProvider) async {
+        agentError = ""
+        do {
+            try await client.startProviderLogin(p.id)
+            agentError = "Se abrió una Terminal para iniciar sesión en \(p.name). Cuando termines, volvé y recargá."
+        } catch {
+            agentError = error.localizedDescription
+        }
+    }
+
     /// Cambia el proveedor y espera a que el runtime vuelva a estar listo.
     ///
     /// Se sondea en vez de asumir: el backend mata y relevanta el proceso, y sin esperar

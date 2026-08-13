@@ -19,6 +19,7 @@ struct NikiProviderPanel: View {
                     activo
                     if !appModel.agentError.isEmpty { error }
                     listos
+                    if !porSuscripcion.isEmpty { suscripciones }
                     if !sinCredencial.isEmpty { resto }
                 }
             }
@@ -31,7 +32,15 @@ struct NikiProviderPanel: View {
     }
 
     private var conCredencial: [NikiAgentProvider] { appModel.agentProviders.filter(\.credentialReady) }
-    private var sinCredencial: [NikiAgentProvider] { appModel.agentProviders.filter { !$0.credentialReady } }
+    /// Por suscripción: no llevan clave, se entra con la cuenta (ChatGPT/Codex, Nous,
+    /// Qwen, Grok, Gemini, MiniMax, Copilot). Van aparte porque la acción es distinta:
+    /// iniciar sesión, no pegar una variable en un archivo.
+    private var porSuscripcion: [NikiAgentProvider] {
+        appModel.agentProviders.filter { !$0.credentialReady && $0.authType != "api_key" }
+    }
+    private var sinCredencial: [NikiAgentProvider] {
+        appModel.agentProviders.filter { !$0.credentialReady && $0.authType == "api_key" }
+    }
 
     // MARK: - Secciones
 
@@ -146,6 +155,44 @@ struct NikiProviderPanel: View {
                     }
                     .buttonStyle(.plain)
                     .disabled(appModel.agentSwitching || modeloEditado.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+            }
+        }
+    }
+
+    private var suscripciones: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("POR SUSCRIPCIÓN (\(porSuscripcion.count))")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(Color.white.opacity(0.3))
+                .padding(.leading, 2)
+            Text("Se entra con tu cuenta, sin clave.")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(Color.white.opacity(0.3))
+                .padding(.leading, 2)
+
+            ForEach(porSuscripcion) { p in
+                SidebarCard {
+                    HStack(spacing: 8) {
+                        Image(systemName: "person.crop.circle.badge.questionmark")
+                            .font(.system(size: 13))
+                            .foregroundStyle(Color.white.opacity(0.28))
+                        Text(p.name)
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(Color.white.opacity(0.62))
+                        Spacer()
+                        Button {
+                            Task { await appModel.startProviderLogin(p) }
+                        } label: {
+                            Text("Iniciar sesión")
+                                .font(.system(size: 11, weight: .semibold))
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 5)
+                                .background(Color.white.opacity(0.09), in: RoundedRectangle(cornerRadius: 6))
+                                .foregroundStyle(Color.white.opacity(0.8))
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
             }
         }

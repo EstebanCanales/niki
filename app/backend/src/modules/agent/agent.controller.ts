@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, Inject, Put } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, Inject, Param, Post, Put } from "@nestjs/common";
 
 import { AgentRuntimeService } from "./agent-runtime.service";
 
@@ -27,6 +27,27 @@ export class AgentController {
       Promise.resolve(this.runtime.currentModel()),
     ]);
     return { providers, current };
+  }
+
+  /**
+   * Arranca el inicio de sesión de un proveedor por suscripción.
+   *
+   * Abre el flujo del propio runtime en una Terminal, apuntado al HERMES_HOME de Niki:
+   * es interactivo por naturaleza (hay que ver un código y aprobar en el navegador) y
+   * cada proveedor tiene el suyo.
+   */
+  @Post("providers/:id/login")
+  async login(@Param("id") id: string) {
+    const known = await this.runtime.listProviders();
+    const match = known.find((p) => p.id === id);
+    if (!match) throw new BadRequestException(`Proveedor desconocido: ${id}`);
+    if (match.authType === "api_key") {
+      throw new BadRequestException(
+        `${match.name} usa clave, no sesión. Definí ${match.apiKeyEnvVars.join(" o ")} en app/backend/.env.`,
+      );
+    }
+    const r = await this.runtime.startProviderLogin(id);
+    return { ok: true, ...r };
   }
 
   @Put("model")

@@ -175,6 +175,39 @@ export class AgentRuntimeService implements OnModuleInit, OnModuleDestroy {
     this.start();
   }
 
+  /**
+   * Abre el flujo de inicio de sesión de un proveedor de suscripción en una Terminal.
+   *
+   * Los proveedores por suscripción (ChatGPT/Codex, Nous, Qwen, Grok, Gemini, MiniMax,
+   * Copilot) no usan una clave: cada uno tiene su propio OAuth, y son flujos distintos
+   * entre sí — device code, navegador con callback local, CLI de terceros. Reimplementar
+   * seis flujos dentro de Niki sería mucho código frágil para algo que el runtime ya
+   * sabe hacer; se lanza el suyo, apuntado al HERMES_HOME de Niki para que la sesión
+   * quede acá y no en el Hermes personal.
+   *
+   * Va por Terminal a propósito: el flujo es interactivo y necesita que la persona vea
+   * el código y apruebe en el navegador.
+   */
+  async startProviderLogin(providerId: string): Promise<{ command: string }> {
+    const python = this.pythonPath();
+    if (!python) throw new Error("El runtime del agente no está instalado.");
+
+    const cmd = [
+      `cd ${JSON.stringify(RUNTIME_DIR)}`,
+      `HERMES_HOME=${JSON.stringify(AGENT_HOME)} ${JSON.stringify(python)} -m hermes_cli.main model`,
+    ].join(" && ");
+
+    // `hermes model` es el selector interactivo que también resuelve el login. Se le
+    // pasa el proveedor por si en el futuro acepta el atajo; hoy se elige en pantalla.
+    this.logger.log(`[agente] abriendo login de ${providerId} en Terminal`);
+    await this.runPython(python, [
+      "-c",
+      "import subprocess,sys; subprocess.run(['osascript','-e','tell application \"Terminal\" to do script \"'+sys.argv[1].replace('\\\\','\\\\\\\\').replace('\"','\\\\\"')+'\"','-e','tell application \"Terminal\" to activate'])",
+      cmd,
+    ]);
+    return { command: cmd };
+  }
+
   private configPath(): string {
     return path.join(AGENT_HOME, "config.yaml");
   }

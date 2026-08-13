@@ -145,6 +145,15 @@ final class NikiVoiceCapture: @unchecked Sendable {
     /// suponer de lo que entra mientras Niki habla.
     private var voiceProcessing = false
 
+    /// Pasa-altos de 90 Hz sobre lo que se graba. Se lleva el rumor del aire, los golpes
+    /// en el escritorio y las plosivas — la voz humana no vive ahí abajo, el ruido sí.
+    private var highPass = NikiBiquad.highPass(cutoff: 90, sampleRate: 16_000)
+    /// Copia pasa-banda (300-3400 Hz) que solo se usa para MEDIR. Un ventilador aporta
+    /// energía de banda completa y cruza el umbral; dentro de la banda de voz, no. Esta
+    /// señal nunca se envía a STT: es el detector, no el material.
+    private var bandLow = NikiBiquad.highPass(cutoff: 300, sampleRate: 16_000)
+    private var bandHigh = NikiBiquad.lowPass(cutoff: 3_400, sampleRate: 16_000)
+
     /// Muestras de la frase en curso (16 kHz mono, little-endian).
     private var utteranceSamples = Data()
     /// Cola circular de pre-roll, en bloques.
@@ -289,11 +298,17 @@ final class NikiVoiceCapture: @unchecked Sendable {
     // MARK: - Hilo de audio
 
     private func handle(buffer: AVAudioPCMBuffer) {
-        guard let converter, let block = Self.convert(buffer, with: converter, to: targetFormat) else { return }
-        let frames = block.count / 2
+        guard let converter, let raw = Self.convert(buffer, with: converter, to: targetFormat) else { return }
+        let frames = raw.count / 2
         guard frames > 0 else { return }
         let blockSeconds = Double(frames) / targetFormat.sampleRate
-        let db = Self.dbFS(block)
+
+        // Dos señales del mismo bloque, con propósitos distintos:
+        //   `block` es lo que se graba y viaja a STT — solo pasa-altos, para no perder
+        //           los agudos que Whisper usa para distinguir consonantes.
+        //   `db`    se mide sobre la banda de voz (300-3400 Hz), que es lo que decide si
+        //           esto fue alguien hablando o el ventilador arrancando.
+        let (block, db) = filterAndMeasure(raw, frames: frames)
         let now = Date()
 
         lock.lock()
@@ -387,7 +402,6 @@ final class NikiVoiceCapture: @unchecked Sendable {
         let peak = peakDb
         let voiced = voicedSeconds
         let hesitated = sawHesitation
-        let seconds = Double(samples.count / 2) / targetFormat.sampleRate
         resetUtterance()
 
         // Quien respira a mitad de frase lo repite; conviene recordarlo unas frases.
@@ -403,8 +417,24 @@ final class NikiVoiceCapture: @unchecked Sendable {
             return
         }
 
-        let wav = Self.wav(pcm16: samples, sampleRate: Int(targetFormat.sampleRate))
-        onUtterance?(Utterance(wav: wav, voiceEndedAt: voiceEnded, cutAt: cutAt, peakDb: peak, seconds: seconds))
+        // Recorte del silencio final: se conserva un colchón corto tras la última muestra
+        // con voz en vez de la ventana entera (0.9-1.5 s). Whisper alucina justo sobre el
+        // silencio, y un clip más corto además vuelve antes.
+        let colchon = Int(Self.tailPaddingSeconds * targetFormat.sampleRate) * 2
+        let silencioFinal = Int(cutAt.timeIntervalSince(voiceEnded) * targetFormat.sampleRate) * 2
+        let sobra = max(0, silencioFinal - colchon)
+        let recortadas = sobra > 0 && sobra < samples.count
+            ? samples.prefix(samples.count - sobra)
+            : samples[...]
+
+        // Normalización de pico a -3 dBFS. Los picos medidos rondaban -22/-34 dBFS y
+        // Whisper rinde peor con entrada floja; es ganancia, no compresión, así que no
+        // cambia la forma de la señal.
+        let normalizadas = Self.normalize(Data(recortadas), peakTargetDb: Self.peakTargetDb)
+
+        let wav = Self.wav(pcm16: normalizadas, sampleRate: Int(targetFormat.sampleRate))
+        onUtterance?(Utterance(wav: wav, voiceEndedAt: voiceEnded, cutAt: cutAt, peakDb: peak,
+                               seconds: Double(normalizadas.count / 2) / targetFormat.sampleRate))
     }
 
     /// Decide si lo que entra es el usuario hablando encima o solo el eco de Niki.
@@ -495,6 +525,83 @@ final class NikiVoiceCapture: @unchecked Sendable {
         }
         guard error == nil, out.frameLength > 0, let channel = out.int16ChannelData else { return nil }
         return Data(bytes: channel[0], count: Int(out.frameLength) * 2)
+    }
+
+    /// Colchón que se deja después de la última muestra con voz. Suficiente para no
+    /// cortar la cola de una palabra, muy por debajo de la ventana de silencio entera.
+    static let tailPaddingSeconds: Double = 0.25
+    /// Pico objetivo tras normalizar. No se llega a 0 para dejar margen y no recortar.
+    static let peakTargetDb: Float = -3
+
+    /// Sube el volumen del clip entero hasta que su pico llegue al objetivo. Es ganancia
+    /// uniforme: no comprime ni cambia la forma de la señal, solo la pone donde Whisper
+    /// la escucha mejor. Si el clip ya está fuerte o es puro silencio, se deja igual.
+    static func normalize(_ pcm16: Data, peakTargetDb: Float) -> Data {
+        let count = pcm16.count / 2
+        guard count > 0 else { return pcm16 }
+
+        var pico: Float = 0
+        pcm16.withUnsafeBytes { raw in
+            let muestras = raw.bindMemory(to: Int16.self)
+            for i in 0..<count { pico = max(pico, abs(Float(muestras[i]) / 32_768.0)) }
+        }
+        guard pico > 0.0001 else { return pcm16 }
+
+        let objetivo = pow(10, peakTargetDb / 20)
+        let ganancia = objetivo / pico
+        // Solo se amplifica: bajarle a un clip que ya está fuerte no aporta nada.
+        guard ganancia > 1.05 else { return pcm16 }
+        // Tope de 30× (~30 dB). Con 12× se quedaba corto — los picos reales rondaban
+        // -30 dBFS y necesitan ~24× para llegar al objetivo. El tope existe por si algo
+        // casi mudo llega hasta acá; lo que de verdad evita amplificar ruido es que solo
+        // se normalizan frases que ya pasaron el VAD y el mínimo de voz.
+        let limitada = min(ganancia, 30)
+
+        var salida = Data(count: pcm16.count)
+        pcm16.withUnsafeBytes { raw in
+            let muestras = raw.bindMemory(to: Int16.self)
+            salida.withUnsafeMutableBytes { destino in
+                let escritas = destino.bindMemory(to: Int16.self)
+                for i in 0..<count {
+                    let v = (Float(muestras[i]) / 32_768.0) * limitada
+                    escritas[i] = Int16(max(-1, min(1, v)) * 32_767)
+                }
+            }
+        }
+        return salida
+    }
+
+    /// Filtra el bloque y devuelve (audio a grabar, nivel de la banda de voz en dBFS).
+    ///
+    /// Se recorren las muestras una sola vez y se sacan las dos señales a la vez: hay que
+    /// hacerlo en el hilo de audio, así que cuantas menos pasadas, mejor.
+    private func filterAndMeasure(_ pcm16: Data, frames: Int) -> (Data, Float) {
+        var salida = Data(count: frames * 2)
+        var sumaBanda: Double = 0
+
+        pcm16.withUnsafeBytes { entrada in
+            let muestras = entrada.bindMemory(to: Int16.self)
+            salida.withUnsafeMutableBytes { destino in
+                let escritas = destino.bindMemory(to: Int16.self)
+                for i in 0..<frames {
+                    let x = Float(muestras[i]) / 32_768.0
+
+                    // Lo que se graba: solo pasa-altos. Recortar los agudos acá le
+                    // sacaría a Whisper justo lo que usa para separar consonantes.
+                    let limpia = highPass.process(x)
+                    let clamped = max(-1, min(1, limpia))
+                    escritas[i] = Int16(clamped * 32_767)
+
+                    // Lo que se mide: banda de voz. Esta señal se descarta.
+                    let banda = bandHigh.process(bandLow.process(limpia))
+                    sumaBanda += Double(banda * banda)
+                }
+            }
+        }
+
+        let rms = (sumaBanda / Double(frames)).squareRoot()
+        let db: Float = rms > 0 ? Float(20 * log10(rms)) : -160
+        return (salida, db)
     }
 
     /// RMS del bloque en dBFS.

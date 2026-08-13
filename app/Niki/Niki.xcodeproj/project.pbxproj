@@ -130,6 +130,7 @@
 		B504EB1501927DC3404669ED /* NikiFeatureRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72AE5AB06C1316A84CDDD050 /* NikiFeatureRegistry.swift */; };
 		C1A0FF0100000001000000A1 /* NikiVoiceCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A0FF0200000002000000A2 /* NikiVoiceCapture.swift */; };
 		C1A0FF0300000003000000A3 /* NikiTurnAssembler.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A0FF0400000004000000A4 /* NikiTurnAssembler.swift */; };
+		C1A0FF0500000005000000A5 /* NikiBiquad.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A0FF0600000006000000A6 /* NikiBiquad.swift */; };
 		B5AF79AC8F3CD14DA3CCFAAB /* CalendarServiceProviding.swift in Sources */ = {isa = PBXBuildFile; fileRef = B68CCB3D8DAB4C259FAF9435 /* CalendarServiceProviding.swift */; };
 		B6646F39431F2239B4908BE3 /* ThumbnailService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D315AE60DCCD642C888CAD7 /* ThumbnailService.swift */; };
 		B6B3D0141CA9822498706FD4 /* SwiftUIIntrospect in Frameworks */ = {isa = PBXBuildFile; productRef = 1F6C4D1065B8AB146032E233 /* SwiftUIIntrospect */; };
@@ -287,6 +288,7 @@
 		72AE5AB06C1316A84CDDD050 /* NikiFeatureRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NikiFeatureRegistry.swift; sourceTree = "<group>"; };
 		C1A0FF0200000002000000A2 /* NikiVoiceCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NikiVoiceCapture.swift; sourceTree = "<group>"; };
 		C1A0FF0400000004000000A4 /* NikiTurnAssembler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NikiTurnAssembler.swift; sourceTree = "<group>"; };
+		C1A0FF0600000006000000A6 /* NikiBiquad.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NikiBiquad.swift; sourceTree = "<group>"; };
 		74B292D5861628CF838C779B /* CalendarManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarManager.swift; sourceTree = "<group>"; };
 		7555582193A495DEF9AFE3D5 /* Niki.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Niki.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		756BB8CC9FC6CFC7B64F98EF /* QuickLookService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickLookService.swift; sourceTree = "<group>"; };
@@ -642,6 +644,7 @@
 				72AE5AB06C1316A84CDDD050 /* NikiFeatureRegistry.swift */,
 				C1A0FF0200000002000000A2 /* NikiVoiceCapture.swift */,
 				C1A0FF0400000004000000A4 /* NikiTurnAssembler.swift */,
+				C1A0FF0600000006000000A6 /* NikiBiquad.swift */,
 				C5308EA3E44C1FDCDB2960E6 /* NikiModels.swift */,
 				173A006572BA66925EF38919 /* NikiOperatorContracts.swift */,
 			);
@@ -1176,6 +1179,7 @@
 				B504EB1501927DC3404669ED /* NikiFeatureRegistry.swift in Sources */,
 				C1A0FF0100000001000000A1 /* NikiVoiceCapture.swift in Sources */,
 				C1A0FF0300000003000000A3 /* NikiTurnAssembler.swift in Sources */,
+				C1A0FF0500000005000000A5 /* NikiBiquad.swift in Sources */,
 				C15BDBA6192C1D490FAC6CD9 /* NikiGlass.swift in Sources */,
 				F3AECAE99B2C40D028796286 /* NikiMcpPanel.swift in Sources */,
 				5FFEF81897423789B4951001 /* NikiModeIndicator.swift in Sources */,

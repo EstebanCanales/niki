@@ -136,9 +136,17 @@ final class NikiVoiceCapture: @unchecked Sendable {
         channels: 1,
         interleaved: true
     )!
-    /// Ver el comentario en `start()`. Apagada: dejaba la llamada muda en las dos
-    /// direcciones.
-    static let useSystemEchoCancellation = false
+    /// Cancelación de eco del sistema. Se intenta, pero con red: si no entra señal en los
+    /// primeros segundos se apaga sola y el motor se reinicia sin ella (ver
+    /// `NikiAppModel.startCapture`). El primer intento dejó la llamada muda en las dos
+    /// direcciones y solo se supo por el reporte de Esteban, no por un error.
+    static var useSystemEchoCancellation = true
+
+    /// Cuánto se espera a que entre la primera señal antes de dar el AEC por roto.
+    static let echoCancellationProbeSeconds: TimeInterval = 4
+
+    /// True si el AEC quedó realmente activo en esta sesión.
+    private(set) var echoCancellationActive = false
 
     private var running = false
     /// El sistema está quitando el eco de la salida. Cambia por completo qué se puede
@@ -181,6 +189,10 @@ final class NikiVoiceCapture: @unchecked Sendable {
     private var bargeInAccum: TimeInterval = 0
     /// El último paso a `.listening` viene de una interrupción, no de un turno normal.
     private var interrupted = false
+    /// ¿Entró alguna señal desde que arrancó el motor? Es lo que decide si el AEC está
+    /// funcionando o dejó el micrófono mudo.
+    private(set) var sawAnySignal = false
+
     /// El orbe no necesita 47 actualizaciones por segundo, y cada una cuesta un salto al
     /// MainActor. ~30 Hz alcanza de sobra para lo que se ve.
     private var lastLevelEmit = Date.distantPast
@@ -203,15 +215,22 @@ final class NikiVoiceCapture: @unchecked Sendable {
         // dispositivo real antes de darla por buena, no solo mirar que no tire error.
         if Self.useSystemEchoCancellation {
             do {
+                // El primer intento solo tocaba la entrada. El procesado de voz es
+                // dúplex: sin preparar también la salida, el dispositivo se lleva puestas
+                // las dos direcciones.
+                try engine.outputNode.setVoiceProcessingEnabled(true)
                 try input.setVoiceProcessingEnabled(true)
                 voiceProcessing = true
+                echoCancellationActive = true
                 onLog?("[STT] cancelación de eco del sistema activa")
             } catch {
                 voiceProcessing = false
+                echoCancellationActive = false
                 onLog?("[STT] sin cancelación de eco (\(error.localizedDescription)) — barge-in por nivel")
             }
         } else {
             voiceProcessing = false
+            echoCancellationActive = false
         }
 
         // El formato se lee DESPUÉS de activar el procesado de voz: lo cambia.
@@ -321,6 +340,7 @@ final class NikiVoiceCapture: @unchecked Sendable {
             return
         }
 
+        if db > -55 { sawAnySignal = true }
         emitLevel(Float(max(0, min(1, (Double(db) + 60.0) / 60.0))), now: now, force: false)
 
         switch phase {

@@ -1838,8 +1838,45 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
         capture = engine
         voiceRecording = true
         syncCapturePhase()
+
+        // Red del AEC: si quedó activo pero no entra ninguna señal, se apaga y se
+        // rearma el motor sin él. El primer intento de cancelación de eco dejó la
+        // llamada muda en las dos direcciones y no tiró ningún error — solo se supo
+        // porque Esteban lo dijo. Que no vuelva a depender de eso.
+        if engine.echoCancellationActive {
+            let engineRef = engine
+            Task { @MainActor [weak self] in
+                let espera = NikiVoiceCapture.echoCancellationProbeSeconds
+                try? await Task.sleep(nanoseconds: UInt64(espera * 1_000_000_000))
+                guard let self, self.sttLabActive, self.capture === engineRef else { return }
+                guard !engineRef.sawAnySignal else {
+                    sttLog("[STT] AEC verificado: entra señal")
+                    return
+                }
+                sttLog("[STT] ⚠️ AEC activo pero sin señal en \(Int(espera))s — apagándolo y reintentando")
+                NikiVoiceCapture.useSystemEchoCancellation = false
+                await self.reiniciarCapturaSinAEC()
+            }
+        }
+
         armarPruebaDeVida()
         return true
+    }
+
+    /// Rearma el motor de captura con la cancelación de eco apagada. Solo lo llama la
+    /// red de seguridad del AEC.
+    private func reiniciarCapturaSinAEC() async {
+        let viejo = capture
+        capture = nil
+        utteranceContinuation?.finish()
+        utteranceContinuation = nil
+        utteranceIterator = nil
+        if let viejo {
+            await Task.detached(priority: .userInitiated) { viejo.stop() }.value
+        }
+        guard sttLabActive else { return }
+        micRecibioSenal = false
+        _ = await startCapture()
     }
 
     /// Si en unos segundos no entró NADA por el micrófono, decirlo en la UI.

@@ -52,3 +52,7 @@ app/backend/agent-home/*
 # cosas suyas — agenda, contactos, lo que le preocupa. Eso no pertenece a un repo que
 # se empuja a GitHub. El runtime la crea sola en el primer arranque.
 app/backend/agent-home/memories/
+
+# Huella de voz: el perfil son datos biométricos del usuario y el modelo se descarga.
+app/backend/speaker/profiles/
+app/backend/speaker/modelo/

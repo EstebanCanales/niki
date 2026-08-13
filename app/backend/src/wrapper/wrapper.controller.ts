@@ -15,6 +15,7 @@ import {
 import { FileInterceptor } from "@nestjs/platform-express";
 import type { Request, Response } from "express";
 
+import { SpeakerService } from "../modules/voice/speaker.service";
 import { VoiceService } from "../modules/voice/voice.service";
 import type { ChatRequestDto } from "./wrapper.types";
 import { WrapperService } from "./wrapper.service";
@@ -36,6 +37,7 @@ export class WrapperController {
   constructor(
     @Inject(WrapperService) private readonly wrapperService: WrapperService,
     @Inject(VoiceService) private readonly voiceService: VoiceService,
+    @Inject(SpeakerService) private readonly speakerService: SpeakerService,
   ) {}
 
   @Get("healthz")
@@ -300,7 +302,7 @@ export class WrapperController {
       mimetype: string;
       size: number;
     } | undefined,
-    @Body() body?: { audio?: string; language?: string; prompt?: string },
+    @Body() body?: { audio?: string; language?: string; prompt?: string; userId?: string },
     @Query("language") queryLanguage?: string,
   ) {
     this.wrapperService.assertAuthorized(req);
@@ -336,12 +338,44 @@ export class WrapperController {
       return { ok: false, error: "Voice service not configured" };
     }
     try {
-      const result = await this.voiceService.transcribe(audioBuffer, language, prompt);
-      return result;
+      // La huella corre EN PARALELO con la transcripción: Groq tarda ~1.1s, así que
+      // saber quién habló no cuesta tiempo de reloj.
+      const [result, speaker] = await Promise.all([
+        this.voiceService.transcribe(audioBuffer, language, prompt),
+        this.speakerService.verify(String(body?.userId ?? "esteban"), audioBuffer),
+      ]);
+      return { ...result, speaker };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       return { ok: false, error: message };
     }
+  }
+
+  /** Estado de la huella de voz: si hay perfil y con qué umbral. */
+  @Get("voice/speaker")
+  async speakerStatus(@Req() req: Request, @Query("userId") userId?: string) {
+    this.wrapperService.assertAuthorized(req);
+    if (!this.speakerService.available) return { ok: true, available: false, enrolled: false };
+    const r = await this.speakerService.status(String(userId ?? "esteban"));
+    return { available: true, ...r };
+  }
+
+  /**
+   * Registra la voz del dueño a partir de varias tomas. El umbral sale de cuánto varían
+   * entre sí, no de una constante inventada.
+   */
+  @Post("voice/speaker/enroll")
+  @HttpCode(200)
+  async speakerEnroll(
+    @Req() req: Request,
+    @Body() body?: { userId?: string; samples?: string[] },
+  ) {
+    this.wrapperService.assertAuthorized(req);
+    const samples = (body?.samples ?? []).map((s) => Buffer.from(s, "base64"));
+    if (samples.length < 3) {
+      return { ok: false, error: "Hacen falta al menos 3 tomas." };
+    }
+    return this.speakerService.enroll(String(body?.userId ?? "esteban"), samples);
   }
 
   @Post("voice/synthesize")

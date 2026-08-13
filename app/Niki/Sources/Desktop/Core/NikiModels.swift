@@ -238,6 +238,8 @@ struct NikiVoiceTranscriptionResponse: Codable {
     let language: String?
     let duration: Int?
     let provider: String?
+    /// Veredicto de la huella de voz. Nil si el backend no la tiene instalada.
+    let speaker: NikiSpeakerVerdict?
 }
 
 struct NikiSttChunk: Identifiable {
@@ -684,4 +686,14 @@ extension NikiChatAttachment {
         self.path = url.path
         self.kind = url.pathExtension.isEmpty ? "file" : url.pathExtension
     }
+}
+
+
+/// Resultado de la huella de voz para un turno.
+struct NikiSpeakerVerdict: Codable {
+    /// Hay un perfil registrado. Si es false, `match` viene siempre en true.
+    let enrolled: Bool
+    let match: Bool
+    let score: Double?
+    let threshold: Double?
 }

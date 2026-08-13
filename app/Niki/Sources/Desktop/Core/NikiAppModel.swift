@@ -2031,6 +2031,18 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
                     .filter { !$0.isEmpty }
                     .joined(separator: " ")
                 sttLog("[STT] dijiste: \"\(text)\" \(ms)ms provider=\(res.provider ?? "?")")
+
+                // Puerta de locutor. Solo se cierra si hay un perfil registrado Y la voz
+                // no coincide: sin perfil, o con la huella caída, el turno pasa igual.
+                // Fallar cerrado acá convertiría cualquier problema de esa pieza en
+                // "Niki no me escucha", que es mucho peor que responderle a otra persona.
+                if let v = res.speaker, v.enrolled, !v.match {
+                    sttLog(String(format: "[STT] descartado: no sos vos (%.2f < %.2f)",
+                                  v.score ?? 0, v.threshold ?? 0))
+                    sttLabStatus = "Escuchando…"
+                    agentState = .listening
+                    continue
+                }
                 if text.isEmpty || Self.whisperHallucinations.contains(text.lowercased()) {
                     sttLabStatus = "No te entendí, hablá de nuevo…"
                     continue

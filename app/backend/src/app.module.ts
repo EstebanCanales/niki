@@ -6,6 +6,7 @@ import { ComplianceModule } from "./modules/compliance/compliance.module";
 import { HealthModule } from "./modules/health/health.module";
 import { IdentityModule } from "./modules/identity/identity.module";
 import { RuntimeModule } from "./modules/runtime/runtime.module";
+import { AgentModule } from "./modules/agent/agent.module";
 import { VoiceModule } from "./modules/voice/voice.module";
 import { RequestLoggerMiddleware } from "./common/request-logger.middleware";
 import { WrapperModule } from "./wrapper/wrapper.module";
@@ -18,6 +19,7 @@ import { WrapperModule } from "./wrapper/wrapper.module";
     ComplianceModule,
     AuditModule,
     RuntimeModule,
+    AgentModule,
     VoiceModule,
     WrapperModule,
   ],

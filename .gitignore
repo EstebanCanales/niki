@@ -42,3 +42,9 @@ app/backend/piper/models/
 # Fork del runtime del agente: el fuente se versiona, el entorno no.
 app/agent-runtime/venv/
 app/agent-runtime/**/__pycache__/
+# Estado en caliente del runtime del agente (caches, locks, dbs). Las skills, la
+# memoria y el SOUL de Niki sí se versionan — se agregan explícitamente.
+app/backend/agent-home/*
+!app/backend/agent-home/skills/
+!app/backend/agent-home/memories/
+!app/backend/agent-home/SOUL.md

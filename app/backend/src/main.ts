@@ -29,6 +29,11 @@ async function bootstrap() {
     ],
   });
 
+  // Sin esto, OnModuleDestroy nunca corre al recibir SIGTERM/SIGINT y el runtime del
+  // agente queda huérfano: el backend se va y su proceso hijo sigue vivo ocupando el
+  // puerto. Verificado — pasaba exactamente eso.
+  app.enableShutdownHooks();
+
   const port = Number(process.env.PORT ?? "8000");
   const host = (process.env.HOST ?? "127.0.0.1").trim() || "127.0.0.1";
 

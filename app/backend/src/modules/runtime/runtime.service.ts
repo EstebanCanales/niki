@@ -1,3 +1,4 @@
+import { resolve } from "path";
 import {
   BadRequestException,
   ForbiddenException,
@@ -292,7 +293,11 @@ function inferModelContextLength(model: string) {
 }
 
 function hermesConfigPath() {
-  return process.env.HERMES_CONFIG_PATH?.trim() || `${homedir()}/.hermes/config.yaml`;
+  // La config del runtime de Niki, no la del Hermes personal del usuario.
+  return (
+    process.env.HERMES_CONFIG_PATH?.trim() ||
+    resolve(__dirname, "..", "..", "..", "agent-home", "config.yaml")
+  );
 }
 
 function readHermesConfigContextLength() {

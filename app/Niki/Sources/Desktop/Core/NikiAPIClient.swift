@@ -227,10 +227,15 @@ struct NikiAPIClient {
         )
     }
 
-    func transcribeAudio(data: Data, language: String) async throws -> NikiVoiceTranscriptionResponse {
+    /// - Parameter prompt: vocabulario para sesgar a Whisper. Sin esto los nombres
+    ///   propios salían destrozados ("Nicky", "Niqui", "Nicunés").
+    func transcribeAudio(data: Data, language: String, prompt: String? = nil) async throws -> NikiVoiceTranscriptionResponse {
         let boundary = "NikiBoundary-\(UUID().uuidString)"
         var body = Data()
         body.appendMultipartField(name: "language", value: language, boundary: boundary)
+        if let prompt, !prompt.isEmpty {
+            body.appendMultipartField(name: "prompt", value: prompt, boundary: boundary)
+        }
         body.appendMultipartFile(
             name: "audio",
             filename: "niki-recording.wav",

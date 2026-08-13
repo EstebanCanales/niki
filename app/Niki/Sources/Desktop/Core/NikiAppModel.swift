@@ -1907,9 +1907,9 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
             let idx = sttLabChunkIndex
             let t0 = Date()
             turn.uploadStart = t0
-            let userText: String
+            var userText: String
             do {
-                let res = try await client.transcribeAudio(data: audio, language: "es")
+                let res = try await client.transcribeAudio(data: audio, language: "es", prompt: sttVocabulary())
                 turn.sttDone = Date()
                 let ms = Int(Date().timeIntervalSince(t0) * 1000)
                 guard sttLabActive, !Task.isCancelled else { break }
@@ -1951,6 +1951,8 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
                 // idéntica a la de antes y volvía a empezar el mismo discurso.
                 if NikiTurnAssembler.isResumeCommand(text), !interruptedReply.isEmpty {
                     sttLog("[STT] retomando lo interrumpido (\(interruptedReply.count) chars de contexto)")
+                    // El prompt de retomar se arma acá y ya está redactado: pulirlo sería
+                    // corregirle el texto a nuestro propio código.
                     userText = NikiTurnAssembler.resumePrompt(interrupted: interruptedReply)
                     interruptedReply = ""
                     pendingTurnText = ""
@@ -1968,6 +1970,9 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
                     } else {
                         userText = text
                     }
+                    // Se pule antes de guardarlo como pendiente, para que si esto se une
+                    // con la continuación no se arrastren dos muletillas.
+                    userText = NikiTurnAssembler.polish(userText)
                     pendingTurnText = NikiTurnAssembler.looksUnfinished(userText) ? userText : ""
                     pendingTurnAt = Date()
                 }
@@ -2019,6 +2024,17 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
 
     /// Siguiente frase del motor. El iterador se guarda entre llamadas para no perder
     /// las frases que llegan mientras el turno anterior todavía se procesa.
+    /// Vocabulario que se le pasa a Whisper para que no destroce los nombres propios.
+    /// Incluye lo último que se dijo: el contexto reciente ayuda más que una lista fija.
+    private func sttVocabulary() -> String {
+        var partes = ["Niki", "Esteban"]
+        if let ultimo = activeMessages.last(where: { $0.role == .user })?.content
+            .trimmingCharacters(in: .whitespacesAndNewlines), !ultimo.isEmpty {
+            partes.append(String(ultimo.prefix(200)))
+        }
+        return partes.joined(separator: ". ")
+    }
+
     private func nextUtterance() async -> NikiVoiceCapture.Utterance? {
         guard var iterator = utteranceIterator else { return nil }
         let value = await iterator.next()

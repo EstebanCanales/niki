@@ -3,6 +3,11 @@ import { ChildProcessWithoutNullStreams, spawn } from "child_process";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+import {
+  esAlucinacion,
+  textoDeSegmentosConfiables,
+  type WhisperSegment,
+} from "./stt-hallucination";
 
 const WHISPER_SERVER_URL = "http://127.0.0.1:8090";
 /// Ventana de ventaja que le damos a Groq (mejor calidad) antes de conformarnos con el
@@ -60,20 +65,19 @@ function detectAudioFormat(buffer: Buffer): { ext: string; mime: string } {
 }
 
 // Alucinaciones comunes de Whisper en silencio
-const WHISPER_HALLUCINATIONS = new Set([
-  ".", "..", "...", "♪", "♫", "[música]", "[music]", "[silencio]", "[silence]",
-  "subtítulos realizados por la comunidad de amara.org",
-  "subtitles by the amara.org community",
-]);
-
-function isHallucination(text: string): boolean {
-  return WHISPER_HALLUCINATIONS.has(text.toLowerCase().trim());
-}
-
 type SttResult = { ok: boolean; text: string; language: string; duration: number; provider?: string };
 type TtsResult = { ok: boolean; audio?: string; format?: string; mime?: string; error?: string; duration: number; provider?: string };
 
 type QwenWorkerResponse = Omit<TtsResult, "duration">;
+
+/** Separa el prompt de vocabulario en términos sueltos, para poder reconocerlos si el
+ *  modelo los devuelve tal cual sobre ruido. */
+function terminosDelPrompt(prompt?: string): string[] {
+  return String(prompt ?? "")
+    .split(/[.\n]/)
+    .map((v) => v.trim())
+    .filter(Boolean);
+}
 
 @Injectable()
 export class VoiceService implements OnModuleDestroy {
@@ -157,13 +161,13 @@ export class VoiceService implements OnModuleDestroy {
 
     const key = this.groqApiKey();
     const runLocal = () =>
-      this.transcribeWithLocalServer(audioBuffer, lang).then(
+      this.transcribeWithLocalServer(audioBuffer, lang, prompt).then(
         (text) => ({ ok: true as const, text }),
         (err) => ({ ok: false as const, err }),
       );
 
     if (key) {
-      const groqPromise = this.transcribeWithGroq(audioBuffer, lang, key).then(
+      const groqPromise = this.transcribeWithGroq(audioBuffer, lang, key, prompt).then(
         (text) => ({ ok: true as const, text }),
         (err) => ({ ok: false as const, err }),
       );
@@ -320,7 +324,7 @@ export class VoiceService implements OnModuleDestroy {
   }
 
   /** Llama al whisper-server local en :8090 — modelo siempre cargado en RAM */
-  private async transcribeWithLocalServer(audioBuffer: Buffer, lang: string): Promise<string> {
+  private async transcribeWithLocalServer(audioBuffer: Buffer, lang: string, prompt?: string): Promise<string> {
     const format = detectAudioFormat(audioBuffer);
     const arrayBuffer = audioBuffer.buffer.slice(
       audioBuffer.byteOffset,
@@ -331,6 +335,8 @@ export class VoiceService implements OnModuleDestroy {
     formData.append("file", new Blob([arrayBuffer], { type: format.mime }), `audio.${format.ext}`);
     formData.append("language", lang);
     formData.append("response_format", "json");
+    if (prompt?.trim()) formData.append("prompt", prompt.trim().slice(0, 800));
+    const vocab = terminosDelPrompt(prompt);
 
     const res = await fetch(`${WHISPER_SERVER_URL}/inference`, {
       method: "POST",
@@ -342,10 +348,10 @@ export class VoiceService implements OnModuleDestroy {
 
     const data = (await res.json()) as { text?: string };
     const text = (data.text ?? "").trim();
-    return isHallucination(text) ? "" : text;
+    return esAlucinacion(text, vocab) ? "" : text;
   }
 
-  private async transcribeWithGroq(audioBuffer: Buffer, lang: string, apiKey: string): Promise<string> {
+  private async transcribeWithGroq(audioBuffer: Buffer, lang: string, apiKey: string, prompt?: string): Promise<string> {
     const format = detectAudioFormat(audioBuffer);
     const arrayBuffer = audioBuffer.buffer.slice(
       audioBuffer.byteOffset,
@@ -357,6 +363,16 @@ export class VoiceService implements OnModuleDestroy {
     formData.append("model", "whisper-large-v3-turbo");
     formData.append("language", lang);
     formData.append("response_format", "verbose_json");
+    // Determinista: sin esto Whisper "completa" cuando duda, que es de donde salen las
+    // alucinaciones sobre silencio.
+    formData.append("temperature", "0");
+    // Sesgo de vocabulario. El parámetro ya estaba en la firma de transcribe() pero solo
+    // llegaba a whisper-cli, el camino de último recurso — Groq, que es el que contesta
+    // casi siempre, nunca lo veía. Es lo que arregla "Nicky/Niqui/Nicunés".
+    if (prompt?.trim()) formData.append("prompt", prompt.trim().slice(0, 800));
+    // El vocabulario que acabamos de mandar es también lo que el modelo va a escupir si
+    // no oye nada — se usa después para descartar esa respuesta.
+    const vocab = terminosDelPrompt(prompt);
 
     const res = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
       method: "POST",
@@ -370,19 +386,16 @@ export class VoiceService implements OnModuleDestroy {
       throw new Error(`Groq STT ${res.status}: ${body.slice(0, 200)}`);
     }
 
-    type VerboseSegment = { no_speech_prob?: number; text?: string };
-    type VerboseResponse = { text?: string; segments?: VerboseSegment[] };
+    type VerboseResponse = { text?: string; segments?: WhisperSegment[] };
     const data = (await res.json()) as VerboseResponse;
 
     if (data.segments && data.segments.length > 0) {
-      const voiced = data.segments.filter((s) => (s.no_speech_prob ?? 0) < 0.6);
-      if (voiced.length === 0) return "";
-      const text = voiced.map((s) => (s.text ?? "").trim()).join(" ").trim();
-      return isHallucination(text) ? "" : text;
+      const text = textoDeSegmentosConfiables(data.segments);
+      return esAlucinacion(text, vocab) ? "" : text;
     }
 
     const text = (data.text ?? "").trim();
-    return isHallucination(text) ? "" : text;
+    return esAlucinacion(text, vocab) ? "" : text;
   }
 
   private runWhisperCli(audioPath: string, language: string, prompt?: string): Promise<string> {
@@ -425,7 +438,7 @@ export class VoiceService implements OnModuleDestroy {
             !l.includes("time =") &&
             !l.includes("fallbacks"),
         ).join(" ").trim();
-        resolve(isHallucination(text) ? "" : text);
+        resolve(esAlucinacion(text) ? "" : text);
       });
 
       proc.on("error", (err) => {

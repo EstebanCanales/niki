@@ -112,6 +112,61 @@ enum NikiTurnAssembler {
         return true
     }
 
+    /// Muletillas que no aportan nada al modelo y sí ocupan lugar. Solo se quitan cuando
+    /// están sueltas entre comas o al principio: "o sea" dentro de una frase puede estar
+    /// haciendo trabajo real, y borrarlo cambiaría lo que dijiste.
+    private static let muletillas = [
+        "eh", "ehh", "este", "esteee", "mmm", "mm", "ehm", "em",
+        "o sea", "osea", "digamos", "viste", "nada",
+    ]
+
+    /// Deja el texto transcrito listo para el modelo.
+    ///
+    /// Conservador a propósito: ante la duda no toca. Pasarse de listo acá significa
+    /// cambiar lo que el usuario dijo, que es peor que mandar un "eh" de más.
+    static func polish(_ text: String) -> String {
+        var t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty else { return t }
+
+        // Muletilla al principio: "Eh, contame..." → "contame..."
+        for m in muletillas {
+            let patrones = ["^\(m),\\s+", "^\(m)\\s+"]
+            for p in patrones {
+                if let r = t.range(of: p, options: [.regularExpression, .caseInsensitive]) {
+                    t = String(t[r.upperBound...])
+                    break
+                }
+            }
+        }
+
+        // Muletilla aislada entre comas: "quiero, o sea, que busques" → "quiero, que busques"
+        for m in muletillas {
+            t = t.replacingOccurrences(
+                of: ",\\s*\(m)\\s*,", with: ",",
+                options: [.regularExpression, .caseInsensitive]
+            )
+        }
+
+        // Tartamudeo: "la la casa" → "la casa". Solo palabras cortas repetidas pegadas;
+        // con palabras largas es más probable que sea énfasis de verdad.
+        t = t.replacingOccurrences(
+            of: "\\b(\\w{1,4})\\s+\\1\\b", with: "$1",
+            options: [.regularExpression, .caseInsensitive]
+        )
+
+        // Espacios y puntuación duplicada que deja el STT al unir segmentos.
+        t = t.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+        t = t.replacingOccurrences(of: "\\s+([,.;:!?])", with: "$1", options: .regularExpression)
+        t = t.replacingOccurrences(of: "([,.;:])\\1+", with: "$1", options: .regularExpression)
+        t = t.trimmingCharacters(in: .whitespaces)
+
+        // Mayúscula inicial, que se pierde al sacar una muletilla del principio.
+        if let f = t.first, f.isLowercase {
+            t = f.uppercased() + t.dropFirst()
+        }
+        return t
+    }
+
     /// Une la parte anterior con lo que siguió, sin duplicar puntuación ni repetir el
     /// fragmento si el STT ya lo incluyó.
     static func merge(_ previous: String, _ next: String) -> String {

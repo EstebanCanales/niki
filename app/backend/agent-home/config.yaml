@@ -28,6 +28,15 @@ platform_toolsets:
   - terminal
   - file
   - code_execution
+  # Las skills cuestan, y se midió cuánto antes de decidir:
+  #   sin skills          7 herramientas →  4.189 tokens (y 93 skills inservibles)
+  #   con 37 skills      10 herramientas →  7.034
+  #   con las 93         10 herramientas →  8.487
+  # Recortar 56 skills ahorraba 1.453 tokens: el grueso son los esquemas de las tres
+  # herramientas, no el índice. No compensa mantener una lista de exclusiones ni perder
+  # capacidades en silencio. Aun con todas, 8.487 sigue siendo la mitad de los 16.238
+  # que costaba el turno antes.
+  - skills
 
 # Dónde trabaja el agente. Sin esto la herramienta terminal arranca en el home del
 # usuario y "leé package.json" contesta que no existe — parada fuera del proyecto.

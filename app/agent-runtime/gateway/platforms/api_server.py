@@ -898,6 +898,15 @@ class APIServerAdapter(BasePlatformAdapter):
             verbose_logging=False,
             ephemeral_system_prompt=ephemeral_system_prompt or None,
             enabled_toolsets=enabled_toolsets,
+            # NIKI: no inyectar los archivos de contexto del directorio de trabajo.
+            # El agente corre parado en la raíz del proyecto de Niki, así que cargaba su
+            # AGENTS.md entero —arquitectura, tablas de directorios, convenciones del
+            # front— en CADA turno: 19.000 caracteres para responder "abrime el Canva".
+            # Son documentos para quien desarrolla Niki, no para Niki.
+            # load_soul_identity mantiene su SOUL.md, que sí es su identidad; sin él,
+            # skip_context_files se lo llevaría también (ver agent/system_prompt.py).
+            skip_context_files=True,
+            load_soul_identity=True,
             session_id=session_id,
             platform="api_server",
             stream_delta_callback=stream_delta_callback,

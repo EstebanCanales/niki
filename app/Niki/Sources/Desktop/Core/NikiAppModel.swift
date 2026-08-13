@@ -197,6 +197,9 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
     /// Motor de captura de la llamada. Vive lo que dura la conversación entera.
     private var capture: NikiVoiceCapture?
     /// Frase que quedó a medias esperando su continuación. Ver NikiTurnAssembler.
+    /// Se pone en true en cuanto entra algo por el mic. Ver `armarPruebaDeVida`.
+    private var micRecibioSenal = false
+    private var micLivenessTask: Task<Void, Never>?
     private var pendingTurnText = ""
     private var pendingTurnAt = Date.distantPast
     /// Más allá de esto, lo que llegue ya no es la continuación de nada: es otro tema.
@@ -1642,6 +1645,43 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
         availableMicDevices = found
     }
 
+    /// Entradas virtuales conocidas. No son micrófonos: son ruteadores de audio de otras
+    /// apps. Una de ellas ("B2 Microphone") colgó CoreAudio y congeló la app entera —
+    /// `AVAudioRecorder.record()` se quedó esperando un mutex para siempre.
+    private static let micsVirtuales = [
+        "b2 ", "zoom", "blackhole", "loopback", "soundflower", "aggregate",
+        "multi-output", "virtual", "obs", "krisp", "vb-cable", "existential",
+    ]
+
+    /// ¿Este dispositivo parece una entrada física de verdad?
+    static func esMicFisico(_ nombre: String) -> Bool {
+        let n = nombre.lowercased()
+        // Las salidas también aparecen enumeradas; no sirven para grabar.
+        if n.contains("bocina") || n.contains("speaker") || n.contains("output") { return false }
+        return !micsVirtuales.contains { n.contains($0) }
+    }
+
+    /// Elige el mejor micrófono disponible: prefiere el interno del Mac, después
+    /// cualquier entrada física, y solo cae en una virtual si no hay otra cosa.
+    func elegirMicrofono() {
+        let fisicos = availableMicDevices.filter { Self.esMicFisico($0.name) }
+        let elegido = fisicos.first(where: { $0.name.lowercased().contains("macbook") })
+            ?? fisicos.first
+            ?? availableMicDevices.first
+
+        guard let elegido else {
+            sttLabStatus = "⚠️ No hay ningún micrófono disponible"
+            sttLog("[STT] sin micrófonos")
+            return
+        }
+        if !Self.esMicFisico(elegido.name) {
+            sttLog("[STT] ⚠️ solo hay entradas virtuales; usando \(elegido.name)")
+        }
+        sttLog("[STT] mic elegido: \(elegido.name) (id=\(elegido.id))"
+               + " — descartados: \(availableMicDevices.filter { !Self.esMicFisico($0.name) }.map(\.name).joined(separator: ", "))")
+        selectMicDevice(elegido.id)
+    }
+
     private func nativeMicSampleRate() -> Double {
         var address = AudioObjectPropertyAddress(
             mSelector: kAudioHardwarePropertyDefaultInputDevice,
@@ -1709,6 +1749,7 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
     func startSttLab() {
         guard !sttLabActive else { return }
         refreshMicDevices()
+        elegirMicrofono()
         sttLabStatus = "Escuchando…"
         sttMicPermission = "?"
         sttLog("[STT] ▶ startSttLab (modo conversación)  mic=\(selectedMicDeviceID)")
@@ -1721,6 +1762,7 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
         // Arrancar una llamada limpia cualquier resto del turno anterior. Sin esto, una
         // llamada que terminó con Niki callada a la fuerza empezaría muda.
         speechSuppressed = false
+        micRecibioSenal = false
         pendingTurnText = ""
         interruptedReply = ""
         sttLabTask = Task { @MainActor [weak self] in
@@ -1766,6 +1808,7 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
                 // publicando el eco de su propia voz, y los dos escribiendo el mismo
                 // valor a 30 y 16 Hz es lo que hacía saltar el orbe.
                 guard !self.speaking else { return }
+                if level > 0.02 { self.micRecibioSenal = true }
                 self.audioLevel = level
             }
         }
@@ -1795,7 +1838,25 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
         capture = engine
         voiceRecording = true
         syncCapturePhase()
+        armarPruebaDeVida()
         return true
+    }
+
+    /// Si en unos segundos no entró NADA por el micrófono, decirlo en la UI.
+    ///
+    /// El fallo de un micrófono muerto es silencioso: la app se ve perfecta, el orbe
+    /// respira, y parece que Niki simplemente no te escucha. Pasó con un dispositivo
+    /// virtual y costó una sesión entera de confusión averiguar por qué.
+    private func armarPruebaDeVida() {
+        micLivenessTask?.cancel()
+        micLivenessTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 6_000_000_000)
+            guard let self, self.sttLabActive, !Task.isCancelled else { return }
+            guard !self.micRecibioSenal else { return }
+            let nombre = self.availableMicDevices.first(where: { $0.id == self.selectedMicDeviceID })?.name ?? "el micrófono"
+            self.sttLabStatus = "⚠️ No entra audio por \(nombre). Revisá el micrófono en Ajustes del Sistema."
+            sttLog("[STT] prueba de vida: 6s sin señal en \(nombre)")
+        }
     }
 
     /// El motor necesita saber de quién es el turno: en `.listening` corta frases por
@@ -1849,6 +1910,8 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
         autoVoice = false
         sttLabTask?.cancel()
         sttLabTask = nil
+        micLivenessTask?.cancel()
+        micLivenessTask = nil
         let engine = capture
         capture = nil
         utteranceContinuation?.finish()

@@ -34,6 +34,8 @@ struct NikiSidebarPanels: View {
                 NikiSessionsPanel()
             case .mcp:
                 NikiMcpPanel()
+            case .provider:
+                NikiProviderPanel()
             case .diagnostics:
                 NikiDiagnosticsPanel()
             case .discover:

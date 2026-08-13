@@ -359,3 +359,28 @@ private extension Data {
         append("\r\n".data(using: .utf8)!)
     }
 }
+
+// MARK: - Proveedor del agente
+
+extension NikiAPIClient {
+    func agentStatus() async throws -> NikiAgentStatus {
+        try await decodeResponse(NikiAgentStatus.self, from: try request("/agent/status"))
+    }
+
+    func agentProviders() async throws -> NikiAgentProvidersResponse {
+        try await decodeResponse(NikiAgentProvidersResponse.self, from: try request("/agent/providers"))
+    }
+
+    /// Cambia con qué piensa Niki. El backend reinicia el runtime, así que después de
+    /// esto hay que sondear `agentStatus()` hasta que vuelva a estar `ready`.
+    func setAgentModel(provider: String, model: String, baseUrl: String?) async throws {
+        var payload: [String: String] = ["provider": provider, "model": model]
+        if let baseUrl, !baseUrl.isEmpty { payload["baseUrl"] = baseUrl }
+        _ = try await request(
+            "/agent/model",
+            method: "PUT",
+            body: try JSONSerialization.data(withJSONObject: payload),
+            contentType: "application/json"
+        )
+    }
+}

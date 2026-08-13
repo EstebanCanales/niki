@@ -160,6 +160,9 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
         if shouldShowDockModule(.mcp) {
             items.append(.mcp)
         }
+        // Elegir con qué piensa Niki. Siempre visible: no depende de que el runtime
+        // esté arriba — de hecho es donde se ve si está caído.
+        items.append(.provider)
         if shouldShowDockModule(.diagnostics) {
             items.append(.diagnostics)
         }
@@ -194,6 +197,55 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
     }
 
     private var recorder: AVAudioRecorder?
+    // MARK: - Proveedor del agente
+    @Published var agentProviders: [NikiAgentProvider] = []
+    @Published var agentSelection: NikiAgentModelSelection?
+    @Published var agentRuntimeState: String = "?"
+    @Published var agentSwitching = false
+    @Published var agentError = ""
+
+    /// Carga proveedores y estado del runtime.
+    func loadAgentProviders() async {
+        do {
+            let r = try await client.agentProviders()
+            agentProviders = r.providers
+            agentSelection = r.current
+            agentError = ""
+        } catch {
+            agentError = error.localizedDescription
+        }
+        await refreshAgentStatus()
+    }
+
+    func refreshAgentStatus() async {
+        guard let s = try? await client.agentStatus() else { return }
+        agentRuntimeState = s.state
+        if let m = s.model { agentSelection = m }
+    }
+
+    /// Cambia el proveedor y espera a que el runtime vuelva a estar listo.
+    ///
+    /// Se sondea en vez de asumir: el backend mata y relevanta el proceso, y sin esperar
+    /// el siguiente turno saldría contra un runtime a medio arrancar.
+    func switchAgentProvider(_ provider: NikiAgentProvider, model: String) async {
+        guard !agentSwitching else { return }
+        agentSwitching = true
+        agentError = ""
+        defer { agentSwitching = false }
+        do {
+            try await client.setAgentModel(provider: provider.id, model: model,
+                                           baseUrl: provider.baseUrl)
+            for _ in 0..<40 {
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                await refreshAgentStatus()
+                if agentRuntimeState == "ready" { return }
+            }
+            agentError = "El runtime no volvió a estar listo. Mirá el panel de diagnóstico."
+        } catch {
+            agentError = error.localizedDescription
+        }
+    }
+
     /// Motor de captura de la llamada. Vive lo que dura la conversación entera.
     private var capture: NikiVoiceCapture?
     /// Frase que quedó a medias esperando su continuación. Ver NikiTurnAssembler.

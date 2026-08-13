@@ -6,6 +6,7 @@ enum NikiModuleID: String, CaseIterable, Codable {
     case approvals
     case sessions
     case mcp
+    case provider
     case discover
     case diagnostics
     case settings

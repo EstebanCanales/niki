@@ -697,3 +697,41 @@ struct NikiSpeakerVerdict: Codable {
     let score: Double?
     let threshold: Double?
 }
+
+// MARK: - Proveedor del agente
+
+/// Un proveedor de inferencia que el runtime del agente sabe usar.
+struct NikiAgentProvider: Codable, Identifiable, Hashable {
+    let id: String
+    let name: String
+    let authType: String
+    let baseUrl: String
+    let apiKeyEnvVars: [String]
+    let baseUrlEnvVar: String
+    /// Si hay credencial en el entorno. El valor nunca se expone.
+    let credentialReady: Bool
+    let credentialFrom: String?
+}
+
+/// Con qué está pensando Niki ahora.
+struct NikiAgentModelSelection: Codable, Hashable {
+    let provider: String
+    let model: String
+    let baseUrl: String
+}
+
+struct NikiAgentProvidersResponse: Codable {
+    let providers: [NikiAgentProvider]
+    let current: NikiAgentModelSelection
+}
+
+/// Estado del runtime del agente, para poder decir en la UI si está listo o reiniciando
+/// en vez de que parezca que Niki no responde.
+struct NikiAgentStatus: Codable {
+    let state: String
+    let baseUrl: String
+    let pid: Int?
+    let restarts: Int
+    let lastError: String?
+    let model: NikiAgentModelSelection?
+}

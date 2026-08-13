@@ -44,8 +44,12 @@ export class AppConfigService {
     upstashRedisRestToken: String(
       process.env.UPSTASH_REDIS_REST_TOKEN ?? "",
     ).trim(),
+    // El runtime del agente de Niki, en 8643, levantado y supervisado por el propio
+    // backend (ver modules/agent). El 8642 es el Hermes personal de Esteban: sigue
+    // siendo suyo y Niki ya no depende de él. Para volver al externo mientras dure la
+    // transición, definir HERMES_API_SERVER_URL — cada uso queda registrado.
     hermesApiServerUrl: String(
-      process.env.HERMES_API_SERVER_URL ?? "http://127.0.0.1:8642",
+      process.env.HERMES_API_SERVER_URL ?? "http://127.0.0.1:8643",
     )
       .trim()
       .replace(/\/+$/, ""),

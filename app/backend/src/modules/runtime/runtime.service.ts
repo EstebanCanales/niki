@@ -330,6 +330,8 @@ function summarizeHermesPayloadShape(payload: unknown, depth = 0): unknown {
 @Injectable()
 export class RuntimeService implements OnModuleDestroy {
   private readonly logger = new Logger(RuntimeService.name);
+  /** Cuántos turnos se fueron al gateway externo. Ver el comentario en proxyChatStream. */
+  private externalRuntimeTurns = 0;
   private readonly listeners = new Set<Response>();
   private readonly pendingApprovals = new Map<string, RuntimeApprovalRequest>();
   private readonly heartbeatMs = 15_000;
@@ -905,6 +907,17 @@ export class RuntimeService implements OnModuleDestroy {
 
     this.broadcastEvent("info", "runtime", "runtime.chat.request", "Hermes request started", input.slice(0, 180));
     const runtimeConfig = this.resolveRuntimeConfig();
+
+    // Telemetría del corte: Niki apunta a su runtime interno (8643). Si algún turno sale
+    // por el Hermes externo es porque alguien puso HERMES_API_SERVER_URL a mano, y eso
+    // tiene que verse — el plan es borrar el camino viejo cuando esto pase días en cero,
+    // y esa decisión se toma con datos, no con una corazonada.
+    if (!runtimeConfig.apiServerUrl.includes(":8643")) {
+      this.externalRuntimeTurns += 1;
+      this.logger.warn(
+        `[runtime] turno por el Hermes EXTERNO (${runtimeConfig.apiServerUrl}) — van ${this.externalRuntimeTurns} desde que arrancó el backend`,
+      );
+    }
     this.broadcastPatch({
       agent: {
         state: "thinking",

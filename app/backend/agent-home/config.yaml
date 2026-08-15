@@ -141,3 +141,31 @@ auxiliary:
     provider: codex
     model: gpt-5.6-sol
     timeout: 180
+
+# El umbral de compactación queda en el 0,50 de fábrica, y esto es por qué — para no
+# volver a discutirlo dentro de dos meses.
+#
+# Con Kimi (256k de contexto) compacta a los 128.000 tokens. Bajarlo tiene un piso duro:
+# `threshold_tokens = max(contexto * umbral, MINIMUM_CONTEXT_LENGTH)` con el mínimo en
+# 64.000 (agent/model_metadata.py:133), así que 64k es lo más abajo que se puede llegar,
+# ponga uno el porcentaje que ponga.
+#
+# Y no conviene. Medido en un run real:
+#
+#     110.478 tokens de contexto  →  9,1 s la primera llamada
+#      66.013 tokens de contexto  →  6,9 s
+#     compactar 154k → 57k        →   49 s
+#
+# O sea: bajar el umbral a la mitad ahorra unos dos segundos por turno y duplica la
+# frecuencia de una pausa de cuarenta y nueve segundos. Mal negocio para una conversación
+# hablada. Se deja como está.
+#
+# La otra válvula, `hygiene_hard_message_limit: 400`, no aplica a Niki y no hace falta.
+# Existe para romper el círculo en el que la API se desconecta, no reporta cuántos tokens
+# usó, y sin ese dato nunca se compacta. Nuestro camino no depende de ese dato:
+# `Preflight compression` (agent/conversation_loop.py:436) estima el tamaño del historial,
+# el prompt y el esquema de herramientas antes de cada llamada. Probado: 422 mensajes
+# cortos no la disparan —y está bien, son pocos tokens— y 661 mensajes de 154.000 tokens
+# sí, y compactaron a 183 mensajes y 57.336 tokens.
+compression:
+  threshold: 0.50

@@ -7,7 +7,7 @@
 model:
   default: kimi-k2.5
   provider: kimi-coding
-  base_url: https://api.kimi.com/coding
+  base_url: https://api.moonshot.ai/v1
   context_length: 256000
 providers: {}
 

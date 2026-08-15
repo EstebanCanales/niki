@@ -132,9 +132,30 @@ struct NikiProviderPanel: View {
                 .buttonStyle(.plain)
 
                 if abierto {
-                    // El modelo se escribe a mano: cada proveedor tiene su catálogo y
-                    // pedirlo sería un round-trip por proveedor para una lista que
-                    // cambia sola. El backend rechaza lo que no exista.
+                    // Sugerencias del catálogo del runtime, para no tener que saberse
+                    // el nombre exacto. Igual se puede escribir cualquiera: el backend
+                    // rechaza lo que no exista y dice por qué.
+                    if let ms = p.models, !ms.isEmpty {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 6) {
+                                ForEach(ms, id: \.self) { m in
+                                    Button { modeloEditado = m } label: {
+                                        Text(m)
+                                            .font(.system(size: 10, weight: .medium, design: .monospaced))
+                                            .padding(.horizontal, 7)
+                                            .padding(.vertical, 4)
+                                            .background(
+                                                (modeloEditado == m ? Color.blue.opacity(0.25) : Color.white.opacity(0.06)),
+                                                in: RoundedRectangle(cornerRadius: 5)
+                                            )
+                                            .foregroundStyle(Color.white.opacity(modeloEditado == m ? 0.9 : 0.55))
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                        }
+                    }
+
                     TextField("nombre del modelo", text: $modeloEditado)
                         .textFieldStyle(.plain)
                         .font(.system(size: 12, weight: .medium, design: .monospaced))

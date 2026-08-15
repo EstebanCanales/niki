@@ -76,12 +76,17 @@ export class AgentController {
       );
     }
     if (!match.credentialReady) {
+      // Los de suscripción no tienen variable que definir: lo que les falta es entrar.
       throw new BadRequestException(
-        `${match.name} no tiene credencial. Definí ${match.apiKeyEnvVars.join(" o ")} en app/backend/.env.`,
+        match.apiKeyEnvVars.length
+          ? `${match.name} no tiene credencial. Definí ${match.apiKeyEnvVars.join(" o ")} en app/backend/.env.`
+          : `${match.name} no tiene la sesión iniciada. Tocá "Iniciar sesión" en el panel de modelo.`,
       );
     }
 
-    await this.runtime.setModel(provider, model, body?.baseUrl?.trim() || undefined);
+    // Sin base_url explícito se usa el del propio proveedor. Si no, al cambiar quedaba
+    // el endpoint del anterior: se eligió Codex y seguía apuntando a api.kimi.com.
+    await this.runtime.setModel(provider, model, body?.baseUrl?.trim() || match.baseUrl || undefined);
     return { ok: true, ...this.runtime.currentModel() };
   }
 }

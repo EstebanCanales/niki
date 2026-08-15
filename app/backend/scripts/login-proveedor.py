@@ -41,16 +41,22 @@ CODIGO = re.compile(r"\b([A-Z0-9]{4,6}-?[A-Z0-9]{4,6})\b")
 
 
 def estado(proveedor: str) -> dict:
-    out = subprocess.run(
-        [PYTHON, "-m", "hermes_cli.main", "auth", "status", proveedor],
-        cwd=RUNTIME,
-        env={**os.environ, "HERMES_HOME": HOME},
-        capture_output=True,
-        text=True,
-        timeout=60,
-    )
-    texto = ANSI.sub("", out.stdout + out.stderr).strip()
-    return {"ok": True, "loggedIn": "logged in" in texto.lower(), "detail": texto[:300]}
+    """Estado de sesión de un proveedor.
+
+    Usa `get_auth_status` en proceso en vez de leer la salida del CLI. La primera
+    versión buscaba la cadena "logged in" en el texto — y "not logged in" la contiene,
+    así que daba conectados los que no lo estaban.
+    """
+    sys.path.insert(0, RUNTIME)
+    os.environ["HERMES_HOME"] = HOME
+    from hermes_cli.auth import get_auth_status
+
+    r = get_auth_status(proveedor) or {}
+    return {
+        "ok": True,
+        "loggedIn": bool(r.get("logged_in")),
+        "detail": str(r.get("error") or r.get("status") or "")[:300],
+    }
 
 
 def login(proveedor: str) -> dict:

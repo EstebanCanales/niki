@@ -711,6 +711,10 @@ struct NikiAgentProvider: Codable, Identifiable, Hashable {
     /// Si hay credencial en el entorno. El valor nunca se expone.
     let credentialReady: Bool
     let credentialFrom: String?
+    /// Sesión OAuth iniciada. Un proveedor puede estar listo por clave o por sesión.
+    let loggedIn: Bool?
+    /// Modelos que ofrece, del catálogo del runtime. Evita tener que adivinar el nombre.
+    let models: [String]?
 }
 
 /// Con qué está pensando Niki ahora.

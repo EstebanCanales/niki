@@ -9,11 +9,12 @@ import { RuntimeController } from "./runtime.controller";
 import { RuntimeService } from "./runtime.service";
 import { RuntimeSurfaceIntentService } from "./runtime-surface-intent.service";
 import { NikiVoiceRuntimeService } from "./niki-voice-runtime.service";
+import { TurnRecorderService } from "./turn-recorder.service";
 
 @Module({
   imports: [IdentityModule, AuditModule, WorkItemsModule, ComputerModule],
   controllers: [RuntimeController],
-  providers: [RuntimeService, ConversationContextService, RuntimeSurfaceIntentService, NikiVoiceRuntimeService],
-  exports: [RuntimeService, RuntimeSurfaceIntentService, NikiVoiceRuntimeService],
+  providers: [RuntimeService, TurnRecorderService, ConversationContextService, RuntimeSurfaceIntentService, NikiVoiceRuntimeService],
+  exports: [RuntimeService, TurnRecorderService, RuntimeSurfaceIntentService, NikiVoiceRuntimeService],
 })
 export class RuntimeModule {}

@@ -67,6 +67,7 @@ import { applyApprovalResolution } from "./runtime-approval-state";
 import { geocodeAddress } from "./runtime-geocode";
 import { RuntimeSurfaceIntentService } from "./runtime-surface-intent.service";
 import { NikiVoiceRuntimeService } from "./niki-voice-runtime.service";
+import { TurnRecorderService } from "./turn-recorder.service";
 
 type RuntimeConnectionConfigInput = {
   apiServerUrl?: string;
@@ -366,6 +367,8 @@ export class RuntimeService implements OnModuleDestroy {
     private readonly surfaceIntent: RuntimeSurfaceIntentService,
     @Inject(NikiVoiceRuntimeService)
     private readonly voiceRuntime: NikiVoiceRuntimeService,
+    @Inject(TurnRecorderService)
+    private readonly turnRecorder: TurnRecorderService,
   ) {
     this.ensureHeartbeat();
     this.ensureHermesConfigWatch();
@@ -799,6 +802,7 @@ export class RuntimeService implements OnModuleDestroy {
 
     let wrote = false;
     let full = "";
+    const empezo = Date.now();
 
     try {
       this.broadcastPatch({
@@ -821,6 +825,18 @@ export class RuntimeService implements OnModuleDestroy {
       void this.conversationContext
         .recordAssistantReply(userId, sessionId, channel, full)
         .catch(() => undefined);
+      // El turno completo al dataset. `recordAssistantReply` guarda solo un resumen en
+      // memoria; la ruta rápida no pasa por el runtime, así que si no se anota acá, la
+      // conversación hablada no queda en ningún lado.
+      this.turnRecorder.record({
+        sessionId,
+        userId,
+        channel,
+        input,
+        reply: full,
+        model: "voz",
+        latencyMs: Date.now() - empezo,
+      });
       this.broadcastPatch({ agent: { state: "idle", model: "voz", channel: "Niki app -> voz", currentTask: "", summary: full.slice(0, 180) } });
       return true;
     } catch (error) {

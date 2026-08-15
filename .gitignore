@@ -56,3 +56,7 @@ app/backend/agent-home/memories/
 # Huella de voz: el perfil son datos biométricos del usuario y el modelo se descarga.
 app/backend/speaker/profiles/
 app/backend/speaker/modelo/
+
+# Dataset de entrenamiento exportado de las sesiones. Son conversaciones reales de
+# Esteban con su máquina: van redactadas, pero redactar no es anonimizar. No se versiona.
+app/backend/dataset/

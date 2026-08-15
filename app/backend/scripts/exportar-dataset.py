@@ -36,9 +36,11 @@ Uso:
 """
 
 import argparse
+import hashlib
 import json
 import os
 import sys
+from collections import defaultdict
 from datetime import datetime, timezone
 
 BACKEND = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -229,6 +231,45 @@ def turnos_de_voz(carpeta):
     return sesiones, sueltas
 
 
+VERSION_EXPORTADOR = 2
+
+
+def dia_de(sesion):
+    """El día de una sesión, para agruparla. Sin fecha va a `sin-fecha`, no se descarta."""
+    inicio = str(sesion.get("session_start") or "")
+    return inicio[:10] if len(inicio) >= 10 else "sin-fecha"
+
+
+def sha256_de(ruta):
+    h = hashlib.sha256()
+    with open(ruta, "rb") as fh:
+        for bloque in iter(lambda: fh.read(1024 * 1024), b""):
+            h.update(bloque)
+    return h.hexdigest()
+
+
+def escribir_manifiesto(ruta_jsonl, formato, conteos):
+    """Un manifiesto al lado del .jsonl.
+
+    Existe para el momento de subir esto a la nube: sin un hash y un conteo por partición,
+    no hay forma de saber qué se subió, qué cambió y qué está duplicado del otro lado. Con
+    el hash, volver a subir una partición que no cambió es un no-op y se nota.
+    """
+    manifiesto = {
+        "archivo": os.path.basename(ruta_jsonl),
+        "formato": formato,
+        "version_exportador": VERSION_EXPORTADOR,
+        "generado": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "bytes": os.path.getsize(ruta_jsonl),
+        "sha256": sha256_de(ruta_jsonl),
+        **conteos,
+    }
+    destino = os.path.join(os.path.dirname(ruta_jsonl), "manifiesto.json")
+    with open(destino, "w", encoding="utf-8") as fh:
+        json.dump(manifiesto, fh, ensure_ascii=False, indent=2)
+    return manifiesto
+
+
 def main():
     p = argparse.ArgumentParser(description="Exporta las sesiones de Niki como dataset.")
     p.add_argument("--formato", choices=("messages", "sharegpt"), default="messages")
@@ -237,6 +278,11 @@ def main():
     p.add_argument("--min-turnos", type=int, default=2)
     p.add_argument("--incluir-pruebas", action="store_true")
     p.add_argument("--sin-voz", action="store_true", help="no incluir los turnos hablados")
+    p.add_argument(
+        "--particionar",
+        action="store_true",
+        help="una carpeta por día con su manifiesto, para subir de a partes",
+    )
     args = p.parse_args()
 
     if not os.path.isdir(args.sesiones):
@@ -276,30 +322,70 @@ def main():
         for sesion in voz:
             yield sesion
 
-    with open(salida, "w", encoding="utf-8") as fh:
-        for sesion in leer_sesiones():
-            # Señales que no tienen turno hablado —aprobaciones, rechazos— pero sí sesión.
-            propias = senales_sueltas.get(str(sesion.get("session_id") or ""))
-            if propias:
-                sesion = {**sesion, "senales": propias}
+    # Se juntan primero y se escriben después: para partir por día hay que saber a qué
+    # día va cada fila, y las sesiones no vienen ordenadas.
+    por_dia = defaultdict(list)
+    for sesion in leer_sesiones():
+        # Señales que no tienen turno hablado —aprobaciones, rechazos— pero sí sesión.
+        propias = senales_sueltas.get(str(sesion.get("session_id") or ""))
+        if propias:
+            sesion = {**sesion, "senales": propias}
 
-            ok, motivo = util(sesion, args.min_turnos, args.incluir_pruebas)
-            if not ok:
-                descartadas[motivo] = descartadas.get(motivo, 0) + 1
-                continue
+        ok, motivo = util(sesion, args.min_turnos, args.incluir_pruebas)
+        if not ok:
+            descartadas[motivo] = descartadas.get(motivo, 0) + 1
+            continue
 
-            fila = a_sharegpt(sesion) if args.formato == "sharegpt" else a_messages(sesion)
-            fh.write(json.dumps(fila, ensure_ascii=False) + "\n")
-            escritas += 1
+        fila = a_sharegpt(sesion) if args.formato == "sharegpt" else a_messages(sesion)
+        por_dia[dia_de(sesion)].append(fila)
+        escritas += 1
 
-            ms = sesion.get("messages") or []
-            mensajes += len(ms)
-            con_herramientas += sum(1 for m in ms if m.get("tool_calls"))
-            con_razonamiento += sum(1 for m in ms if m.get("reasoning") or m.get("reasoning_content"))
-            if sesion.get("senales"):
-                con_senales += 1
+        ms = sesion.get("messages") or []
+        mensajes += len(ms)
+        con_herramientas += sum(1 for m in ms if m.get("tool_calls"))
+        con_razonamiento += sum(1 for m in ms if m.get("reasoning") or m.get("reasoning_content"))
+        if sesion.get("senales"):
+            con_senales += 1
+
+    def volcar(ruta, filas):
+        os.makedirs(os.path.dirname(ruta), exist_ok=True)
+        with open(ruta, "w", encoding="utf-8") as fh:
+            for fila in filas:
+                fh.write(json.dumps(fila, ensure_ascii=False) + "\n")
+
+    if args.particionar:
+        raiz = os.path.join(SALIDA_POR_DEFECTO, "particiones")
+        partes = []
+        for dia in sorted(por_dia):
+            ruta = os.path.join(raiz, dia, f"{args.formato}.jsonl")
+            volcar(ruta, por_dia[dia])
+            m = escribir_manifiesto(ruta, args.formato, {
+                "dia": dia,
+                "sesiones": len(por_dia[dia]),
+                "con_senales": sum(1 for f in por_dia[dia] if f.get("senales")),
+            })
+            partes.append({"dia": dia, "sha256": m["sha256"], "sesiones": m["sesiones"], "bytes": m["bytes"]})
+        with open(os.path.join(raiz, "particiones.json"), "w", encoding="utf-8") as fh:
+            json.dump({
+                "generado": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                "formato": args.formato,
+                "version_exportador": VERSION_EXPORTADOR,
+                "particiones": partes,
+            }, fh, ensure_ascii=False, indent=2)
+        salida = raiz
+    else:
+        todas = [f for dia in sorted(por_dia) for f in por_dia[dia]]
+        volcar(salida, todas)
+        escribir_manifiesto(salida, args.formato, {
+            "sesiones": escritas,
+            "mensajes": mensajes,
+            "con_senales": con_senales,
+            "dias": sorted(por_dia),
+        })
 
     print(f"Escrito: {salida}")
+    if args.particionar:
+        print(f"  particiones         : {len(por_dia)} ({', '.join(sorted(por_dia))})")
     print(f"  sesiones exportadas : {escritas} de {len(archivos) + len(voz)}")
     print(f"  de ellas, de voz    : {len(voz)}")
     print(f"  mensajes            : {mensajes}")

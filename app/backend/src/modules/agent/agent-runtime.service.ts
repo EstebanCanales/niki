@@ -38,6 +38,25 @@ export type AgentProvider = {
   credentialFrom: string | null;
 };
 
+/**
+ * Cuánto contexto lleva una sesión. `tokens` incluye el prompt de sistema, los mensajes y
+ * el esquema de las herramientas — que con cincuenta herramientas pesan más que la
+ * conversación entera.
+ */
+export type AgentContextoSesion = {
+  ok: boolean;
+  sessionId: string;
+  existe: boolean;
+  tokens: number;
+  modelo?: string;
+  mensajes?: number;
+  herramientas?: number;
+  contexto?: number;
+  /** A partir de acá compacta. Tiene un piso de 64.000 que no baja por configuración. */
+  umbral?: number;
+  compactaHabilitada?: boolean;
+};
+
 /** URL y código que hay que abrir para completar el inicio de sesión. */
 export type ProviderLogin = {
   url: string;
@@ -144,6 +163,28 @@ export class AgentRuntimeService implements OnModuleInit, OnModuleDestroy {
     } catch (error) {
       this.logger.warn(`[agente] no se pudieron listar proveedores: ${String(error)}`);
       return [];
+    }
+  }
+
+  /**
+   * Cuánto contexto lleva usado una sesión y a partir de qué número se compacta.
+   *
+   * El cálculo lo hace el propio runtime (ver scripts/medir-contexto.py): es la misma
+   * función que decide cuándo compactar, así que el indicador y el comportamiento no
+   * pueden desincronizarse. Cuesta un proceso de Python, así que se pide cuando se mira,
+   * no en cada turno.
+   */
+  async contextoDeSesion(sessionId: string): Promise<AgentContextoSesion> {
+    const vacio: AgentContextoSesion = { ok: false, sessionId, existe: false, tokens: 0 };
+    const python = this.pythonPath();
+    if (!python) return vacio;
+    const script = path.join(REPO_ROOT, "app", "backend", "scripts", "medir-contexto.py");
+    try {
+      const out = await this.runPython(python, [script, sessionId]);
+      return JSON.parse(out) as AgentContextoSesion;
+    } catch (error) {
+      this.logger.warn(`[agente] no se pudo medir el contexto: ${String(error)}`);
+      return vacio;
     }
   }
 

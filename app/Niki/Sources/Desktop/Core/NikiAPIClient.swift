@@ -430,6 +430,13 @@ extension NikiAPIClient {
         try await decodeResponse(NikiAgentStatus.self, from: try request("/agent/status"))
     }
 
+    func agentContexto(sessionID: String) async throws -> NikiContextoSesion {
+        try await decodeResponse(
+            NikiContextoSesion.self,
+            from: try request("/agent/contexto/\(sessionID)")
+        )
+    }
+
     func agentProviders() async throws -> NikiAgentProvidersResponse {
         try await decodeResponse(NikiAgentProvidersResponse.self, from: try request("/agent/providers"))
     }

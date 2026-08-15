@@ -56,6 +56,48 @@ struct NikiChatSidebar: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
+    /// Cuánto falta para que la conversación se compacte.
+    ///
+    /// La compactación era invisible: cuando llegaba, resumía la mitad de la charla sin
+    /// que nadie se enterara, y cuando fallaba —que estuvo rota— tampoco. Es un arco que
+    /// se llena; recién cuando pasa el setenta por ciento dice el número, porque hasta ahí
+    /// no hay nada que hacer con el dato.
+    ///
+    /// Se mide contra el umbral de compactación y no contra el contexto total: a la mitad
+    /// del contexto la conversación se resume, no se corta.
+    @ViewBuilder
+    private var indicadorDeContexto: some View {
+        let ctx = appModel.contexto
+        if ctx.existe, ctx.umbral != nil, ctx.fraccionHastaCompactar > 0.01 {
+            let fraccion = ctx.fraccionHastaCompactar
+            HStack(spacing: 6) {
+                ZStack {
+                    Circle()
+                        .stroke(Color.white.opacity(0.12), lineWidth: 2)
+                    Circle()
+                        .trim(from: 0, to: fraccion)
+                        .stroke(colorDeContexto(fraccion), style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                        .rotationEffect(.degrees(-90))
+                }
+                .frame(width: 14, height: 14)
+
+                if fraccion > 0.7 {
+                    Text("\(Int(fraccion * 100))%")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(colorDeContexto(fraccion))
+                }
+            }
+            .help("\(ctx.tokens) de \(ctx.umbral ?? 0) tokens; al llegar, resume lo viejo y sigue")
+            .frame(height: 30)
+        }
+    }
+
+    private func colorDeContexto(_ fraccion: Double) -> Color {
+        if fraccion > 0.9 { return Color.orange.opacity(0.9) }
+        if fraccion > 0.7 { return Color.yellow.opacity(0.75) }
+        return Color.white.opacity(0.4)
+    }
+
     private var chatTitleBar: some View {
         HStack(spacing: 10) {
             Text(appModel.activeChatTitle)
@@ -64,6 +106,8 @@ struct NikiChatSidebar: View {
                 .lineLimit(1)
 
             Spacer()
+
+            indicadorDeContexto
 
             Button {
                 appModel.createChatSession()

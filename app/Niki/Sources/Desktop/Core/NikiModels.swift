@@ -765,6 +765,37 @@ struct NikiAgentStatus: Codable {
 }
 
 
+/// Cuánto contexto lleva una sesión y cuándo se va a compactar.
+///
+/// `tokens` incluye el prompt de sistema, los mensajes y el esquema de las herramientas
+/// —que con cincuenta herramientas pesan más que la conversación—. El umbral tiene un
+/// piso de 64.000 que no baja por configuración.
+struct NikiContextoSesion: Codable {
+    let ok: Bool
+    let sessionId: String
+    let existe: Bool
+    let tokens: Int
+    let modelo: String?
+    let mensajes: Int?
+    let herramientas: Int?
+    let contexto: Int?
+    let umbral: Int?
+    let compactaHabilitada: Bool?
+
+    static let vacio = NikiContextoSesion(
+        ok: false, sessionId: "", existe: false, tokens: 0, modelo: nil,
+        mensajes: nil, herramientas: nil, contexto: nil, umbral: nil, compactaHabilitada: nil
+    )
+
+    /// Qué fracción del umbral de compactación lleva usada. Se mide contra el umbral y no
+    /// contra el contexto total porque el umbral es lo que pasa de verdad: a la mitad del
+    /// contexto la conversación se resume, no se corta.
+    var fraccionHastaCompactar: Double {
+        guard let umbral, umbral > 0 else { return 0 }
+        return min(1, Double(tokens) / Double(umbral))
+    }
+}
+
 /// Estado de la huella de voz.
 struct NikiSpeakerStatus: Codable {
     let available: Bool

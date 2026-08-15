@@ -95,6 +95,9 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
     @Published var mcpActionError: String = ""
     @Published var diagnostics: [NikiRuntimeDiagnostic] = []
     /// Qué se guardó de las conversaciones para entrenar. Se carga al abrir Settings.
+    /// Cuánto contexto lleva la conversación abierta y cuándo se va a compactar. Se
+    /// refresca al terminar cada turno: es cuando el número cambia.
+    @Published var contexto: NikiContextoSesion = .vacio
     @Published var dataset: NikiDatasetResumen = .vacio
     @Published var datasetOcupado = false
     @Published var datasetError = ""
@@ -768,10 +771,15 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
 
         chatBusy = false
         activeChatTask = nil
+        // El contexto solo cambia cuando termina un turno: se relee acá y no en un timer.
+        Task { await cargarContexto() }
     }
 
     func setActiveSession(_ id: String) {
         activeSessionID = id
+        // Cada conversación tiene su propio contexto; el número anterior no vale más.
+        contexto = .vacio
+        Task { await cargarContexto() }
     }
 
     func appendAttachment(url: URL) {
@@ -1131,6 +1139,17 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
     //
     // Lo que se guarda de las conversaciones para poder entrenar un modelo propio. Todo
     // pasa por el backend; acá solo se muestra y se decide.
+
+    /// Relee el contexto de la sesión abierta. Silencioso: si falla, el indicador no se
+    /// muestra, pero no se le avisa a nadie — no es un error que le importe al usuario.
+    func cargarContexto() async {
+        let sesion = activeSessionID
+        guard let medido = try? await client.agentContexto(sessionID: sesion) else { return }
+        // La sesión pudo cambiar mientras se medía; pisar el indicador con el número de
+        // otra conversación sería peor que no tenerlo.
+        guard sesion == activeSessionID else { return }
+        contexto = medido
+    }
 
     func cargarDataset() async {
         do {

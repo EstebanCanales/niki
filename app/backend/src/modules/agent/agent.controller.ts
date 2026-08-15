@@ -20,6 +20,18 @@ export class AgentController {
     return { ...this.runtime.status(), model: this.runtime.currentModel() };
   }
 
+  /**
+   * Cuánto contexto lleva una sesión y cuándo se va a compactar.
+   *
+   * Hasta ahora la compactación era invisible: pasaba o no pasaba y nadie se enteraba,
+   * ni siquiera cuando fallaba. El número sale de la misma función del runtime que
+   * decide compactar, así que lo que se muestra y lo que hace no se pueden separar.
+   */
+  @Get("contexto/:sessionId")
+  contexto(@Param("sessionId") sessionId: string) {
+    return this.runtime.contextoDeSesion(sessionId);
+  }
+
   @Get("providers")
   async providers() {
     const [providers, current] = await Promise.all([

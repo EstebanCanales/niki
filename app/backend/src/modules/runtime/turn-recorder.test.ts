@@ -112,6 +112,81 @@ test("recordar el último turno de miles de sesiones no crece sin límite", () =
   assert.ok(!mapa.has("s0"), "la más vieja se tuvo que caer");
 });
 
+test("con la captura apagada no se guarda nada", () => {
+  const { rec, leer } = recorder();
+  rec.capturar(false);
+  assert.equal(rec.estaCapturando(), false);
+
+  const id = rec.record({ sessionId: "s", userId: "e", channel: "voice", input: "hola", reply: "chau", model: "voz" });
+  rec.signal("s", "interrupcion");
+
+  assert.equal(id, null, "sin captura no hay turno al que colgarle señales");
+  assert.equal(leer().length, 0, "ni turnos ni señales");
+});
+
+test("apagar y volver a encender: lo de antes sigue, lo del medio no", () => {
+  const { rec, leer } = recorder();
+  rec.record({ sessionId: "s", userId: "e", channel: "voice", input: "antes", reply: "1", model: "voz" });
+  rec.capturar(false);
+  rec.record({ sessionId: "s", userId: "e", channel: "voice", input: "durante", reply: "2", model: "voz" });
+  rec.capturar(true);
+  rec.record({ sessionId: "s", userId: "e", channel: "voice", input: "despues", reply: "3", model: "voz" });
+
+  assert.deepEqual(leer().map((t) => t.input), ["antes", "despues"]);
+});
+
+test("el interruptor sobrevive a un reinicio del backend", () => {
+  // Vive en un archivo, no en memoria: apagar la captura y que se vuelva a encender sola
+  // sería peor que no tener interruptor.
+  const { rec, carpeta } = recorder();
+  rec.capturar(false);
+  assert.equal(new TurnRecorderService(carpeta).estaCapturando(), false);
+});
+
+test("el resumen cuenta turnos y señales sin devolver las conversaciones", () => {
+  const { rec } = recorder();
+  rec.record({ sessionId: "s", userId: "e", channel: "voice", input: "hola", reply: "chau", model: "voz" });
+  rec.signal("s", "interrupcion");
+
+  const r = rec.resumen();
+  assert.equal(r.turnos, 1);
+  assert.equal(r.senales, 1);
+  assert.equal(r.capturando, true);
+  assert.equal(r.dias.length, 1);
+  assert.ok(r.bytes > 0);
+  assert.ok(!JSON.stringify(r).includes("chau"), "el resumen no puede filtrar lo que se dijo");
+});
+
+test("borrar deja el dataset vacío", () => {
+  const { rec, leer } = recorder();
+  rec.record({ sessionId: "s", userId: "e", channel: "voice", input: "hola", reply: "chau", model: "voz" });
+  const { borrados } = rec.borrar();
+  assert.equal(borrados.length, 1);
+  assert.equal(leer().length, 0);
+  assert.equal(rec.resumen().turnos, 0);
+});
+
+test("borrar un día no se lleva los otros", () => {
+  const { rec, carpeta } = recorder();
+  fs.mkdirSync(carpeta, { recursive: true });
+  fs.writeFileSync(path.join(carpeta, "turnos-2026-01-01.jsonl"), '{"type":"turno"}\n');
+  fs.writeFileSync(path.join(carpeta, "turnos-2026-01-02.jsonl"), '{"type":"turno"}\n');
+
+  rec.borrar("2026-01-01");
+  assert.deepEqual(rec.resumen().dias.map((d) => d.dia), ["2026-01-02"]);
+});
+
+test("borrar no toca archivos que no escribió este servicio", () => {
+  const { rec, carpeta } = recorder();
+  fs.mkdirSync(carpeta, { recursive: true });
+  const ajeno = path.join(carpeta, "no-es-mio.txt");
+  fs.writeFileSync(ajeno, "algo importante de otro");
+  rec.record({ sessionId: "s", userId: "e", channel: "voice", input: "hola", reply: "chau", model: "voz" });
+
+  rec.borrar();
+  assert.ok(fs.existsSync(ajeno), "solo se borran los turnos-YYYY-MM-DD.jsonl de esta carpeta");
+});
+
 test("escribir un turno nunca lanza, aunque el destino no sirva", () => {
   // El disco lleno o sin permisos no puede romper un turno que el usuario ya dio por
   // terminado: esto corre después de cerrar el stream.

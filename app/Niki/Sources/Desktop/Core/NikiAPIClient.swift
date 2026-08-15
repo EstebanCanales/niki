@@ -198,6 +198,32 @@ struct NikiAPIClient {
         _ = try? await URLSession.shared.data(for: pedido)
     }
 
+    // ── Dataset ──────────────────────────────────────────────────────────────
+    //
+    // Lo que se guarda de las conversaciones para poder entrenar un modelo propio. Son
+    // charlas reales de Esteban con su máquina, así que tiene que poder ver qué hay,
+    // apagar la captura y borrarla sin abrir una terminal.
+
+    func datasetResumen() async throws -> NikiDatasetResumen {
+        try await decodeResponse(NikiDatasetResumen.self, from: try request("/runtime/dataset"))
+    }
+
+    func datasetCaptura(encendida: Bool) async throws -> NikiDatasetResumen {
+        let body = try JSONSerialization.data(withJSONObject: ["enabled": encendida])
+        return try await decodeResponse(
+            NikiDatasetResumen.self,
+            from: try request("/runtime/dataset/captura", method: "POST", body: body)
+        )
+    }
+
+    func datasetBorrar() async throws -> NikiDatasetResumen {
+        let body = try JSONSerialization.data(withJSONObject: ["confirmar": true])
+        return try await decodeResponse(
+            NikiDatasetResumen.self,
+            from: try request("/runtime/dataset/borrar", method: "POST", body: body)
+        )
+    }
+
     func runtimeMcpServers() async throws -> NikiMcpServersResponse {
         try await decodeResponse(NikiMcpServersResponse.self, from: try request("/runtime/mcp"))
     }

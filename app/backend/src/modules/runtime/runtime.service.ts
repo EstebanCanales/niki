@@ -853,6 +853,38 @@ export class RuntimeService implements OnModuleDestroy {
     }
   }
 
+  /** Qué hay guardado para entrenar: cuántos turnos, de qué días, cuánto ocupa. */
+  resumenDataset() {
+    return this.turnRecorder.resumen();
+  }
+
+  /** Prende o apaga la captura. Apagada no se guarda nada, ni turnos ni señales. */
+  configurarCaptura(body: { enabled?: boolean }) {
+    if (typeof body.enabled !== "boolean") {
+      throw new BadRequestException("enabled (boolean) is required");
+    }
+    this.turnRecorder.capturar(body.enabled);
+    return this.turnRecorder.resumen();
+  }
+
+  /**
+   * Borra lo capturado, todo o de un día.
+   *
+   * Pide `confirmar: true` a propósito: son conversaciones que no se pueden recuperar, y
+   * un endpoint de borrado que se dispara con un pedido vacío es cuestión de tiempo.
+   */
+  borrarDataset(body: { dia?: string; confirmar?: boolean }) {
+    if (body.confirmar !== true) {
+      throw new BadRequestException("confirmar: true is required — esto no se puede deshacer");
+    }
+    const dia = String(body.dia ?? "").trim();
+    if (dia && !/^\d{4}-\d{2}-\d{2}$/.test(dia)) {
+      throw new BadRequestException("dia tiene que ser YYYY-MM-DD");
+    }
+    const { borrados } = this.turnRecorder.borrar(dia || undefined);
+    return { borrados, ...this.turnRecorder.resumen() };
+  }
+
   /**
    * Marca que Esteban cortó a Niki a mitad de frase.
    *

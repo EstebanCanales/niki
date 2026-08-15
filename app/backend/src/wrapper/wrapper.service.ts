@@ -207,6 +207,18 @@ export class WrapperService {
     return this.runtimeService.marcarInterrupcion(body);
   }
 
+  resumenDataset() {
+    return this.runtimeService.resumenDataset();
+  }
+
+  configurarCaptura(body: { enabled?: boolean }) {
+    return this.runtimeService.configurarCaptura(body);
+  }
+
+  borrarDataset(body: { dia?: string; confirmar?: boolean }) {
+    return this.runtimeService.borrarDataset(body);
+  }
+
   enqueueNotchRequest(
     req: Request,
     body: {

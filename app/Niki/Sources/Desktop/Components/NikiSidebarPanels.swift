@@ -1018,6 +1018,8 @@ private struct NikiSettingsSidebar: View {
     @State private var healthStatus: String = "idle"
     @State private var healthMessage: String = ""
     @State private var modelInfo: String = ""
+    /// Borrar pide dos toques: el primero arma, el segundo borra.
+    @State private var confirmandoBorrado = false
 
     var body: some View {
         SidebarShell(eyebrow: "Settings", title: "Preferences") {
@@ -1078,6 +1080,10 @@ private struct NikiSettingsSidebar: View {
                             textArea("Operational rules", text: $appModel.personaProfile.operationalRules, height: 88)
                             textArea("Forbidden behaviors", text: $appModel.personaProfile.forbiddenBehaviors, height: 88)
                         }
+                    }
+
+                    settingsSection("Datos para entrenar") {
+                        datasetSection
                     }
 
                     settingsSection("Backend · HTTP") {
@@ -1214,6 +1220,61 @@ private struct NikiSettingsSidebar: View {
         .task {
             await appModel.refreshSettingsData()
         }
+    }
+
+    /// Qué se está guardando de las conversaciones, y los dos controles que hacen falta:
+    /// apagar la captura y borrar lo que hay. Son charlas reales con la máquina; si no se
+    /// pueden ver y borrar desde acá, no se le pueden mostrar a nadie.
+    private var datasetSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            toggleRow("Guardar conversaciones", isOn: Binding(
+                get: { appModel.dataset.capturando },
+                set: { encendida in Task { await appModel.cambiarCapturaDataset(encendida) } }
+            ))
+
+            Text("Se guardan las conversaciones y las señales de cuáles no sirvieron —cuándo la cortaste, cuándo repreguntaste, qué aprobaste— para poder entrenar un modelo propio. Queda todo en esta máquina.")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(Color.white.opacity(0.34))
+                .fixedSize(horizontal: false, vertical: true)
+
+            dualRow(
+                infoPill("Turnos", value: "\(appModel.dataset.turnos)"),
+                infoPill("Señales", value: "\(appModel.dataset.senales)")
+            )
+            dualRow(
+                infoPill("Días", value: "\(appModel.dataset.dias.count)"),
+                infoPill("Tamaño", value: tamanoLegible(appModel.dataset.bytes))
+            )
+
+            HStack(spacing: 10) {
+                actionButton("Actualizar") { Task { await appModel.cargarDataset() } }
+                if appModel.dataset.turnos > 0 || appModel.dataset.senales > 0 {
+                    actionButton(confirmandoBorrado ? "Seguro? Borrar todo" : "Borrar todo") {
+                        // Dos toques a propósito: esto no se puede deshacer.
+                        if confirmandoBorrado {
+                            confirmandoBorrado = false
+                            Task { await appModel.borrarDataset() }
+                        } else {
+                            confirmandoBorrado = true
+                        }
+                    }
+                }
+            }
+
+            if !appModel.datasetError.isEmpty {
+                Text(appModel.datasetError)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(Color.red.opacity(0.8))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .task { await appModel.cargarDataset() }
+    }
+
+    private func tamanoLegible(_ bytes: Int) -> String {
+        if bytes < 1024 { return "\(bytes) B" }
+        if bytes < 1024 * 1024 { return String(format: "%.0f KB", Double(bytes) / 1024) }
+        return String(format: "%.1f MB", Double(bytes) / (1024 * 1024))
     }
 
     private var statusLine: some View {

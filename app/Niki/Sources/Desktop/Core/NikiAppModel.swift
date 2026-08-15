@@ -94,6 +94,10 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
     @Published var mcpActionBusyID: String?
     @Published var mcpActionError: String = ""
     @Published var diagnostics: [NikiRuntimeDiagnostic] = []
+    /// Qué se guardó de las conversaciones para entrenar. Se carga al abrir Settings.
+    @Published var dataset: NikiDatasetResumen = .vacio
+    @Published var datasetOcupado = false
+    @Published var datasetError = ""
     @Published var latestDiagnostic: NikiRuntimeDiagnostic?
     @Published var discoverCapabilities: [NikiDiscoverCapability] = []
     @Published var activeSurface: NikiRuntimeSurface?
@@ -1120,6 +1124,45 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
             reconcileActiveProfile(fromProfiles: response.profiles, sessions: remoteSessions)
         } catch {
             remoteProfiles = []
+        }
+    }
+
+    // ── Dataset ──────────────────────────────────────────────────────────────
+    //
+    // Lo que se guarda de las conversaciones para poder entrenar un modelo propio. Todo
+    // pasa por el backend; acá solo se muestra y se decide.
+
+    func cargarDataset() async {
+        do {
+            datasetError = ""
+            dataset = try await client.datasetResumen()
+        } catch {
+            datasetError = error.localizedDescription
+        }
+    }
+
+    func cambiarCapturaDataset(_ encendida: Bool) async {
+        guard !datasetOcupado else { return }
+        datasetOcupado = true
+        defer { datasetOcupado = false }
+        do {
+            datasetError = ""
+            dataset = try await client.datasetCaptura(encendida: encendida)
+        } catch {
+            datasetError = error.localizedDescription
+        }
+    }
+
+    /// Borra todo lo capturado. No se puede deshacer: la confirmación la pide la vista.
+    func borrarDataset() async {
+        guard !datasetOcupado else { return }
+        datasetOcupado = true
+        defer { datasetOcupado = false }
+        do {
+            datasetError = ""
+            dataset = try await client.datasetBorrar()
+        } catch {
+            datasetError = error.localizedDescription
         }
     }
 

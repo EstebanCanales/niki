@@ -606,6 +606,30 @@ struct NikiRuntimeMcpSnapshot: Codable {
     let servers: [NikiMcpServer]
 }
 
+/// Un día de conversaciones guardadas.
+struct NikiDatasetDia: Codable, Identifiable {
+    let dia: String
+    let turnos: Int
+    let senales: Int
+    let bytes: Int
+
+    var id: String { dia }
+}
+
+/// Qué hay guardado para entrenar. Cuenta y pesa; no trae las conversaciones.
+struct NikiDatasetResumen: Codable {
+    let capturando: Bool
+    let carpeta: String
+    let dias: [NikiDatasetDia]
+    let turnos: Int
+    let senales: Int
+    let bytes: Int
+
+    static let vacio = NikiDatasetResumen(
+        capturando: true, carpeta: "", dias: [], turnos: 0, senales: 0, bytes: 0
+    )
+}
+
 struct NikiDiscoverCapability: Identifiable, Codable, Hashable {
     let id: String
     let title: String

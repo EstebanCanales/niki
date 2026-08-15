@@ -213,6 +213,30 @@ export class WrapperController {
     return this.wrapperService.marcarInterrupcion(body);
   }
 
+  /**
+   * Qué se está guardando para entrenar. Son conversaciones reales de Esteban con su
+   * máquina: tiene que poder verlas, apagar la captura y borrarlas sin abrir una terminal.
+   */
+  @Get("runtime/dataset")
+  runtimeDataset(@Req() req: Request) {
+    this.wrapperService.assertAuthorized(req);
+    return this.wrapperService.resumenDataset();
+  }
+
+  @Post("runtime/dataset/captura")
+  @HttpCode(200)
+  runtimeDatasetCaptura(@Req() req: Request, @Body() body: { enabled?: boolean }) {
+    this.wrapperService.assertAuthorized(req);
+    return this.wrapperService.configurarCaptura(body);
+  }
+
+  @Post("runtime/dataset/borrar")
+  @HttpCode(200)
+  runtimeDatasetBorrar(@Req() req: Request, @Body() body: { dia?: string; confirmar?: boolean }) {
+    this.wrapperService.assertAuthorized(req);
+    return this.wrapperService.borrarDataset(body);
+  }
+
   @Post("runtime/surface")
   @HttpCode(200)
   runtimeShowSurface(

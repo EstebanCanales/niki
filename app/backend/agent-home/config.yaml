@@ -28,6 +28,30 @@ platform_toolsets:
   - terminal
   - file
   - code_execution
+  # Internet. Sin un plugin de búsqueda activo estas dos herramientas NO se publican —
+  # no fallan, directamente no existen. Ver plugins.enabled más abajo.
+  - web
+  # Baratas y cambian cómo se comporta: llevar la cuenta en tareas largas (+344) y
+  # preguntar en vez de adivinar (+323).
+  - todo
+  - clarify
+  # image_gen queda AFUERA aunque cargue y cueste solo 205 tokens: al invocarla falla
+  # con "falta configurar FAL_KEY". Una herramienta que el modelo anuncia, intenta y
+  # pierde el turno es peor que no tenerla. Vuelve si algún día hay FAL_KEY o
+  # OPENAI_API_KEY.
+  # Recordar hechos entre sesiones (+902). Es la memoria del runtime en agent-home,
+  # distinta de la de Upstash, que sigue caída.
+  - memory
+  # Rutinas propias. La herramienta está condicionada a HERMES_GATEWAY_SESSION, que
+  # pone el arranque en agent-runtime.service.ts (tools/cronjob_tools.py:665).
+  - cronjob
+  # Spotify: 7 herramientas por 1.037 tokens, con la credencial ya migrada.
+  - spotify
+  # Navegador de verdad: navegar, hacer clic, escribir, leer la página. Sus 10
+  # herramientas cargan en el esquema AUNQUE falte el motor, así que solo entra con
+  # `agent-browser` instalado y Chromium bajado — si no, serían diez herramientas que
+  # el modelo anuncia y fallan.
+  - browser
   # Las skills cuestan, y se midió cuánto antes de decidir:
   #   sin skills          7 herramientas →  4.189 tokens (y 93 skills inservibles)
   #   con 37 skills      10 herramientas →  7.034
@@ -46,7 +70,7 @@ terminal:
 
 agent:
   max_turns: 20
-  reasoning_effort: low
+  reasoning_effort: medium
 
 # Para usar OpenAI (o cualquier endpoint compatible) en vez de Kimi:
 #   model.provider: openai-compatible
@@ -85,3 +109,11 @@ mcp_servers:
     args:
     - /Users/estebancanales/Work/agente/app/backend/scripts/mcp-niki.mjs
     enabled: true
+
+# Plugins. Vienen todos apagados de fábrica; el buscador es uno de ellos, y por eso
+# `web` no publicaba nada aunque el toolset estuviera puesto: `_get_backend()` devolvía
+# "ddgs" como nombre, pero no había ningún proveedor registrado que lo implementara.
+plugins:
+  enabled:
+  - web/ddgs
+  - spotify

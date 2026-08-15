@@ -317,6 +317,11 @@ export class AgentRuntimeService implements OnModuleInit, OnModuleDestroy {
         API_SERVER_ENABLED: "true",
         API_SERVER_HOST: "127.0.0.1",
         API_SERVER_PORT: String(this.port),
+        // Destraba la herramienta `cronjob`, que está condicionada a esta variable
+        // (tools/cronjob_tools.py:665) y sin ella no se publica: Niki no podía crear
+        // sus propias rutinas. Es semánticamente correcto — lo que levantamos ES la
+        // sesión del gateway, y el planificador lo tickea este mismo proceso.
+        HERMES_GATEWAY_SESSION: "1",
       },
       stdio: ["ignore", "pipe", "pipe"],
       // Grupo de procesos propio, para poder matarlo entero (ver `kill`).

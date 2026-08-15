@@ -231,7 +231,19 @@ def turnos_de_voz(carpeta):
     return sesiones, sueltas
 
 
-VERSION_EXPORTADOR = 2
+VERSION_EXPORTADOR = 3
+
+# Uno de cada diez ejemplos nunca entra al entrenamiento: es contra ese resto que se mide
+# si el modelo propio mejoró o solo aprendió de memoria. El reparto se decide con un hash
+# del id de la sesión, no al azar: así una sesión cae siempre del mismo lado, corra el
+# exportador cuando corra y aparezcan las sesiones en el orden que aparezcan. Sortearlo en
+# cada corrida sería lo mismo que no tener conjunto de retención.
+PORCENTAJE_RETENCION = 10
+
+
+def es_retencion(session_id):
+    h = hashlib.sha256(str(session_id or "").encode("utf-8")).hexdigest()
+    return int(h[:8], 16) % 100 < PORCENTAJE_RETENCION
 
 
 def dia_de(sesion):
@@ -309,6 +321,7 @@ def main():
     con_herramientas = 0
     con_razonamiento = 0
     con_senales = 0
+    retenidas = 0
     descartadas = {}
 
     def leer_sesiones():
@@ -337,7 +350,11 @@ def main():
             continue
 
         fila = a_sharegpt(sesion) if args.formato == "sharegpt" else a_messages(sesion)
+        reparto = "retencion" if es_retencion(sesion.get("session_id")) else "entrenamiento"
+        fila["reparto"] = reparto
         por_dia[dia_de(sesion)].append(fila)
+        if reparto == "retencion":
+            retenidas += 1
         escritas += 1
 
         ms = sesion.get("messages") or []
@@ -357,14 +374,25 @@ def main():
         raiz = os.path.join(SALIDA_POR_DEFECTO, "particiones")
         partes = []
         for dia in sorted(por_dia):
+            # Dos archivos por día: el de entrenar y el de medir. Separados en disco y no
+            # marcados con un campo, porque un campo se ignora sin querer y entonces se
+            # entrena con lo que se iba a usar para evaluar.
+            entrenamiento = [f for f in por_dia[dia] if f["reparto"] == "entrenamiento"]
+            retencion = [f for f in por_dia[dia] if f["reparto"] == "retencion"]
             ruta = os.path.join(raiz, dia, f"{args.formato}.jsonl")
-            volcar(ruta, por_dia[dia])
+            volcar(ruta, entrenamiento)
+            if retencion:
+                volcar(os.path.join(raiz, dia, f"{args.formato}-retencion.jsonl"), retencion)
             m = escribir_manifiesto(ruta, args.formato, {
                 "dia": dia,
-                "sesiones": len(por_dia[dia]),
+                "sesiones": len(entrenamiento),
+                "retencion": len(retencion),
                 "con_senales": sum(1 for f in por_dia[dia] if f.get("senales")),
             })
-            partes.append({"dia": dia, "sha256": m["sha256"], "sesiones": m["sesiones"], "bytes": m["bytes"]})
+            partes.append({
+                "dia": dia, "sha256": m["sha256"],
+                "sesiones": m["sesiones"], "retencion": len(retencion), "bytes": m["bytes"],
+            })
         with open(os.path.join(raiz, "particiones.json"), "w", encoding="utf-8") as fh:
             json.dump({
                 "generado": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -392,6 +420,7 @@ def main():
     print(f"  con herramientas    : {con_herramientas}")
     print(f"  con razonamiento    : {con_razonamiento}")
     print(f"  con señales         : {con_senales}")
+    print(f"  guardadas para medir: {retenidas} (no entran al entrenamiento)")
     if descartadas:
         print("  descartadas         :")
         for motivo, cuenta in sorted(descartadas.items(), key=lambda kv: -kv[1]):

@@ -90,3 +90,42 @@ test("borrar invalida el caché de ese usuario", async () => {
 
   assert.equal(calls(), 2);
 });
+
+test("la memoria sobrevive aunque Upstash no exista", async () => {
+  // El caso real de este proyecto: el host de Upstash da NXDOMAIN, la base ya no está.
+  // Antes de esto, safeListEntries devolvía [] y Niki arrancaba en blanco cada vez.
+  const { UserMemoryService } = await import("./user-memory.service");
+  const service = new UserMemoryService({
+    get: () => ({ upstashRedisRestUrl: "", upstashRedisRestToken: "" }),
+  } as never);
+
+  const userId = `test-local-${process.pid}`;
+  await service.setEntry(userId, "editor", "Zed");
+  await service.setEntry(userId, "ciudad", "San José");
+
+  // Un servicio nuevo: nada en memoria de proceso, todo tiene que venir del disco.
+  const otro = new UserMemoryService({
+    get: () => ({ upstashRedisRestUrl: "", upstashRedisRestToken: "" }),
+  } as never);
+  const entradas = await otro.safeListEntries(userId);
+
+  assert.equal(entradas.length, 2, "las dos entradas tienen que volver del disco");
+  assert.equal(entradas.find((e) => e.key === "editor")?.value, "Zed");
+  await otro.deleteEntry(userId, "editor");
+  assert.equal((await otro.safeListEntries(userId)).length, 1, "borrar tiene que persistir");
+  await otro.deleteEntry(userId, "ciudad");
+});
+
+test("escribir dos veces la misma clave no duplica", async () => {
+  const { UserMemoryService } = await import("./user-memory.service");
+  const service = new UserMemoryService({
+    get: () => ({ upstashRedisRestUrl: "", upstashRedisRestToken: "" }),
+  } as never);
+  const userId = `test-dup-${process.pid}`;
+  await service.setEntry(userId, "color", "azul");
+  await service.setEntry(userId, "color", "verde");
+  const entradas = await service.safeListEntries(userId);
+  assert.equal(entradas.length, 1);
+  assert.equal(entradas[0].value, "verde", "gana el último valor");
+  await service.deleteEntry(userId, "color");
+});

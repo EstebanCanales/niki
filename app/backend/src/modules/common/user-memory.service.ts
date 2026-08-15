@@ -1,4 +1,6 @@
 import { Inject, Injectable, Logger } from "@nestjs/common";
+import * as fs from "fs";
+import * as path from "path";
 
 import { AppConfigService } from "./app-config.service";
 
@@ -15,6 +17,19 @@ const UNREACHABLE_TTL_MS = 30_000;
  *  antes de que el modelo empezara a generar. Escribir invalida, así que el único
  *  desfase posible es frente a otro proceso escribiendo el mismo Redis. */
 const ENTRIES_CACHE_TTL_MS = 30_000;
+
+/**
+ * Dónde vive la memoria cuando Upstash no está.
+ *
+ * La base de Upstash de este proyecto dejó de existir —su host da NXDOMAIN— y con ella
+ * se fue toda la memoria persistente: Niki arrancaba en blanco cada vez. Guardarla en
+ * disco, al lado del resto del estado del agente, la devuelve sin depender de que
+ * alguien cree una base nueva.
+ *
+ * Upstash sigue siendo el primario si algún día vuelve a responder: esto es el respaldo,
+ * no el reemplazo.
+ */
+const MEMORIA_LOCAL = path.resolve(__dirname, "..", "..", "..", "agent-home", "memoria");
 
 @Injectable()
 export class UserMemoryService {
@@ -82,7 +97,10 @@ export class UserMemoryService {
   }
 
   async safeListEntries(userId: string) {
-    if (Date.now() < this.unreachableUntil) return [];
+    // Cortacircuitos: mientras Upstash esté caído no se lo golpea. Antes esto devolvía
+    // [] y era el motivo real de que la memoria local nunca se leyera — la línea corta
+    // antes de llegar al respaldo. Ahora devuelve lo que hay en disco.
+    if (Date.now() < this.unreachableUntil) return this.leerLocal(userId);
 
     const cached = this.entriesCache.get(userId);
     if (cached && Date.now() < cached.expiresAt) return cached.entries;
@@ -92,6 +110,7 @@ export class UserMemoryService {
 
     const request = (async () => {
       try {
+        if (!this.upstashDisponible) throw new Error("Upstash no disponible");
         const result = await this.listEntries(userId);
         this.unreachableUntil = 0;
         this.entriesCache.set(userId, {
@@ -101,8 +120,14 @@ export class UserMemoryService {
         return result;
       } catch (error) {
         this.unreachableUntil = Date.now() + UNREACHABLE_TTL_MS;
-        this.logger.warn(`[memory] safeListEntries failed for ${userId}: ${String(error)}`);
-        return [] as StoredMemoryEntry[];
+        // Antes esto devolvía [] y Niki quedaba sin memoria. Ahora cae al disco: la
+        // memoria sobrevive aunque Upstash no exista.
+        const locales = this.leerLocal(userId);
+        this.logger.warn(
+          `[memory] Upstash no respondió (${String(error).slice(0, 80)}); usando memoria local (${locales.length} entradas)`,
+        );
+        this.entriesCache.set(userId, { entries: locales, expiresAt: Date.now() + ENTRIES_CACHE_TTL_MS });
+        return locales;
       } finally {
         this.entriesInFlight.delete(userId);
       }
@@ -118,6 +143,50 @@ export class UserMemoryService {
     this.entriesCache.delete(userId);
   }
 
+  // ── Respaldo local ────────────────────────────────────────────────────────
+
+  private archivoLocal(userId: string): string {
+    const seguro = userId.replace(/[^a-zA-Z0-9_-]/g, "") || "anon";
+    return path.join(MEMORIA_LOCAL, `${seguro}.json`);
+  }
+
+  private leerLocal(userId: string): StoredMemoryEntry[] {
+    try {
+      const crudo = fs.readFileSync(this.archivoLocal(userId), "utf8");
+      const datos = JSON.parse(crudo) as StoredMemoryEntry[];
+      if (!Array.isArray(datos)) return [];
+      // Los TTL se respetan acá: en Redis los aplicaba el servidor.
+      const ahora = Date.now();
+      return datos.filter((e) => {
+        if (!e.ttl) return true;
+        return new Date(e.updatedAt).getTime() + e.ttl * 1000 > ahora;
+      });
+    } catch {
+      return [];
+    }
+  }
+
+  private escribirLocal(userId: string, entradas: StoredMemoryEntry[]) {
+    try {
+      // Sin entradas no queda archivo: un `[]` en disco no aporta nada y deja basura
+      // por cada usuario que alguna vez guardó algo y después lo borró.
+      if (entradas.length === 0) {
+        fs.rmSync(this.archivoLocal(userId), { force: true });
+        return;
+      }
+      fs.mkdirSync(MEMORIA_LOCAL, { recursive: true });
+      fs.writeFileSync(this.archivoLocal(userId), JSON.stringify(entradas, null, 2));
+    } catch (error) {
+      this.logger.warn(`[memory] no se pudo escribir la memoria local: ${String(error)}`);
+    }
+  }
+
+  /** ¿Hay Upstash configurado y respondiendo? */
+  private get upstashDisponible(): boolean {
+    const c = this.configService.get();
+    return Boolean(c.upstashRedisRestUrl && c.upstashRedisRestToken) && Date.now() >= this.unreachableUntil;
+  }
+
   async setEntry(userId: string, key: string, value: string, ttl?: number) {
     const redisKey = `niki:memory:${userId}:${key}`;
     const entry: StoredMemoryEntry = {
@@ -126,10 +195,22 @@ export class UserMemoryService {
       ttl,
       updatedAt: new Date().toISOString(),
     };
-    const setPath = ttl
-      ? `/set/${encodeURIComponent(redisKey)}/${encodeURIComponent(JSON.stringify(entry))}/ex/${ttl}`
-      : `/set/${encodeURIComponent(redisKey)}/${encodeURIComponent(JSON.stringify(entry))}`;
-    await this.upstashFetch(setPath);
+    // Se escribe SIEMPRE en disco, aunque Upstash ande: es lo que hace que la memoria
+    // sobreviva a que la base desaparezca, que es exactamente lo que pasó acá.
+    const locales = this.leerLocal(userId).filter((e) => e.key !== key);
+    this.escribirLocal(userId, [entry, ...locales]);
+
+    if (this.upstashDisponible) {
+      const setPath = ttl
+        ? `/set/${encodeURIComponent(redisKey)}/${encodeURIComponent(JSON.stringify(entry))}/ex/${ttl}`
+        : `/set/${encodeURIComponent(redisKey)}/${encodeURIComponent(JSON.stringify(entry))}`;
+      try {
+        await this.upstashFetch(setPath);
+      } catch (error) {
+        this.unreachableUntil = Date.now() + UNREACHABLE_TTL_MS;
+        this.logger.warn(`[memory] no se pudo replicar a Upstash: ${String(error).slice(0, 80)}`);
+      }
+    }
     this.invalidateEntries(userId);
     return entry;
   }
@@ -145,7 +226,14 @@ export class UserMemoryService {
 
   async deleteEntry(userId: string, key: string) {
     const redisKey = `niki:memory:${userId}:${key}`;
-    await this.upstashFetch(`/del/${encodeURIComponent(redisKey)}`);
+    this.escribirLocal(userId, this.leerLocal(userId).filter((e) => e.key !== key));
+    if (this.upstashDisponible) {
+      try {
+        await this.upstashFetch(`/del/${encodeURIComponent(redisKey)}`);
+      } catch (error) {
+        this.logger.warn(`[memory] no se pudo borrar en Upstash: ${String(error).slice(0, 80)}`);
+      }
+    }
     this.invalidateEntries(userId);
     return { ok: true };
   }

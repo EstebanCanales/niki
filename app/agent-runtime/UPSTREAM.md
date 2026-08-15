@@ -89,6 +89,20 @@ Dos dependencias que no vienen en las básicas y Niki sí necesita:
 
 El `venv/` está en `.gitignore`.
 
+### Dependencias que faltan a propósito
+
+- **transformers** — la pide `trajectory_compressor.py`, el script del propio fork que
+  recorta trayectorias largas "preserving training signal quality", o sea el paso previo
+  a entrenar con ellas. Sin él falla al arrancar:
+  `RuntimeError: Failed to load tokenizer 'moonshotai/Kimi-K2-Thinking': No module named
+  'transformers'`. No se instala todavía porque hoy el dataset de Niki son 181 mensajes y
+  no hay nada que recortar; cuando haya volumen, `./venv/bin/pip install transformers`
+  (y tener en cuenta que baja el tokenizador de Hugging Face la primera vez, o sea que
+  necesita red).
+
+Las tres —`aiohttp`, `mcp`, `transformers`— fallan igual: tarde y en silencio. No al
+instalar ni al arrancar, sino la primera vez que se usa lo que dependía de ellas.
+
 ## Verificación mínima tras tocar el fork
 
 ```bash

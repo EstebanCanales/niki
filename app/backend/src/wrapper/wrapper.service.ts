@@ -203,6 +203,10 @@ export class WrapperService {
     return this.runtimeService.proxyChatStream(req, res, body);
   }
 
+  marcarInterrupcion(body: { sessionId?: string; spoken?: string }) {
+    return this.runtimeService.marcarInterrupcion(body);
+  }
+
   enqueueNotchRequest(
     req: Request,
     body: {

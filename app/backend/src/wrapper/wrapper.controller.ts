@@ -199,6 +199,20 @@ export class WrapperController {
     return this.wrapperService.respondToApproval(body);
   }
 
+  /**
+   * La app avisa que Esteban cortó a Niki a mitad de frase.
+   *
+   * Esa interrupción es la señal de calidad más honesta que hay —la respuesta era larga,
+   * equivocada o fuera de tono— y hasta ahora se perdía del lado del cliente. No devuelve
+   * nada útil ni bloquea: es telemetría del turno, no parte del turno.
+   */
+  @Post("runtime/turno/interrupcion")
+  @HttpCode(200)
+  runtimeTurnoInterrumpido(@Req() req: Request, @Body() body: { sessionId?: string; spoken?: string }) {
+    this.wrapperService.assertAuthorized(req);
+    return this.wrapperService.marcarInterrupcion(body);
+  }
+
   @Post("runtime/surface")
   @HttpCode(200)
   runtimeShowSurface(

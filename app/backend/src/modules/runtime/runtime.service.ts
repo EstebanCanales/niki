@@ -67,6 +67,7 @@ import { applyApprovalResolution } from "./runtime-approval-state";
 import { geocodeAddress } from "./runtime-geocode";
 import { RuntimeSurfaceIntentService } from "./runtime-surface-intent.service";
 import { NikiVoiceRuntimeService } from "./niki-voice-runtime.service";
+import { preguntaRepetida } from "./runtime-repeticion";
 import { TurnRecorderService } from "./turn-recorder.service";
 
 type RuntimeConnectionConfigInput = {
@@ -852,6 +853,25 @@ export class RuntimeService implements OnModuleDestroy {
     }
   }
 
+  /**
+   * Marca que Esteban cortó a Niki a mitad de frase.
+   *
+   * Se guarda cuánto alcanzó a decir antes del corte: no es lo mismo que la interrumpa en
+   * la primera palabra —se equivocó de tema— que a los treinta segundos —se estaba yendo
+   * por las ramas—. Sin ese dato, la señal dice "algo salió mal" y nada más.
+   */
+  marcarInterrupcion(body: { sessionId?: string; spoken?: string }) {
+    const sessionId = String(body.sessionId ?? "").trim();
+    if (!sessionId) throw new BadRequestException("sessionId is required");
+    const dicho = String(body.spoken ?? "").trim();
+    this.turnRecorder.signal(
+      sessionId,
+      "interrupcion",
+      dicho ? `alcanzó a decir: ${dicho}` : undefined,
+    );
+    return { ok: true };
+  }
+
   async proxyChatStream(req: Request, res: Response, body: ChatRequestDto) {
     const input = String(body.input ?? body.messages?.at(-1)?.content ?? "").trim();
     if (!input) throw new BadRequestException("input is required");
@@ -889,6 +909,11 @@ export class RuntimeService implements OnModuleDestroy {
           (m.role === "user" || m.role === "assistant") && typeof m.content === "string" && m.content.trim().length > 0,
       );
 
+    // Señal para el dataset: si repregunta lo mismo, la respuesta anterior no sirvió.
+    // Se calcula del historial que ya vino en el pedido, sin estado ni llamadas extra.
+    const repregunta = preguntaRepetida(surfaceHistory, input);
+    if (repregunta) this.turnRecorder.signal(sessionId, "repeticion", repregunta);
+
     void this.surfaceIntent
       .detect(input, this.hasActiveSurface, surfaceHistory)
       .then((result) => {
@@ -924,6 +949,8 @@ export class RuntimeService implements OnModuleDestroy {
       const handled = await this.streamVoiceReply(res, input, body, userId, sessionId, channel);
       if (handled) return;
       // Si la ruta rápida falló antes de escribir nada, se cae a Hermes sin que se note.
+      // Para el dataset sí se anota: ese turno era más difícil de lo que parecía.
+      this.turnRecorder.signal(sessionId, "cayo-al-agente");
     }
 
     this.broadcastEvent("info", "runtime", "runtime.chat.request", "Hermes request started", input.slice(0, 180));
@@ -1254,6 +1281,12 @@ export class RuntimeService implements OnModuleDestroy {
       throw new BadRequestException(`Hermes approval failed: ${JSON.stringify(payload)}`);
     }
 
+    // Qué herramienta pedía cada aprobación, antes de que se vacíe la lista: sin esto la
+    // señal diría "rechazó algo" en vez de "rechazó un borrado con terminal".
+    const matchedTools = new Map(
+      Array.from(this.pendingApprovals.values()).map((a) => [a.id, a.toolName]),
+    );
+
     const projected = applyApprovalResolution(Array.from(this.pendingApprovals.values()), {
       runId,
       choice,
@@ -1264,6 +1297,15 @@ export class RuntimeService implements OnModuleDestroy {
       this.pendingApprovals.set(approval.id, approval);
     }
     for (const resolution of projected.resolved) {
+      // Señal para el dataset: aceptar o rechazar una acción es preferencia explícita, la
+      // señal más limpia que hay — no hay que inferir nada. Las aprobaciones no llevan
+      // sessionId, así que se atan por runId.
+      const aprobada = resolution.decision !== "deny";
+      this.turnRecorder.signal(
+        resolution.runId,
+        aprobada ? "aprobacion" : "rechazo",
+        `${resolution.decision}: ${matchedTools.get(resolution.id) ?? ""}`.trim(),
+      );
       this.broadcast({
         kind: "approval_resolved",
         payload: resolution,

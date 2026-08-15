@@ -109,7 +109,7 @@ def a_messages(sesion):
             if m.get(campo):
                 salida[campo] = limpiar(m[campo])
         mensajes.append(salida)
-    return {
+    fila = {
         "session_id": sesion.get("session_id"),
         "model": sesion.get("model"),
         "started_at": sesion.get("session_start"),
@@ -117,6 +117,13 @@ def a_messages(sesion):
         "tools": limpiar(sesion.get("tools") or []),
         "messages": mensajes,
     }
+    # Las señales van con el ejemplo, no aparte: son lo que dice si sirvió o no, y
+    # separarlas en otro archivo es la forma más segura de que se pierdan.
+    if sesion.get("senales"):
+        fila["senales"] = sesion["senales"]
+    if sesion.get("latency_ms") is not None:
+        fila["latency_ms"] = sesion["latency_ms"]
+    return fila
 
 
 # ShareGPT nombra los roles distinto. `tool` no tiene equivalente propio: el compresor de
@@ -144,20 +151,17 @@ def a_sharegpt(sesion):
         if not valor:
             continue
         turnos.append({"from": origen, "value": limpiar(valor)})
-    return {"conversations": turnos, "session_id": sesion.get("session_id")}
+    fila = {"conversations": turnos, "session_id": sesion.get("session_id")}
+    if sesion.get("senales"):
+        fila["senales"] = sesion["senales"]
+    return fila
 
 
-def turnos_de_voz(carpeta):
-    """Los turnos hablados que anotó el backend, como sesiones de un solo intercambio.
-
-    La ruta rápida de voz no pasa por el runtime —contesta con Groq en menos de un
-    segundo— así que no deja sesión. El backend los va appendeando a un JSONL por día
-    (ver TurnRecorderService); acá se les da la misma forma que a los demás para que
-    salgan en el mismo archivo.
-    """
+def leer_jsonl(carpeta):
+    """Todas las líneas de todos los JSONL de una carpeta, salteando las rotas."""
     if not os.path.isdir(carpeta):
         return []
-    sesiones = []
+    filas = []
     for nombre in sorted(os.listdir(carpeta)):
         if not nombre.endswith(".jsonl"):
             continue
@@ -167,21 +171,62 @@ def turnos_de_voz(carpeta):
                 if not linea:
                     continue
                 try:
-                    t = json.loads(linea)
+                    filas.append(json.loads(linea))
                 except json.JSONDecodeError:
+                    # Una línea a medias —el backend murió escribiendo— no invalida el resto.
                     continue
-                sesiones.append({
-                    "session_id": t.get("sessionId"),
-                    "model": t.get("model") or "voz",
-                    "session_start": t.get("at"),
-                    "system_prompt": "",
-                    "tools": [],
-                    "messages": [
-                        {"role": "user", "content": t.get("input") or ""},
-                        {"role": "assistant", "content": t.get("reply") or ""},
-                    ],
-                })
-    return sesiones
+    return filas
+
+
+def turnos_de_voz(carpeta):
+    """Los turnos hablados que anotó el backend, con sus señales de calidad pegadas.
+
+    La ruta rápida de voz no pasa por el runtime —contesta con Groq en menos de un
+    segundo— así que no deja sesión. El backend los va appendeando a un JSONL por día
+    (ver TurnRecorderService); acá se les da la misma forma que a los demás para que
+    salgan en el mismo archivo.
+
+    Las señales viven en el mismo archivo como líneas aparte y se atan por `turnId`. Las
+    que no tienen turno —una aprobación en una conversación que fue toda por el agente—
+    se juntan por sesión, para que `senales_por_sesion` las pueda pegar allá.
+    """
+    filas = leer_jsonl(carpeta)
+
+    por_turno = {}
+    sueltas = {}
+    for f in filas:
+        if f.get("type") != "senal":
+            continue
+        marca = {"senal": f.get("senal"), "at": f.get("at")}
+        if f.get("detalle"):
+            marca["detalle"] = limpiar(f["detalle"])
+        if f.get("turnId"):
+            por_turno.setdefault(f["turnId"], []).append(marca)
+        elif f.get("sessionId"):
+            sueltas.setdefault(f["sessionId"], []).append(marca)
+
+    sesiones = []
+    for t in filas:
+        # Las primeras versiones del archivo no tenían `type`: todo era un turno.
+        if t.get("type") not in (None, "turno"):
+            continue
+        if not t.get("input"):
+            continue
+        senales = por_turno.get(t.get("turnId"), [])
+        sesiones.append({
+            "session_id": t.get("sessionId"),
+            "model": t.get("model") or "voz",
+            "session_start": t.get("at"),
+            "system_prompt": "",
+            "tools": [],
+            "senales": senales,
+            "latency_ms": t.get("latencyMs"),
+            "messages": [
+                {"role": "user", "content": t.get("input") or ""},
+                {"role": "assistant", "content": t.get("reply") or ""},
+            ],
+        })
+    return sesiones, sueltas
 
 
 def main():
@@ -209,12 +254,15 @@ def main():
         if f.startswith("session_") and f.endswith(".json")
     )
 
-    voz = [] if args.sin_voz else turnos_de_voz(os.path.join(BACKEND, "dataset", "voz"))
+    voz, senales_sueltas = ([], {}) if args.sin_voz else turnos_de_voz(
+        os.path.join(BACKEND, "dataset", "voz")
+    )
 
     escritas = 0
     mensajes = 0
     con_herramientas = 0
     con_razonamiento = 0
+    con_senales = 0
     descartadas = {}
 
     def leer_sesiones():
@@ -230,6 +278,11 @@ def main():
 
     with open(salida, "w", encoding="utf-8") as fh:
         for sesion in leer_sesiones():
+            # Señales que no tienen turno hablado —aprobaciones, rechazos— pero sí sesión.
+            propias = senales_sueltas.get(str(sesion.get("session_id") or ""))
+            if propias:
+                sesion = {**sesion, "senales": propias}
+
             ok, motivo = util(sesion, args.min_turnos, args.incluir_pruebas)
             if not ok:
                 descartadas[motivo] = descartadas.get(motivo, 0) + 1
@@ -243,6 +296,8 @@ def main():
             mensajes += len(ms)
             con_herramientas += sum(1 for m in ms if m.get("tool_calls"))
             con_razonamiento += sum(1 for m in ms if m.get("reasoning") or m.get("reasoning_content"))
+            if sesion.get("senales"):
+                con_senales += 1
 
     print(f"Escrito: {salida}")
     print(f"  sesiones exportadas : {escritas} de {len(archivos) + len(voz)}")
@@ -250,6 +305,7 @@ def main():
     print(f"  mensajes            : {mensajes}")
     print(f"  con herramientas    : {con_herramientas}")
     print(f"  con razonamiento    : {con_razonamiento}")
+    print(f"  con señales         : {con_senales}")
     if descartadas:
         print("  descartadas         :")
         for motivo, cuenta in sorted(descartadas.items(), key=lambda kv: -kv[1]):

@@ -182,6 +182,22 @@ struct NikiAPIClient {
         )
     }
 
+    /// Avisa que se cortó a Niki a mitad de frase.
+    ///
+    /// Es telemetría del turno, no parte del turno: se manda y se olvida. Que esa
+    /// respuesta no sirvió es la señal más honesta que produce esta app, y hasta ahora
+    /// moría acá adentro.
+    func reportarInterrupcion(sessionID: String, dicho: String) async {
+        let body = try? JSONSerialization.data(withJSONObject: [
+            "sessionId": sessionID,
+            "spoken": String(dicho.prefix(500)),
+        ])
+        guard let body,
+              let pedido = try? request("/runtime/turno/interrupcion", method: "POST", body: body)
+        else { return }
+        _ = try? await URLSession.shared.data(for: pedido)
+    }
+
     func runtimeMcpServers() async throws -> NikiMcpServersResponse {
         try await decodeResponse(NikiMcpServersResponse.self, from: try request("/runtime/mcp"))
     }

@@ -2085,6 +2085,13 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
         let saidSoFar = activeMessages.last(where: { $0.role == .assistant })?.content
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         if !saidSoFar.isEmpty { interruptedReply = saidSoFar }
+
+        // Que la hayas cortado dice que esa respuesta no servía: larga, equivocada o
+        // fuera de tono. Es la señal de calidad más honesta que produce la app, y se
+        // moría acá adentro. Va al backend sin esperar: cortar tiene que ser instantáneo.
+        let sesion = activeSessionID
+        let cliente = client
+        Task { await cliente.reportarInterrupcion(sessionID: sesion, dicho: saidSoFar) }
         if chatBusy {
             cancelCurrentChat()
         } else {

@@ -57,6 +57,61 @@ test("un turno a medias no se anota", () => {
   assert.equal(leer().length, 0);
 });
 
+test("una señal se cuelga del último turno de esa sesión", () => {
+  const { rec, leer } = recorder();
+  const turnId = rec.record({
+    sessionId: "s1", userId: "e", channel: "voice",
+    input: "contame un chiste largo", reply: "Había una vez...", model: "voz",
+  });
+  rec.signal("s1", "interrupcion", "alcanzó a decir: Había una vez");
+
+  const [turno, senal] = leer();
+  assert.equal(turno.type, "turno");
+  assert.equal(senal.type, "senal");
+  assert.equal(senal.senal, "interrupcion");
+  assert.equal(senal.turnId, turnId, "la señal tiene que apuntar al turno que la provocó");
+});
+
+test("cada sesión tiene su propio último turno", () => {
+  const { rec, leer } = recorder();
+  const a = rec.record({ sessionId: "A", userId: "e", channel: "voice", input: "uno", reply: "1", model: "voz" });
+  const b = rec.record({ sessionId: "B", userId: "e", channel: "voice", input: "dos", reply: "2", model: "voz" });
+  rec.signal("A", "repeticion");
+
+  const senal = leer().find((f) => f.type === "senal");
+  assert.equal(senal?.turnId, a, "no puede colgarse del turno de la otra sesión");
+  assert.notEqual(a, b);
+});
+
+test("una señal sin turno previo se anota igual, atada a la sesión", () => {
+  // Pasa cuando la conversación va toda por el agente: no hay turno de voz que marcar,
+  // pero la señal sigue valiendo — el exportador la ata por sessionId.
+  const { rec, leer } = recorder();
+  rec.signal("sesion-sin-voz", "rechazo", "deny: terminal");
+
+  const [senal] = leer();
+  assert.equal(senal.turnId, null);
+  assert.equal(senal.sessionId, "sesion-sin-voz");
+  assert.equal(senal.detalle, "deny: terminal");
+});
+
+test("una señal sin sesión no se anota", () => {
+  const { rec, leer } = recorder();
+  rec.signal("", "interrupcion");
+  assert.equal(leer().length, 0);
+});
+
+test("recordar el último turno de miles de sesiones no crece sin límite", () => {
+  const { rec } = recorder();
+  for (let i = 0; i < 600; i += 1) {
+    rec.record({ sessionId: `s${i}`, userId: "e", channel: "voice", input: "x", reply: "y", model: "voz" });
+  }
+  const mapa = (rec as unknown as { ultimoTurno: Map<string, string> }).ultimoTurno;
+  assert.ok(mapa.size <= 500, `quedaron ${mapa.size} sesiones en memoria`);
+  assert.ok(mapa.has("s599"), "la más nueva tiene que seguir estando");
+  assert.ok(!mapa.has("s0"), "la más vieja se tuvo que caer");
+});
+
 test("escribir un turno nunca lanza, aunque el destino no sirva", () => {
   // El disco lleno o sin permisos no puede romper un turno que el usuario ya dio por
   // terminado: esto corre después de cerrar el stream.

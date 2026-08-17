@@ -10,6 +10,7 @@ enum NikiModuleID: String, CaseIterable, Codable {
     case discover
     case diagnostics
     case consola
+    case terminal
     case settings
 }
 

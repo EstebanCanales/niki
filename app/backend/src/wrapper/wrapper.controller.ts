@@ -237,6 +237,28 @@ export class WrapperController {
     return this.wrapperService.borrarDataset(body);
   }
 
+  /**
+   * La terminal que comparten Esteban y Niki.
+   *
+   * No abre una terminal nueva: entra a la sesión que la IA ya usa, así que el `cd` de
+   * uno lo ve el otro. Ver terminal-sesion.ts para cómo.
+   */
+  @Get("terminal")
+  terminalEstado(@Req() req: Request) {
+    this.wrapperService.assertAuthorized(req);
+    return this.wrapperService.estadoTerminal();
+  }
+
+  @Post("terminal/ejecutar")
+  @HttpCode(200)
+  terminalEjecutar(@Req() req: Request, @Body() body: { command?: string; confirmar?: boolean }) {
+    // Mismo recaudo que computer/action: esto corre comandos en la máquina de Esteban, y
+    // una página web cualquiera no puede ser quien los mande.
+    this.wrapperService.assertTrustedOrigin(req);
+    this.wrapperService.assertAuthorized(req);
+    return this.wrapperService.ejecutarEnTerminal(body);
+  }
+
   @Post("runtime/surface")
   @HttpCode(200)
   runtimeShowSurface(

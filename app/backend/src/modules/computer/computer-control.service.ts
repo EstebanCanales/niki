@@ -69,7 +69,7 @@ function normalizeCmd(cmd: string): string {
 }
 
 /** Devuelve la razón si el comando es catastrófico, o null si pasa el speed-bump. */
-function blockedShellReason(raw: string): string | null {
+export function blockedShellReason(raw: string): string | null {
   const variants = [raw, normalizeCmd(raw)];
   for (const cmd of variants) {
     for (const { re, why } of SHELL_DENYLIST) {

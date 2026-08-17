@@ -826,6 +826,29 @@ struct NikiContextoSesion: Codable {
     }
 }
 
+/// El resultado de un comando en la terminal compartida.
+struct NikiTerminalResultado: Codable {
+    let ok: Bool
+    let comando: String
+    let salida: String
+    let codigo: Int?
+    let cwd: String
+    let compartidaConLaIA: Bool
+    let cortadoPorTiempo: Bool
+    /// Por qué se frenó, cuando el comando es de los catastróficos y falta confirmar.
+    let bloqueado: String?
+}
+
+/// Dónde está parada la terminal y con quién se comparte.
+struct NikiTerminalEstado: Codable {
+    let ok: Bool
+    let cwd: String
+    let compartidaConLaIA: Bool
+    let sesion: String
+
+    static let vacio = NikiTerminalEstado(ok: false, cwd: "", compartidaConLaIA: false, sesion: "")
+}
+
 /// Estado de la huella de voz.
 struct NikiSpeakerStatus: Codable {
     let available: Bool

@@ -224,6 +224,23 @@ struct NikiAPIClient {
         )
     }
 
+    // ── Terminal compartida ──────────────────────────────────────────────────
+
+    func terminalEstado() async throws -> NikiTerminalEstado {
+        try await decodeResponse(NikiTerminalEstado.self, from: try request("/terminal"))
+    }
+
+    func terminalEjecutar(_ comando: String, confirmar: Bool = false) async throws -> NikiTerminalResultado {
+        let body = try JSONSerialization.data(withJSONObject: [
+            "command": comando,
+            "confirmar": confirmar,
+        ])
+        return try await decodeResponse(
+            NikiTerminalResultado.self,
+            from: try request("/terminal/ejecutar", method: "POST", body: body)
+        )
+    }
+
     func runtimeMcpServers() async throws -> NikiMcpServersResponse {
         try await decodeResponse(NikiMcpServersResponse.self, from: try request("/runtime/mcp"))
     }

@@ -11,6 +11,7 @@ import {
 } from "../modules/common/request-context";
 import { IdentityService } from "../modules/identity/identity.service";
 import { RuntimeService } from "../modules/runtime/runtime.service";
+import { TerminalCompartidaService } from "../modules/terminal/terminal-compartida.service";
 import type { ChatRequestDto } from "./wrapper.types";
 
 type NotchQueuedFile = {
@@ -41,6 +42,8 @@ export class WrapperService {
     private readonly auditService: AuditService,
     @Inject(ComputerControlService)
     private readonly computerControl: ComputerControlService,
+    @Inject(TerminalCompartidaService)
+    private readonly terminal: TerminalCompartidaService,
   ) {}
 
   computerCapabilities() {
@@ -201,6 +204,14 @@ export class WrapperService {
 
   proxyChatStream(req: Request, res: Response, body: ChatRequestDto) {
     return this.runtimeService.proxyChatStream(req, res, body);
+  }
+
+  estadoTerminal() {
+    return { ok: true, ...this.terminal.estado() };
+  }
+
+  ejecutarEnTerminal(body: { command?: string; confirmar?: boolean }) {
+    return this.terminal.ejecutar(String(body.command ?? ""), { confirmado: body.confirmar === true });
   }
 
   marcarInterrupcion(body: { sessionId?: string; spoken?: string }) {

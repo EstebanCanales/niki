@@ -14,7 +14,6 @@ struct NikiIdentidadPanel: View {
     @EnvironmentObject private var appModel: NikiAppModel
     @State private var registrandoCara = false
     @State private var errorCara = ""
-    @State private var pasoCara = ""
 
     var body: some View {
         SidebarShell(eyebrow: "Identidad", title: "Cómo te reconoce") {
@@ -56,8 +55,8 @@ struct NikiIdentidadPanel: View {
                     .foregroundStyle(Color.white.opacity(0.42))
                     .fixedSize(horizontal: false, vertical: true)
 
-                if !pasoCara.isEmpty {
-                    Text(pasoCara)
+                if appModel.registroDeCara.activo {
+                    Text("Mirá el notch: ahí se ve la cámara y en qué foto va.")
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(Color.white.opacity(0.6))
                 }
@@ -70,7 +69,7 @@ struct NikiIdentidadPanel: View {
 
                 if appModel.cara.disponible == true {
                     HStack(spacing: 10) {
-                        boton(appModel.cara.hayPerfil ? "Registrar de nuevo" : "Registrar mi cara") {
+                        boton(appModel.cara.hayPerfil ? "Registrar de nuevo" : "Registrar mi cara — se abre el notch") {
                             Task { await registrar() }
                         }
                         if appModel.cara.hayPerfil {
@@ -108,17 +107,17 @@ struct NikiIdentidadPanel: View {
         return "Se sacan cinco fotos con una pausa entre cada una, para que entren distintas poses. La cámara se prende solo durante el registro."
     }
 
+    /// El registro pasa en el notch, no acá.
+    ///
+    /// Lo que hay que ver es la cámara, y pedirle a alguien que registre su cara sin verse
+    /// es como cortarse el pelo sin espejo. El notch se abre solo y muestra el espejo, en
+    /// qué foto va y si alguna no sirvió.
     private func registrar() async {
         registrandoCara = true
         errorCara = ""
-        pasoCara = "Mirá a la cámara y movete un poco…"
-        defer { registrandoCara = false; pasoCara = "" }
-
-        if let problema = await appModel.cara.registrar() {
-            errorCara = problema
-        } else {
-            errorCara = ""
-        }
+        defer { registrandoCara = false }
+        await appModel.registrarCaraEnElNotch()
+        await appModel.cargarEstadoDeCara()
     }
 
     private func boton(_ titulo: String, accion: @escaping () -> Void) -> some View {

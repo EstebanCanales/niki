@@ -95,16 +95,28 @@ final class NikiFaceRecognition: ObservableObject {
         }
     }
 
-    /// Varias tomas seguidas para registrar, con una pausa entre cada una.
+    /// Varias tomas seguidas para registrar, informando cada paso.
     ///
-    /// La pausa es a propósito: cuatro cuadros del mismo segundo son la misma foto cuatro
-    /// veces, y el umbral saldría de una sola pose. Con un respiro entre tomas, entra algo
-    /// de variación —un gesto, un giro— que es justo lo que hace falta para que después te
-    /// reconozca cuando no estás perfectamente de frente.
-    func registrar(tomas: Int = 5, entreTomas: TimeInterval = 0.8) async -> String? {
+    /// La pausa entre tomas es a propósito: cinco cuadros del mismo segundo son la misma
+    /// foto cinco veces, y el umbral saldría de una sola pose. Con un respiro entra algo
+    /// de variación —un gesto, un giro— que es lo que hace falta para que después te
+    /// reconozca cuando no estás perfectamente de frente. Por eso también la vista pide
+    /// que te muevas.
+    ///
+    /// `alCambiar` se llama en cada paso para que el notch pueda mostrar en qué anda.
+    /// Antes esto pasaba a ciegas: la cámara se prendía, sacaba cinco fotos y devolvía un
+    /// cartel. Si salías cortado o a contraluz te enterabas al final y sin saber por qué.
+    func registrar(
+        tomas: Int = 5,
+        entreTomas: TimeInterval = 1.0,
+        alCambiar: @MainActor (NikiRegistroDeCaraEstado) -> Void = { _ in }
+    ) async -> String? {
         guard let cliente else { return "No hay conexión con el backend." }
         mirando = true
         defer { mirando = false }
+
+        var estado = NikiRegistroDeCaraEstado(fase: .despertando, total: tomas)
+        alCambiar(estado)
 
         let apagarAlTerminar = await prenderCamara()
         defer { if apagarAlTerminar { WebcamManager.shared.stopSession() } }
@@ -114,21 +126,45 @@ final class NikiFaceRecognition: ObservableObject {
             if i > 0 {
                 try? await Task.sleep(nanoseconds: UInt64(entreTomas * 1_000_000_000))
             }
-            if let c = await cuadroDeLaCamara() { cuadros.append(c) }
+            estado.fase = .sacando(paso: i + 1)
+            alCambiar(estado)
+
+            let cuadro = await cuadroDeLaCamara()
+            estado.hechas = i + 1
+            if let cuadro {
+                cuadros.append(cuadro)
+                estado.buenas = cuadros.count
+            }
+            alCambiar(estado)
         }
 
         guard cuadros.count >= 4 else {
-            return "Solo se pudieron sacar \(cuadros.count) tomas. ¿La cámara está tapada o en uso por otra app?"
+            let motivo = cuadros.isEmpty
+                ? "No se pudo usar la cámara. ¿La está usando otra app?"
+                : "Solo salieron \(cuadros.count) de \(tomas) fotos."
+            estado.fase = .falló(motivo: motivo)
+            alCambiar(estado)
+            return motivo
         }
+
+        estado.fase = .procesando
+        alCambiar(estado)
 
         do {
             let r = try await cliente.caraRegistrar(cuadros)
             if r.ok {
                 hayPerfil = true
+                estado.fase = .listo(umbral: r.threshold)
+                alCambiar(estado)
                 return nil
             }
-            return r.error ?? "No se pudo registrar la cara."
+            let motivo = r.error ?? "No se pudo registrar la cara."
+            estado.fase = .falló(motivo: motivo)
+            alCambiar(estado)
+            return motivo
         } catch {
+            estado.fase = .falló(motivo: error.localizedDescription)
+            alCambiar(estado)
             return error.localizedDescription
         }
     }

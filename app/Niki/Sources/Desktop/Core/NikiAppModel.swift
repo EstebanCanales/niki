@@ -107,6 +107,8 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
     /// Reconocer a Esteban por la cámara al empezar a hablar. Falla en abierto: si no
     /// reconoce a nadie, la conversación sigue igual.
     let cara = NikiFaceRecognition()
+    /// En qué anda el registro de cara. El notch lo muestra mientras pasa.
+    @Published var registroDeCara = NikiRegistroDeCaraEstado()
     @Published var dataset: NikiDatasetResumen = .vacio
     @Published var datasetOcupado = false
     @Published var datasetError = ""
@@ -241,6 +243,29 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
     @Published var speakerStatusText = ""
 
     /// Deja el reconocedor de cara listo y le pregunta al backend si hay perfil.
+    /// Registra la cara mostrando el proceso en el notch.
+    ///
+    /// Abre el notch a propósito: lo que hay que ver es la cámara, y pedirle a alguien que
+    /// se registre sin verse es como cortarse el pelo sin espejo.
+    func registrarCaraEnElNotch() async {
+        guard !registroDeCara.activo else { return }
+        registroDeCara = NikiRegistroDeCaraEstado(fase: .despertando, total: 5)
+        appDelegate?.openNotch()
+
+        _ = await cara.registrar { [weak self] estado in
+            self?.registroDeCara = estado
+        }
+
+        // El resultado queda en pantalla unos segundos y se va solo: si falló, el motivo
+        // se puede leer; si salió bien, nadie quiere apretar un botón para eso.
+        try? await Task.sleep(nanoseconds: 4_000_000_000)
+        if registroDeCara.terminado { cerrarRegistroDeCara() }
+    }
+
+    func cerrarRegistroDeCara() {
+        registroDeCara = NikiRegistroDeCaraEstado()
+    }
+
     func cargarEstadoDeCara() async {
         cara.configurar(cliente: client)
         await cara.cargarEstado()
@@ -2484,15 +2509,27 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
         return value
     }
 
+    /// Graba un tramo fijo de audio.
+    ///
+    /// Solo lo usa el registro de la huella de voz. Tenía dos `guard sttLabActive` —
+    /// heredados de cuando este código servía al bucle de la llamada— que lo volvían
+    /// imposible de usar: el botón de registrar se deshabilita mientras hay llamada, y
+    /// esto exigía que hubiera una. O sea que el registro devolvía nil siempre y el panel
+    /// decía "No se pudo grabar. Revisá el micrófono" con el micrófono impecable. Es la
+    /// razón por la que la huella de voz nunca llegó a registrarse.
     private func recordChunkFixed(duration: TimeInterval) async -> (Data, Bool)? {
         let granted = await AVCaptureDevice.requestAccess(for: .audio)
         sttMicPermission = granted ? "granted" : "denied"
         sttLog("[STT] mic permission: \(granted ? "granted" : "DENIED")")
         guard granted else {
-            sttLabStatus = "⚠️ Micrófono DENEGADO — ve a Ajustes del Sistema > Privacidad > Micrófono"
+            let aviso = "Micrófono denegado. Ajustes del Sistema → Privacidad → Micrófono."
+            sttLabStatus = aviso
+            // También en el panel de identidad: el estado del STT Lab no se ve desde ahí,
+            // así que sin esto el registro fallaba sin decir por qué.
+            speakerStatusText = aviso
             return nil
         }
-        guard sttLabActive, !Task.isCancelled else { return nil }
+        guard !Task.isCancelled else { return nil }
 
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("niki-lab-\(UUID().uuidString).wav")
@@ -2528,7 +2565,7 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
             let steps = Int(duration / 0.05)
             for _ in 0..<steps {
                 try? await Task.sleep(nanoseconds: 50_000_000)
-                guard sttLabActive, !Task.isCancelled else {
+                guard !Task.isCancelled else {
                     rec.stop()
                     recorder = nil
                     voiceRecording = false

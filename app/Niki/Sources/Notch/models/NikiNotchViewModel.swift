@@ -212,6 +212,11 @@ class NikiNotchViewModel: NSObject, ObservableObject {
            !NikiAppModel.shared.notchCallDismissed {
             return
         }
+        // Tampoco a mitad del registro de cara: sacar el mouse cerraría el notch justo
+        // cuando lo único que hay para hacer es mirarse en él.
+        if !force, NikiAppModel.shared.registroDeCara.activo {
+            return
+        }
         self.notchSize = getClosedNotchSize(screenUUID: self.screenUUID)
         self.closedNotchSize = self.notchSize
         self.notchState = .closed

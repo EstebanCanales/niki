@@ -108,8 +108,10 @@
 		918EB075B0D418C9A4641E1C /* PermissionsRequestView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 342AC6FCAAD0138A124D25A5 /* PermissionsRequestView.swift */; };
 		9508E06A965F6EF281710DB7 /* SparkleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF53301C3AD9FDAAB1FDCD43 /* SparkleView.swift */; };
 		9795EEC9C7C5A4638D84AA79 /* NikiExtrasMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = B710520BDE21018E48EC6D49 /* NikiExtrasMenu.swift */; };
+		D1C9BC3CED4647E489E39DFB /* NotchRegistroDeCara.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0EC0657328994CD4BFA7624F /* NotchRegistroDeCara.swift */; };
 		9F10CBE054245C8CF9FB5168 /* NikiNotchViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D27C615C9FE75E74C2A4CB2 /* NikiNotchViewModel.swift */; };
 		A1949F53FC6D9B7AF1554B95 /* NikiAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83105CD2582B4B46B6E986EF /* NikiAPIClient.swift */; };
+		978FE6AB80524C0693C88A53 /* NikiRegistroDeCara.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51F5EC6AE0B4463B8C1DF5A2 /* NikiRegistroDeCara.swift */; };
 		C94232C375B8439B9568355C /* NikiFaceRecognition.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F903A6F53CF4F4EAB5D1719 /* NikiFaceRecognition.swift */; };
 		A618C1103BF0AAE28764DF8A /* NSMenu+AssociatedObject.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80E311639EDDD29B51948704 /* NSMenu+AssociatedObject.swift */; };
 		A6CBE7C0ED413F7BDD926888 /* NikiNotchHeader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15D0FC5EDE38C972051BC149 /* NikiNotchHeader.swift */; };
@@ -314,6 +316,7 @@
 		8037A029C3C1F2F4F762A59C /* MediaKeyInterceptor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaKeyInterceptor.swift; sourceTree = "<group>"; };
 		80E311639EDDD29B51948704 /* NSMenu+AssociatedObject.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NSMenu+AssociatedObject.swift"; sourceTree = "<group>"; };
 		83105CD2582B4B46B6E986EF /* NikiAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NikiAPIClient.swift; sourceTree = "<group>"; };
+		51F5EC6AE0B4463B8C1DF5A2 /* NikiRegistroDeCara.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NikiRegistroDeCara.swift; sourceTree = "<group>"; };
 		3F903A6F53CF4F4EAB5D1719 /* NikiFaceRecognition.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NikiFaceRecognition.swift; sourceTree = "<group>"; };
 		8349E1431D1D0E974E19BAD7 /* NikiMcpPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NikiMcpPanel.swift; sourceTree = "<group>"; };
 		83671BB29A5DA2D38DE950CA /* NikiChatSidebar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NikiChatSidebar.swift; sourceTree = "<group>"; };
@@ -351,6 +354,7 @@
 		B68CCB3D8DAB4C259FAF9435 /* CalendarServiceProviding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarServiceProviding.swift; sourceTree = "<group>"; };
 		B6C0C47EAD3F2126904B069B /* ListItemPopover.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ListItemPopover.swift; sourceTree = "<group>"; };
 		B710520BDE21018E48EC6D49 /* NikiExtrasMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NikiExtrasMenu.swift; sourceTree = "<group>"; };
+		0EC0657328994CD4BFA7624F /* NotchRegistroDeCara.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotchRegistroDeCara.swift; sourceTree = "<group>"; };
 		B75A2370DF36A440BBCDFBE4 /* NikiSidebarPanels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NikiSidebarPanels.swift; sourceTree = "<group>"; };
 		B7C672DCEBA243D3530F8BE9 /* ActionBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionBar.swift; sourceTree = "<group>"; };
 		BB6C645056A5748BF2984C74 /* CGSSpace.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CGSSpace.swift; sourceTree = "<group>"; };
@@ -641,6 +645,7 @@
 			isa = PBXGroup;
 			children = (
 				B710520BDE21018E48EC6D49 /* NikiExtrasMenu.swift */,
+				0EC0657328994CD4BFA7624F /* NotchRegistroDeCara.swift */,
 				15D0FC5EDE38C972051BC149 /* NikiNotchHeader.swift */,
 				9D5C3FD608526EC062ADC86B /* NikiNotchSkyLightWindow.swift */,
 				598E849008D18E26A1F1E115 /* NikiNotchWindow.swift */,
@@ -654,6 +659,7 @@
 			isa = PBXGroup;
 			children = (
 				83105CD2582B4B46B6E986EF /* NikiAPIClient.swift */,
+				51F5EC6AE0B4463B8C1DF5A2 /* NikiRegistroDeCara.swift */,
 				3F903A6F53CF4F4EAB5D1719 /* NikiFaceRecognition.swift */,
 				50EF5ABF1DC2D51BC2899B80 /* NikiAppModel.swift */,
 				72AE5AB06C1316A84CDDD050 /* NikiFeatureRegistry.swift */,
@@ -1173,6 +1179,7 @@
 				A618C1103BF0AAE28764DF8A /* NSMenu+AssociatedObject.swift in Sources */,
 				B78A2E71D88ED3F1D708247D /* NSScreen+UUID.swift in Sources */,
 				A1949F53FC6D9B7AF1554B95 /* NikiAPIClient.swift in Sources */,
+				978FE6AB80524C0693C88A53 /* NikiRegistroDeCara.swift in Sources */,
 				C94232C375B8439B9568355C /* NikiFaceRecognition.swift in Sources */,
 				72DD4B37848E47C4DA8CAB8E /* NikiApp.swift in Sources */,
 				55FC2C21F843D44A5657469E /* NikiAppDelegate.swift in Sources */,
@@ -1195,6 +1202,7 @@
 				7ECF348E0056C6AD92C76F2D /* NikiDiagnosticsPanel.swift in Sources */,
 				4266831942574F9D0C648916 /* NikiDockView.swift in Sources */,
 				9795EEC9C7C5A4638D84AA79 /* NikiExtrasMenu.swift in Sources */,
+				D1C9BC3CED4647E489E39DFB /* NotchRegistroDeCara.swift in Sources */,
 				B504EB1501927DC3404669ED /* NikiFeatureRegistry.swift in Sources */,
 				C1A0FF0100000001000000A1 /* NikiVoiceCapture.swift in Sources */,
 				C1A0FF0300000003000000A3 /* NikiTurnAssembler.swift in Sources */,

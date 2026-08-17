@@ -29,11 +29,15 @@ struct NikiNotchContentView: View {
     private var inCall: Bool { appModel.sttLabActive }
 
     private var openNotchWidth: CGFloat {
-        inCall ? 300 : openNotchSize.width
+        // Durante el registro de cara el notch se hace cuadrado: lo que hay que mirar es
+        // la cámara, y una cámara cuadrada dentro de una barra ancha deja dos huecos
+        // negros a los costados que no aportan nada.
+        if appModel.registroDeCara.activo { return 260 }
+        return inCall ? 300 : openNotchSize.width
     }
 
     private var tabContentHeight: CGFloat {
-        if appModel.registroDeCara.activo { return 150 }
+        if appModel.registroDeCara.activo { return 236 }
         if appModel.enrolling { return 130 }
         if inCall { return 186 }
         switch coordinator.currentView {
@@ -47,7 +51,7 @@ struct NikiNotchContentView: View {
     }
 
     private var openSurfaceHeight: CGFloat {
-        if appModel.registroDeCara.activo { return 178 }
+        if appModel.registroDeCara.activo { return 264 }
         if appModel.enrolling { return 158 }
         if inCall { return 214 }
         switch coordinator.currentView {

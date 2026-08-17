@@ -66,3 +66,5 @@ app/backend/dataset/
 app/backend/face/modelo/
 # Perfiles de cara: son datos biométricos de una persona. Nunca al repo.
 app/backend/face/profiles/
+# Tomas de un registro de cara que falló, para poder mirarlas. Son fotos de una persona.
+app/backend/face/diagnostico/

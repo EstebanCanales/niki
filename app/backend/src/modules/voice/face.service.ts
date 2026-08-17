@@ -41,11 +41,21 @@ export class FaceService implements OnModuleDestroy {
 
   /** Registra la cara con varias tomas. Cuatro es el mínimo del worker. */
   async enroll(userId: string, frames: Buffer[]) {
-    return this.worker.enviar<{ ok: boolean; error?: string; threshold?: number; samples?: number }>({
+    const r = await this.worker.enviar<{ ok: boolean; error?: string; threshold?: number; samples?: number }>({
       op: "enroll",
       userId,
       frames: frames.map((f) => f.toString("base64")),
     });
+    // Al log siempre, salga bien o mal. Un registro que falla del lado del modelo
+    // devuelve 200 con ok:false, así que sin esto en el servidor no queda rastro de por
+    // qué —y "no me funciona" sin motivo no se puede arreglar.
+    const tamaños = frames.map((f) => f.length).join(", ");
+    if (r.ok) {
+      this.logger.log(`[cara] registrada: umbral ${r.threshold}, ${r.samples} tomas (bytes: ${tamaños})`);
+    } else {
+      this.logger.warn(`[cara] registro rechazado: ${r.error} (bytes: ${tamaños})`);
+    }
+    return r;
   }
 
   async status(userId: string) {

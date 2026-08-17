@@ -55,10 +55,34 @@ struct NikiIdentidadPanel: View {
                     .foregroundStyle(Color.white.opacity(0.42))
                     .fixedSize(horizontal: false, vertical: true)
 
+                // El mismo estado que muestra el notch, también acá.
+                //
+                // No es duplicado por gusto: si el notch no llega a abrirse —tapado por
+                // otra ventana, en otra pantalla, o porque falló— el registro pasaba
+                // entero sin que se viera nada y quedaba en "no me funciona y no sé por
+                // qué". Con esto siempre hay dónde mirar.
                 if appModel.registroDeCara.activo {
-                    Text("Mirá el notch: ahí se ve la cámara y en qué foto va.")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(Color.white.opacity(0.6))
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 6) {
+                            if !appModel.registroDeCara.terminado {
+                                ProgressView().scaleEffect(0.4).frame(width: 12, height: 12)
+                            }
+                            Text(appModel.registroDeCara.titulo)
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(Color.white.opacity(0.8))
+                        }
+                        if !appModel.registroDeCara.detalle.isEmpty {
+                            Text(appModel.registroDeCara.detalle)
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(Color.white.opacity(0.45))
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        if appModel.registroDeCara.hechas > 0 {
+                            Text("\(appModel.registroDeCara.buenas) de \(appModel.registroDeCara.hechas) tomas con cara")
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundStyle(Color.white.opacity(0.35))
+                        }
+                    }
                 }
                 if !errorCara.isEmpty {
                     Text(errorCara)

@@ -36,6 +36,10 @@ from typing import Optional
 BASE = os.path.dirname(os.path.abspath(__file__))
 PERFILES = os.path.join(BASE, "profiles")
 MODELOS = os.path.join(BASE, "modelo")
+# Dónde quedan las tomas de un registro que falló, para poder mirarlas. Solo se escriben
+# cuando falla: si el registro sale bien, no hay motivo para dejar fotos de nadie en
+# disco. Ver .gitignore — esto no se versiona nunca.
+DIAGNOSTICO = os.path.join(BASE, "diagnostico")
 
 # Cuántas caras hacen falta para registrar. Menos de cuatro y el umbral sale de una sola
 # pose: cualquier giro de cabeza después queda afuera.
@@ -121,6 +125,27 @@ def embedding(jpeg_b64: str):
     return vector / norma
 
 
+def guardar_para_mirar(frames: list) -> str:
+    """Deja en disco las tomas que no pasaron, para poder abrirlas y ver qué llegó.
+
+    Sin esto, "no encontró caras" puede ser cualquier cosa —cuadros negros, la imagen
+    dada vuelta, la cámara apuntando al techo— y desde el servidor no hay forma de
+    distinguirlas. Con las fotos delante se ve en dos segundos.
+    """
+    try:
+        os.makedirs(DIAGNOSTICO, exist_ok=True)
+        # Se pisan las anteriores: interesa el último intento, no juntar fotos de alguien.
+        for viejo in os.listdir(DIAGNOSTICO):
+            if viejo.endswith(".jpg"):
+                os.remove(os.path.join(DIAGNOSTICO, viejo))
+        for i, f in enumerate(frames):
+            with open(os.path.join(DIAGNOSTICO, f"toma-{i + 1}.jpg"), "wb") as fh:
+                fh.write(base64.b64decode(f))
+        return DIAGNOSTICO
+    except Exception as error:
+        return f"(no se pudieron guardar: {error})"
+
+
 def ruta_perfil(user_id: str) -> str:
     seguro = "".join(c for c in user_id if c.isalnum() or c in "-_") or "anon"
     return os.path.join(PERFILES, f"{seguro}.json")
@@ -142,9 +167,19 @@ def enroll(user_id: str, frames: list) -> dict:
 
     embs = [e for e in (embedding(f) for f in frames) if e is not None]
     if len(embs) < MINIMO_TOMAS:
+        # El tamaño de las imágenes va en el mensaje a propósito: distingue "la cámara
+        # mandó cuadros negros o vacíos" de "mandó fotos buenas pero no había cara".
+        pesos = ", ".join(str(len(f) * 3 // 4) for f in frames)
+        guardadas = guardar_para_mirar(frames)
         return {
             "ok": False,
-            "error": f"Solo se vio una cara en {len(embs)} de {len(frames)} tomas. Probá con más luz y de frente.",
+            "error": (
+                f"Se vio una cara en {len(embs)} de {len(frames)} tomas. "
+                f"Probá con más luz y de frente."
+            ),
+            "carasPorToma": len(embs),
+            "bytesPorToma": pesos,
+            "guardadasEn": guardadas,
         }
 
     centro = np.mean(embs, axis=0)

@@ -363,6 +363,13 @@ class WebcamManager: NSObject, ObservableObject {
         colaDeCuadro.async { intentar() }
     }
 
+    /// La sesión de captura, para quien necesite su propia capa de vista previa.
+    ///
+    /// `previewLayer` es una sola instancia compartida, y una capa de Core Animation vive
+    /// en una vista y nada más: si dos vistas la piden, una queda en negro. Quien quiera
+    /// mostrar la cámara en otro lado tiene que armarse la suya con esta sesión.
+    var sesion: AVCaptureSession? { captureSession }
+
     /// Mira todos los cuadros mientras la sesión esté prendida.
     ///
     /// Distinto de `capturarCuadro`, que se queda con uno y se va: los gestos necesitan

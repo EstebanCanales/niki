@@ -1,7 +1,5 @@
 import { Injectable, Logger, OnModuleDestroy } from "@nestjs/common";
-import * as path from "path";
-
-import { BACKEND, WorkerJson } from "./worker-json";
+import { SCRIPT_HUELLA_CARA, WorkerJson } from "./worker-json";
 
 /**
  * Huella de cara: decide si quien está frente a la cámara es el dueño de la cuenta.
@@ -26,7 +24,7 @@ export type FaceVerdict = {
   faceFound?: boolean | null;
 };
 
-const SCRIPT = path.join(BACKEND, "face", "verify.py");
+const SCRIPT = SCRIPT_HUELLA_CARA;
 
 @Injectable()
 export class FaceService implements OnModuleDestroy {

@@ -20,6 +20,8 @@ export type RuntimeCapabilityInputs = {
     remoteSessions: boolean;
     lspDiagnostics: boolean;
   };
+  /** Si hay al menos una forma de reconocer a Esteban (cara o voz). */
+  identidadDisponible?: boolean;
   flags: {
     computer: boolean;
     approvals: boolean;
@@ -27,6 +29,9 @@ export type RuntimeCapabilityInputs = {
     discover: boolean;
     sessions: boolean;
     diagnostics: boolean;
+    consola?: boolean;
+    terminal?: boolean;
+    identidad?: boolean;
   };
 };
 
@@ -56,6 +61,14 @@ export function projectRuntimeCapabilities(input: RuntimeCapabilityInputs): Runt
       discover: moduleState(input.flags.discover, discoverAvailable),
       sessions: moduleState(input.flags.sessions, input.hermes.remoteSessions),
       diagnostics: moduleState(input.flags.diagnostics, input.hermes.lspDiagnostics),
+      // La consola y la terminal no dependen de ninguna capacidad de Hermes: la consola
+      // muestra el flujo de eventos, que existe siempre, y la terminal la sirve el propio
+      // backend. Van listas salvo que se las apague con su bandera.
+      consola: { state: input.flags.consola === false ? "hidden" : "ready" },
+      terminal: { state: input.flags.terminal === false ? "hidden" : "ready" },
+      // Identidad sí depende: sin el entorno de la huella de cara ni el de la voz, el
+      // panel no tendría más que dos carteles diciendo que no está instalado.
+      identidad: moduleState(input.flags.identidad !== false, input.identidadDisponible === true),
     },
     capabilities: {
       computer_use: {

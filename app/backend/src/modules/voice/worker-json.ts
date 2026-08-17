@@ -7,6 +7,21 @@ export const REPO_ROOT = path.resolve(__dirname, "..", "..", "..", "..", "..");
 export const BACKEND = path.join(REPO_ROOT, "app", "backend");
 
 /**
+ * ¿Se puede correr este worker? Hace falta el venv y el script.
+ *
+ * Suelto y no solo como método porque hay quien necesita el booleano sin instanciar nada
+ * —la proyección de capacidades, por ejemplo, que decide si el panel de Identidad aparece
+ * en el dock— y meter una dependencia de módulo entera para eso sería peor.
+ */
+export function workerDisponible(script: string): boolean {
+  const venv = path.join(BACKEND, "venv-qwen3-tts", "bin", "python3");
+  return fs.existsSync(venv) && fs.existsSync(script);
+}
+
+export const SCRIPT_HUELLA_VOZ = path.join(BACKEND, "speaker", "verify.py");
+export const SCRIPT_HUELLA_CARA = path.join(BACKEND, "face", "verify.py");
+
+/**
  * Un worker de Python que habla JSON por línea.
  *
  * Los modelos que usa Niki —la voz de Qwen3, la huella de voz de SpeechBrain, la huella de
@@ -37,15 +52,16 @@ export class WorkerJson {
     private readonly tiempoLimite = 120_000,
   ) {}
 
+  /** El mismo venv para todos los workers: uno por modelo multiplicaría los gigabytes
+   *  de torch sin que ninguno gane nada. */
   private pythonPath(): string | null {
-    // El mismo venv para todos los workers: tener uno por modelo multiplica los
-    // gigabytes de torch sin que ninguno gane nada.
-    const venv = path.join(BACKEND, "venv-qwen3-tts", "bin", "python3");
-    return fs.existsSync(venv) && fs.existsSync(this.script) ? venv : null;
+    return workerDisponible(this.script)
+      ? path.join(BACKEND, "venv-qwen3-tts", "bin", "python3")
+      : null;
   }
 
   get available(): boolean {
-    return this.pythonPath() !== null;
+    return workerDisponible(this.script);
   }
 
   detener() {

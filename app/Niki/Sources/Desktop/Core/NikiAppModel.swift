@@ -185,6 +185,20 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
         if shouldShowDockModule(.discover) {
             items.append(.discover)
         }
+        // Consola y terminal: el backend las da por listas siempre —una muestra el flujo
+        // de eventos y la otra la sirve él mismo— pero igual se preguntan, para que
+        // apagarlas desde el backend alcance sin tocar la app.
+        if shouldShowDockModule(.consola) {
+            items.append(.consola)
+        }
+        if shouldShowDockModule(.terminal) {
+            items.append(.terminal)
+        }
+        // Identidad aparece solo si hay con qué reconocer: sin los entornos de la huella
+        // de cara y de voz, el panel serían dos carteles diciendo que no está instalado.
+        if shouldShowDockModule(.identidad) {
+            items.append(.identidad)
+        }
         // Voz + micrófono (+ STT Lab solo si se activa en Settings) + settings.
         items.append(.call)
         items.append(.mic)

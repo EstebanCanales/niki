@@ -1,7 +1,5 @@
 import { Injectable, Logger, OnModuleDestroy } from "@nestjs/common";
-import * as path from "path";
-
-import { BACKEND, WorkerJson } from "./worker-json";
+import { SCRIPT_HUELLA_VOZ, WorkerJson } from "./worker-json";
 
 /**
  * Huella de voz: decide si quien habló es el dueño de la cuenta.
@@ -23,7 +21,7 @@ export type SpeakerVerdict = {
   threshold?: number;
 };
 
-const SCRIPT = path.join(BACKEND, "speaker", "verify.py");
+const SCRIPT = SCRIPT_HUELLA_VOZ;
 
 @Injectable()
 export class SpeakerService implements OnModuleDestroy {

@@ -26,6 +26,11 @@ import { ConversationContextService } from "./conversation-context.service";
 import { HermesProbeCache } from "./hermes-probe-cache";
 import { projectRuntimeCapabilities, type RuntimeCapabilities } from "./runtime-capabilities";
 import {
+  SCRIPT_HUELLA_CARA,
+  SCRIPT_HUELLA_VOZ,
+  workerDisponible,
+} from "../voice/worker-json";
+import {
   parseHermesRuntimeConfig,
   serializeHermesRuntimeConfig,
   type HermesCompatibilityMode,
@@ -462,6 +467,9 @@ export class RuntimeService implements OnModuleDestroy {
         remoteSessions: compatibility.ok,
         lspDiagnostics: runtimeConfig.diagnosticsEnabled && compatibility.ok,
       },
+      // Con una de las dos alcanza: el panel de Identidad muestra la que haya.
+      identidadDisponible:
+        workerDisponible(SCRIPT_HUELLA_CARA) || workerDisponible(SCRIPT_HUELLA_VOZ),
       flags: {
         computer: process.env.NIKI_FEATURE_COMPUTER !== "0",
         approvals: process.env.NIKI_FEATURE_APPROVALS !== "0",

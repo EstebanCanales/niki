@@ -10,6 +10,7 @@ enum DockItem: String, CaseIterable, Identifiable {
     case diagnostics
     case consola     // Consola de debug: qué hace Niki por dentro
     case terminal    // La misma terminal que usa la IA
+    case identidad   // Cara y voz: cómo Niki sabe que sos vos
     case discover
     case call        // Voz: inicia/detiene la conversación con Niki
     case mic         // Selector de micrófonos
@@ -29,6 +30,7 @@ enum DockItem: String, CaseIterable, Identifiable {
         case .diagnostics: return "Diagnostics"
         case .consola: return "Consola"
         case .terminal: return "Terminal"
+        case .identidad: return "Identidad"
         case .discover: return "Discover"
         case .call: return "Voz"
         case .mic: return "Micrófono"
@@ -48,6 +50,7 @@ enum DockItem: String, CaseIterable, Identifiable {
         case .diagnostics: return "stethoscope"
         case .consola: return "list.bullet.rectangle"
         case .terminal: return "terminal"
+        case .identidad: return "faceid"
         case .discover: return "sparkles"
         case .call: return "waveform"
         case .mic: return "mic.fill"

@@ -224,6 +224,37 @@ struct NikiAPIClient {
         )
     }
 
+    // ── Huella de cara ───────────────────────────────────────────────────────
+
+    func caraEstado() async throws -> NikiCaraEstado {
+        try await decodeResponse(NikiCaraEstado.self, from: try request("/cara"))
+    }
+
+    func caraVerificar(_ jpeg: Data) async throws -> NikiCaraVeredicto {
+        let body = try JSONSerialization.data(withJSONObject: ["frame": jpeg.base64EncodedString()])
+        return try await decodeResponse(
+            NikiCaraVeredicto.self,
+            from: try request("/cara/verificar", method: "POST", body: body)
+        )
+    }
+
+    func caraRegistrar(_ cuadros: [Data]) async throws -> NikiCaraRegistro {
+        let body = try JSONSerialization.data(withJSONObject: [
+            "frames": cuadros.map { $0.base64EncodedString() },
+        ])
+        return try await decodeResponse(
+            NikiCaraRegistro.self,
+            from: try request("/cara/registrar", method: "POST", body: body)
+        )
+    }
+
+    func caraOlvidar() async throws -> NikiCaraEstado {
+        try await decodeResponse(
+            NikiCaraEstado.self,
+            from: try request("/cara/olvidar", method: "POST", body: Data("{}".utf8))
+        )
+    }
+
     // ── Terminal compartida ──────────────────────────────────────────────────
 
     func terminalEstado() async throws -> NikiTerminalEstado {

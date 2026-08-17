@@ -11,6 +11,7 @@ enum NikiModuleID: String, CaseIterable, Codable {
     case diagnostics
     case consola
     case terminal
+    case identidad
     case settings
 }
 

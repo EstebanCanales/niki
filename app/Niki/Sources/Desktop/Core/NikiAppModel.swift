@@ -104,6 +104,9 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
     /// Cuánto contexto lleva la conversación abierta y cuándo se va a compactar. Se
     /// refresca al terminar cada turno: es cuando el número cambia.
     @Published var contexto: NikiContextoSesion = .vacio
+    /// Reconocer a Esteban por la cámara al empezar a hablar. Falla en abierto: si no
+    /// reconoce a nadie, la conversación sigue igual.
+    let cara = NikiFaceRecognition()
     @Published var dataset: NikiDatasetResumen = .vacio
     @Published var datasetOcupado = false
     @Published var datasetError = ""
@@ -220,6 +223,12 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
     @Published var enrollTotal = 5
     @Published var enrolling = false
     @Published var speakerStatusText = ""
+
+    /// Deja el reconocedor de cara listo y le pregunta al backend si hay perfil.
+    func cargarEstadoDeCara() async {
+        cara.configurar(cliente: client)
+        await cara.cargarEstado()
+    }
 
     func loadSpeakerStatus() async {
         guard let s = try? await client.speakerStatus() else { return }
@@ -2046,6 +2055,10 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
         micRecibioSenal = false
         pendingTurnText = ""
         interruptedReply = ""
+        // La cámara se prende acá y se apaga sola: el momento en que importa saber quién
+        // está es justo cuando alguien empieza a hablar. Va en su propia tarea para no
+        // demorar ni un milisegundo el arranque de la escucha.
+        Task { @MainActor [weak self] in await self?.cara.mirar() }
         sttLabTask = Task { @MainActor [weak self] in
             guard let self else { return }
             guard await self.startCapture() else { return }

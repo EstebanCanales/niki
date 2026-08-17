@@ -16,6 +16,7 @@ import {
 import { FileInterceptor } from "@nestjs/platform-express";
 import type { Request, Response } from "express";
 
+import { FaceService } from "../modules/voice/face.service";
 import { SpeakerService } from "../modules/voice/speaker.service";
 import { VoiceService } from "../modules/voice/voice.service";
 import type { ChatRequestDto } from "./wrapper.types";
@@ -39,6 +40,7 @@ export class WrapperController {
     @Inject(WrapperService) private readonly wrapperService: WrapperService,
     @Inject(VoiceService) private readonly voiceService: VoiceService,
     @Inject(SpeakerService) private readonly speakerService: SpeakerService,
+    @Inject(FaceService) private readonly faceService: FaceService,
   ) {}
 
   @Get("healthz")
@@ -437,6 +439,53 @@ export class WrapperController {
       return { ok: false, error: "Hacen falta al menos 3 tomas." };
     }
     return this.speakerService.enroll(body?.userId?.trim() || actingUserIdFrom(req), samples);
+  }
+
+  // ── Huella de cara ───────────────────────────────────────────────────────
+  //
+  // Hermana de la huella de voz, con la misma regla: falla en abierto. Sirve para saber
+  // quién sos, no para dejar a nadie afuera — una webcam 2D se engaña con una foto.
+
+  @Get("cara")
+  async caraEstado(@Req() req: Request, @Query("userId") userId?: string) {
+    this.wrapperService.assertAuthorized(req);
+    if (!this.faceService.available) return { ok: true, available: false, enrolled: false };
+    const r = await this.faceService.status(userId?.trim() || actingUserIdFrom(req));
+    return { available: true, ...r };
+  }
+
+  /**
+   * Registra la cara del dueño con varias tomas.
+   *
+   * El umbral sale de cuánto se parecen entre sí esas tomas, no de una constante: la cara
+   * de cada uno varía distinto según la luz, los anteojos o la barba del día.
+   */
+  @Post("cara/registrar")
+  @HttpCode(200)
+  async caraRegistrar(@Req() req: Request, @Body() body?: { userId?: string; frames?: string[] }) {
+    this.wrapperService.assertAuthorized(req);
+    const frames = (body?.frames ?? []).map((f) => Buffer.from(f, "base64"));
+    if (frames.length < 4) {
+      return { ok: false, error: "Hacen falta al menos 4 tomas." };
+    }
+    return this.faceService.enroll(body?.userId?.trim() || actingUserIdFrom(req), frames);
+  }
+
+  @Post("cara/verificar")
+  @HttpCode(200)
+  async caraVerificar(@Req() req: Request, @Body() body?: { userId?: string; frame?: string }) {
+    this.wrapperService.assertAuthorized(req);
+    const frame = Buffer.from(String(body?.frame ?? ""), "base64");
+    if (frame.length === 0) return { ok: false, error: "Falta el cuadro." };
+    const r = await this.faceService.verify(body?.userId?.trim() || actingUserIdFrom(req), frame);
+    return { ok: true, ...r };
+  }
+
+  @Post("cara/olvidar")
+  @HttpCode(200)
+  async caraOlvidar(@Req() req: Request, @Body() body?: { userId?: string }) {
+    this.wrapperService.assertAuthorized(req);
+    return this.faceService.forget(body?.userId?.trim() || actingUserIdFrom(req));
   }
 
   @Post("voice/synthesize")

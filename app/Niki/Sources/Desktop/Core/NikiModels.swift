@@ -849,6 +849,32 @@ struct NikiTerminalEstado: Codable {
     static let vacio = NikiTerminalEstado(ok: false, cwd: "", compartidaConLaIA: false, sesion: "")
 }
 
+/// Estado de la huella de cara.
+struct NikiCaraEstado: Codable {
+    let available: Bool
+    let enrolled: Bool
+    let threshold: Double?
+    let samples: Int?
+}
+
+/// Veredicto de la huella de cara. `faceFound == false` es "miré y no había nadie",
+/// que no es lo mismo que "no sos vos".
+struct NikiCaraVeredicto: Codable {
+    let ok: Bool
+    let enrolled: Bool
+    let match: Bool
+    let score: Double?
+    let threshold: Double?
+    let faceFound: Bool?
+}
+
+struct NikiCaraRegistro: Codable {
+    let ok: Bool
+    let error: String?
+    let threshold: Double?
+    let samples: Int?
+}
+
 /// Estado de la huella de voz.
 struct NikiSpeakerStatus: Codable {
     let available: Bool

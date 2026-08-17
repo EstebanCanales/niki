@@ -60,3 +60,9 @@ app/backend/speaker/modelo/
 # Dataset de entrenamiento exportado de las sesiones. Son conversaciones reales de
 # Esteban con su máquina: van redactadas, pero redactar no es anonimizar. No se versiona.
 app/backend/dataset/
+
+# Modelos de la huella de cara (YuNet 227 KB + SFace 37 MB). Se bajan de OpenCV Zoo con
+# face/bajar-modelos.sh; no se versionan por peso.
+app/backend/face/modelo/
+# Perfiles de cara: son datos biométricos de una persona. Nunca al repo.
+app/backend/face/profiles/

@@ -296,6 +296,40 @@ class WebcamManager: NSObject, ObservableObject {
         }
     }
     
+    // ── Un cuadro suelto, para el reconocimiento de cara ──────────────────────
+    //
+    // La sesión de captura ya existe para el espejo del notch; esto engancha un delegate
+    // en su salida de video, se queda con el primer cuadro que pase y se desengancha. No
+    // abre una segunda sesión a propósito: dos AVCaptureSession sobre la misma cámara se
+    // pelean y una de las dos se queda sin imagen.
+
+    private var pedidoDeCuadro: ((Data?) -> Void)?
+    private let colaDeCuadro = DispatchQueue(label: "niki.webcam.cuadro")
+
+    /// Un JPEG del próximo cuadro de la cámara, o nil si no se pudo.
+    ///
+    /// Espera hasta `tiempoLimite` porque la cámara tarda en despertar: pedir el cuadro
+    /// apenas se prende devuelve negro o nada.
+    func capturarCuadro(tiempoLimite: TimeInterval = 3, completado: @escaping (Data?) -> Void) {
+        guard let salida = captureSession?.outputs.compactMap({ $0 as? AVCaptureVideoDataOutput }).first else {
+            completado(nil)
+            return
+        }
+
+        var yaContesto = false
+        let contestar: (Data?) -> Void = { datos in
+            guard !yaContesto else { return }
+            yaContesto = true
+            salida.setSampleBufferDelegate(nil, queue: nil)
+            self.pedidoDeCuadro = nil
+            DispatchQueue.main.async { completado(datos) }
+        }
+
+        pedidoDeCuadro = contestar
+        salida.setSampleBufferDelegate(self, queue: colaDeCuadro)
+        colaDeCuadro.asyncAfter(deadline: .now() + tiempoLimite) { contestar(nil) }
+    }
+
     func stopSession() {
         sessionQueue.async { [weak self] in
             guard let self = self else { return }
@@ -309,5 +343,26 @@ class WebcamManager: NSObject, ObservableObject {
             
             NSLog("Capture session stopped and cleaned up")
         }
+    }
+}
+
+
+extension WebcamManager: AVCaptureVideoDataOutputSampleBufferDelegate {
+    func captureOutput(_ output: AVCaptureOutput,
+                       didOutput sampleBuffer: CMSampleBuffer,
+                       from connection: AVCaptureConnection) {
+        guard let pedido = pedidoDeCuadro,
+              let buffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
+
+        let imagen = CIImage(cvPixelBuffer: buffer)
+        let contexto = CIContext()
+        // JPEG con calidad media: lo que necesita el reconocedor es la geometría de la
+        // cara, no el detalle, y esto viaja por HTTP en cada verificación.
+        let datos = contexto.jpegRepresentation(
+            of: imagen,
+            colorSpace: CGColorSpaceCreateDeviceRGB(),
+            options: [kCGImageDestinationLossyCompressionQuality as CIImageRepresentationOption: 0.7]
+        )
+        pedido(datos)
     }
 }

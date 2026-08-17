@@ -42,6 +42,8 @@ struct NikiSidebarPanels: View {
                 NikiConsolePanel()
             case .terminal:
                 NikiTerminalPanel()
+            case .identidad:
+                NikiIdentidadPanel()
             case .discover:
                 NikiDiscoverPanel()
             case .call:
@@ -619,7 +621,8 @@ struct NikiMicPanel: View {
     var body: some View {
         SidebarShell(eyebrow: "Voz", title: "Micrófono") {
             VStack(alignment: .leading, spacing: 12) {
-            NikiSpeakerPanel()
+            // NikiSpeakerPanel se mudó a Identidad, junto a la cara: acá adentro, entre
+            // los selectores de dispositivo, nadie lo encontraba.
             SidebarCard {
                 VStack(alignment: .leading, spacing: 14) {
                     Text("Elegí qué micrófono usa Niki para escucharte.")

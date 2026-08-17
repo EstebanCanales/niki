@@ -498,8 +498,25 @@ private struct OrbPanel: View {
                 calm: calm
             )
         }
+        .overlay(alignment: .bottomTrailing) { marcaDeReconocido }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Estado de Niki: \(NikiThinkingOrbState.from(agentState: appModel.agentState).label)")
+    }
+
+    /// Un punto cuando te reconoció por la cámara.
+    ///
+    /// Deliberadamente chico y sin texto: es una confirmación, no un aviso. Si no te
+    /// reconoció —o no miró, o no hay perfil— no aparece nada; nunca dice "no sos vos",
+    /// porque esto falla en abierto y no bloquea nada.
+    @ViewBuilder
+    private var marcaDeReconocido: some View {
+        if appModel.cara.teReconocio == true {
+            Image(systemName: "faceid")
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(Color.green.opacity(0.75))
+                .padding(5)
+                .transition(.opacity)
+        }
     }
 }
 

@@ -217,6 +217,10 @@ class NikiNotchViewModel: NSObject, ObservableObject {
         if !force, NikiAppModel.shared.registroDeCara.activo {
             return
         }
+        // Ni a mitad de la grabación de la voz, por lo mismo.
+        if !force, NikiAppModel.shared.enrolling {
+            return
+        }
         self.notchSize = getClosedNotchSize(screenUUID: self.screenUUID)
         self.closedNotchSize = self.notchSize
         self.notchState = .closed

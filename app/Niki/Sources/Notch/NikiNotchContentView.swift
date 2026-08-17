@@ -34,6 +34,7 @@ struct NikiNotchContentView: View {
 
     private var tabContentHeight: CGFloat {
         if appModel.registroDeCara.activo { return 150 }
+        if appModel.enrolling { return 130 }
         if inCall { return 186 }
         switch coordinator.currentView {
         case .home:
@@ -47,6 +48,7 @@ struct NikiNotchContentView: View {
 
     private var openSurfaceHeight: CGFloat {
         if appModel.registroDeCara.activo { return 178 }
+        if appModel.enrolling { return 158 }
         if inCall { return 214 }
         switch coordinator.currentView {
         case .home:
@@ -178,6 +180,8 @@ struct NikiNotchContentView: View {
     private var tabContent: some View {
         if appModel.registroDeCara.activo {
             NotchRegistroDeCara()
+        } else if appModel.enrolling {
+            NotchRegistroDeVoz()
         } else if inCall {
             callPanel
         } else {

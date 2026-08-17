@@ -285,8 +285,14 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
     /// varía la voz entre tomas: si se hacen muy separadas o leyendo la misma frase con
     /// la misma entonación, la dispersión es artificialmente baja y el umbral queda
     /// demasiado estricto para el uso real.
+    /// Registra la voz mostrando el proceso en el notch.
+    ///
+    /// Se abre el notch por lo mismo que con la cara: grabar cinco frases mirando un
+    /// cartel no dice si te está escuchando. Con el nivel en vivo, un micrófono mudo se
+    /// nota en la primera toma y no al final.
     func enrollSpeaker() async {
         guard !enrolling else { return }
+        appDelegate?.openNotch()
         enrolling = true
         enrollProgress = 0
         speakerStatusText = ""
@@ -997,6 +1003,11 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
         await refreshMcpServers()
         await refreshDiscoverCapabilities()
         await refreshSettingsData()
+        // Las dos huellas, al arrancar. Antes el estado de la cara se cargaba solo al
+        // abrir el panel de Identidad: si Esteban nunca lo abría, `hayPerfil` quedaba en
+        // false y la verificación no corría nunca — con la cara registrada y todo.
+        await cargarEstadoDeCara()
+        await loadSpeakerStatus()
         connectRuntimeEvents()
     }
 
@@ -2298,6 +2309,9 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
     func stopSttLab() {
         sttLog("[STT] ■ stopSttLab")
         sttLabActive = false
+        // El punto de "te reconocí" vale para esta conversación. Si queda encendido, la
+        // próxima vez el notch lo muestra antes de haber mirado a nadie.
+        cara.olvidarVeredicto()
         notchCallDismissed = false
         autoVoice = false
         sttLabTask?.cancel()

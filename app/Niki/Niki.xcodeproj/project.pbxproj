@@ -108,6 +108,7 @@
 		918EB075B0D418C9A4641E1C /* PermissionsRequestView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 342AC6FCAAD0138A124D25A5 /* PermissionsRequestView.swift */; };
 		9508E06A965F6EF281710DB7 /* SparkleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF53301C3AD9FDAAB1FDCD43 /* SparkleView.swift */; };
 		9795EEC9C7C5A4638D84AA79 /* NikiExtrasMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = B710520BDE21018E48EC6D49 /* NikiExtrasMenu.swift */; };
+		B524CEE050D848E0AC1E608D /* NotchRegistroDeVoz.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F62A68A6BDA4A1BB40D6F55 /* NotchRegistroDeVoz.swift */; };
 		D1C9BC3CED4647E489E39DFB /* NotchRegistroDeCara.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0EC0657328994CD4BFA7624F /* NotchRegistroDeCara.swift */; };
 		9F10CBE054245C8CF9FB5168 /* NikiNotchViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D27C615C9FE75E74C2A4CB2 /* NikiNotchViewModel.swift */; };
 		A1949F53FC6D9B7AF1554B95 /* NikiAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83105CD2582B4B46B6E986EF /* NikiAPIClient.swift */; };
@@ -354,6 +355,7 @@
 		B68CCB3D8DAB4C259FAF9435 /* CalendarServiceProviding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarServiceProviding.swift; sourceTree = "<group>"; };
 		B6C0C47EAD3F2126904B069B /* ListItemPopover.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ListItemPopover.swift; sourceTree = "<group>"; };
 		B710520BDE21018E48EC6D49 /* NikiExtrasMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NikiExtrasMenu.swift; sourceTree = "<group>"; };
+		5F62A68A6BDA4A1BB40D6F55 /* NotchRegistroDeVoz.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotchRegistroDeVoz.swift; sourceTree = "<group>"; };
 		0EC0657328994CD4BFA7624F /* NotchRegistroDeCara.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotchRegistroDeCara.swift; sourceTree = "<group>"; };
 		B75A2370DF36A440BBCDFBE4 /* NikiSidebarPanels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NikiSidebarPanels.swift; sourceTree = "<group>"; };
 		B7C672DCEBA243D3530F8BE9 /* ActionBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionBar.swift; sourceTree = "<group>"; };
@@ -645,6 +647,7 @@
 			isa = PBXGroup;
 			children = (
 				B710520BDE21018E48EC6D49 /* NikiExtrasMenu.swift */,
+				5F62A68A6BDA4A1BB40D6F55 /* NotchRegistroDeVoz.swift */,
 				0EC0657328994CD4BFA7624F /* NotchRegistroDeCara.swift */,
 				15D0FC5EDE38C972051BC149 /* NikiNotchHeader.swift */,
 				9D5C3FD608526EC062ADC86B /* NikiNotchSkyLightWindow.swift */,
@@ -1202,6 +1205,7 @@
 				7ECF348E0056C6AD92C76F2D /* NikiDiagnosticsPanel.swift in Sources */,
 				4266831942574F9D0C648916 /* NikiDockView.swift in Sources */,
 				9795EEC9C7C5A4638D84AA79 /* NikiExtrasMenu.swift in Sources */,
+				B524CEE050D848E0AC1E608D /* NotchRegistroDeVoz.swift in Sources */,
 				D1C9BC3CED4647E489E39DFB /* NotchRegistroDeCara.swift in Sources */,
 				B504EB1501927DC3404669ED /* NikiFeatureRegistry.swift in Sources */,
 				C1A0FF0100000001000000A1 /* NikiVoiceCapture.swift in Sources */,

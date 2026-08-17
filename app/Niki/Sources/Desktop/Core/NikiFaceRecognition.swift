@@ -69,6 +69,11 @@ final class NikiFaceRecognition: ObservableObject {
         teReconocio = veredicto.faceFound == false ? nil : veredicto.match
     }
 
+    /// Borra el veredicto, no el perfil. Se llama al colgar.
+    func olvidarVeredicto() {
+        teReconocio = nil
+    }
+
     func olvidar() async {
         guard let cliente else { return }
         _ = try? await cliente.caraOlvidar()

@@ -38,6 +38,8 @@ struct NikiSidebarPanels: View {
                 NikiProviderPanel()
             case .diagnostics:
                 NikiDiagnosticsPanel()
+            case .consola:
+                NikiConsolePanel()
             case .discover:
                 NikiDiscoverPanel()
             case .call:

@@ -9,6 +9,7 @@ enum NikiModuleID: String, CaseIterable, Codable {
     case provider
     case discover
     case diagnostics
+    case consola
     case settings
 }
 

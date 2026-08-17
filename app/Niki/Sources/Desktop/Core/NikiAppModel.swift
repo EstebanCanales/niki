@@ -94,6 +94,12 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
     @Published var mcpActionBusyID: String?
     @Published var mcpActionError: String = ""
     @Published var diagnostics: [NikiRuntimeDiagnostic] = []
+    /// Las últimas líneas de la consola de debug, la más nueva primero. Acotado: esto
+    /// recibe un evento por cada llamada a herramienta, y una sesión larga son miles.
+    @Published var consola: [NikiConsoleEntry] = []
+    /// Con la consola en pausa se sigue recibiendo pero no se agrega: sirve para poder
+    /// leer algo que pasó sin que el flujo lo empuje fuera de la pantalla.
+    @Published var consolaEnPausa = false
     /// Qué se guardó de las conversaciones para entrenar. Se carga al abrir Settings.
     /// Cuánto contexto lleva la conversación abierta y cuándo se va a compactar. Se
     /// refresca al terminar cada turno: es cuando el número cambia.
@@ -1140,6 +1146,39 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
     // Lo que se guarda de las conversaciones para poder entrenar un modelo propio. Todo
     // pasa por el backend; acá solo se muestra y se decide.
 
+    // ── Consola de debug ─────────────────────────────────────────────────────
+
+    /// Cuántas líneas se guardan. Con cincuenta herramientas y una sesión de una hora,
+    /// sin tope esto crece hasta que la lista de SwiftUI se arrastra.
+    static let consolaMaximo = 500
+
+    private func registrarEnConsola(_ entrada: NikiConsoleEntry) {
+        guard !consolaEnPausa else { return }
+        consola.insert(entrada, at: 0)
+        if consola.count > Self.consolaMaximo {
+            consola = Array(consola.prefix(Self.consolaMaximo))
+        }
+    }
+
+    func limpiarConsola() {
+        consola = []
+    }
+
+    /// Todo lo que hay en la consola como texto, para pegarlo en otro lado. Es la razón
+    /// principal por la que uno mira una consola: llevarse el error a algún lugar donde
+    /// pueda hacer algo con él.
+    func consolaComoTexto() -> String {
+        let formato = DateFormatter()
+        formato.dateFormat = "HH:mm:ss"
+        // Se invierte para que quede en orden cronológico: al leerlo fuera de la app, lo
+        // de arriba primero es lo que uno espera.
+        return consola.reversed().map { e in
+            let cabeza = "[\(formato.string(from: e.at))] \(e.level.uppercased()) \(e.source)/\(e.type)"
+            let cuerpo = e.summary.isEmpty ? e.title : "\(e.title) — \(e.summary)"
+            return e.detail.map { "\(cabeza)\n  \(cuerpo)\n  \($0)" } ?? "\(cabeza)\n  \(cuerpo)"
+        }.joined(separator: "\n")
+    }
+
     /// Relee el contexto de la sesión abierta. Silencioso: si falla, el indicador no se
     /// muestra, pero no se le avisa a nadie — no es un error que le importe al usuario.
     func cargarContexto() async {
@@ -1423,6 +1462,12 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
                     self.latestApprovalResolution = data
                     self.approvalActionBusyID = nil
                     self.pendingApprovals.removeAll { $0.id == data.id }
+                }
+            case "event":
+                // El backend manda esto desde siempre y la app lo tiraba: no había caso.
+                // Es cada llamada a herramienta, cada error del runtime, cada turno.
+                if let data = envelope.event {
+                    self.registrarEnConsola(NikiConsoleEntry(from: data))
                 }
             case "diagnostics":
                 if let data = envelope.diagnostic {

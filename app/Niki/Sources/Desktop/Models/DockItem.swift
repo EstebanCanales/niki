@@ -8,6 +8,7 @@ enum DockItem: String, CaseIterable, Identifiable {
     case mcp
     case provider    // Con qué modelo/proveedor piensa Niki
     case diagnostics
+    case consola     // Consola de debug: qué hace Niki por dentro
     case discover
     case call        // Voz: inicia/detiene la conversación con Niki
     case mic         // Selector de micrófonos
@@ -25,6 +26,7 @@ enum DockItem: String, CaseIterable, Identifiable {
         case .mcp: return "MCP"
         case .provider: return "Modelo"
         case .diagnostics: return "Diagnostics"
+        case .consola: return "Consola"
         case .discover: return "Discover"
         case .call: return "Voz"
         case .mic: return "Micrófono"
@@ -42,6 +44,7 @@ enum DockItem: String, CaseIterable, Identifiable {
         case .mcp: return "shippingbox"
         case .provider: return "brain"
         case .diagnostics: return "stethoscope"
+        case .consola: return "terminal"
         case .discover: return "sparkles"
         case .call: return "waveform"
         case .mic: return "mic.fill"

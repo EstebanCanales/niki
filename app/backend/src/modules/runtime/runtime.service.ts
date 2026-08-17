@@ -67,8 +67,19 @@ import { applyApprovalResolution } from "./runtime-approval-state";
 import { geocodeAddress } from "./runtime-geocode";
 import { RuntimeSurfaceIntentService } from "./runtime-surface-intent.service";
 import { NikiVoiceRuntimeService } from "./niki-voice-runtime.service";
+import { esRuidoDeConsola, etiquetaDeHerramienta } from "./runtime-consola";
 import { preguntaRepetida } from "./runtime-repeticion";
 import { TurnRecorderService } from "./turn-recorder.service";
+
+/**
+ * Cuánto detalle se manda con cada evento de diagnóstico.
+ *
+ * Estaba en 400 caracteres, que para ver qué devolvió un comando es nada: la salida de un
+ * `ls` ya no entra. Ahora entra un error de compilación o el resultado de una herramienta,
+ * que es para lo que uno abre una consola. El tope sigue existiendo porque esto viaja por
+ * SSE a la app en cada evento, y una respuesta de un megabyte la haría arrastrar.
+ */
+const DETALLE_MAXIMO = 8_000;
 
 type RuntimeConnectionConfigInput = {
   apiServerUrl?: string;
@@ -839,10 +850,28 @@ export class RuntimeService implements OnModuleDestroy {
         latencyMs: Date.now() - empezo,
       });
       this.broadcastPatch({ agent: { state: "idle", model: "voz", channel: "Niki app -> voz", currentTask: "", summary: full.slice(0, 180) } });
+      // A la consola. La conversación hablada no pasa por el runtime, así que sin esto es
+      // justo la parte que más se usa y la única que no se puede depurar.
+      this.broadcastEvent(
+        "success",
+        "voz",
+        "voz.turno",
+        "Turno de voz contestado",
+        `${Date.now() - empezo} ms`,
+        `dijiste: ${input}\n\ncontestó: ${full}`,
+      );
       return true;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.warn(`[voz] ruta rápida falló (${message})`);
+      this.broadcastEvent(
+        "error",
+        "voz",
+        "voz.error",
+        "La ruta rápida de voz falló",
+        wrote ? "ya había empezado a hablar" : "cayendo al agente completo",
+        message,
+      );
       if (wrote) {
         // Ya se habló: no se puede rehacer el turno por Hermes sin repetirse.
         res.write("data: [DONE]\n\n");
@@ -1154,14 +1183,17 @@ export class RuntimeService implements OnModuleDestroy {
           });
         }
 
-        if (parsed.dataRaw) {
+        if (parsed.dataRaw && !esRuidoDeConsola(eventType)) {
+          // Los eventos de herramienta traen el comando y la duración dentro del JSON;
+          // sin desenterrarlos, la consola muestra veinte veces "Tool Started".
+          const herramienta = etiquetaDeHerramienta(eventType, parsed.data);
           this.broadcastEvent(
             eventType.includes("error") ? "error" : eventType.includes("completed") ? "success" : "info",
             "runtime",
             slugifyEventType(eventType),
-            label,
-            progress ?? label,
-            parsed.dataRaw.slice(0, 400),
+            herramienta?.titulo ?? label,
+            herramienta?.resumen ?? progress ?? label,
+            parsed.dataRaw.slice(0, DETALLE_MAXIMO),
           );
         }
 
@@ -1253,7 +1285,23 @@ export class RuntimeService implements OnModuleDestroy {
           summary: message.slice(0, 180),
         },
       });
-      this.broadcastEvent("error", "runtime", "runtime.chat.error", "Hermes request failed", message.slice(0, 200));
+      // Con detalle: este es el evento que uno abre cuando algo se rompió, y un mensaje
+      // recortado a 200 caracteres sin traza ni contexto no alcanza para saber qué pasó.
+      this.broadcastEvent(
+        "error",
+        "runtime",
+        "runtime.chat.error",
+        "Hermes request failed",
+        message.slice(0, 200),
+        [
+          `sesión: ${sessionId}`,
+          `canal: ${channel}`,
+          `runtime: ${apiServerUrl}`,
+          `correlación: ${correlationId}`,
+          "",
+          err instanceof Error ? (err.stack ?? err.message) : String(err),
+        ].join("\n").slice(0, DETALLE_MAXIMO),
+      );
     }
 
     hermesWrite("data: [DONE]\n\n");

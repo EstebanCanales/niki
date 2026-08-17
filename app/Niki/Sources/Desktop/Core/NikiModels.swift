@@ -663,6 +663,36 @@ struct NikiRuntimeStreamEvent: Codable {
     let detail: String?
 }
 
+/// Una línea de la consola de debug.
+///
+/// El backend viene mandando estos eventos desde siempre —cada llamada a una herramienta,
+/// cada error del runtime— y la app los tiraba: no había `case "event"` en el manejador
+/// del stream. Esto es ese evento con lo mínimo para poder mostrarlo y filtrarlo.
+///
+/// El id lo pone la app y no el backend: allá se arma como `tipo-milisegundos`, y dos
+/// eventos del mismo tipo en el mismo milisegundo —que pasa— comparten id y rompen la
+/// lista.
+struct NikiConsoleEntry: Identifiable, Equatable {
+    let id = UUID()
+    let at: Date
+    let level: String
+    let source: String
+    let type: String
+    let title: String
+    let summary: String
+    let detail: String?
+
+    init(from event: NikiRuntimeStreamEvent) {
+        at = Date()
+        level = event.level ?? "info"
+        source = event.source ?? "runtime"
+        type = event.type ?? ""
+        title = event.title ?? event.type ?? "(sin título)"
+        summary = event.summary ?? ""
+        detail = (event.detail?.isEmpty == false) ? event.detail : nil
+    }
+}
+
 struct NikiStoredConfig: Codable {
     var backendBaseURL: String
     var backendAPIKey: String

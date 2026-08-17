@@ -154,6 +154,7 @@
 		D61085D06D139E6E95038AE0 /* NikiNotchShellView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DFDB3627630D181E327D06C5 /* NikiNotchShellView.swift */; };
 		D62398ABDDB9921441FA9042 /* AppIcons.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4D76C63F4B913325CBB79F6 /* AppIcons.swift */; };
 		D62489431C76D1D9E3DE8F3F /* NikiApprovalsPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BA066377F7D0AECFC494A9D /* NikiApprovalsPanel.swift */; };
+		38399EDEB3574CBDA9FABC76 /* NikiConsolePanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6F73755B9114260BF7C4BC1 /* NikiConsolePanel.swift */; };
 		91E6C6E4CF9560DB896AAD07 /* NikiSurfacePanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15948BEF57C0844742D8B99A /* NikiSurfacePanel.swift */; };
 		86A576915E0E588CDE9D9E27 /* NikiOrbGeometry.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7FA370D2F2CB1A9B94D1088 /* NikiOrbGeometry.swift */; };
 		D6A5DC841A321BA55644580F /* AppleMusicController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E24012B9CB9FDB160623F264 /* AppleMusicController.swift */; };
@@ -224,6 +225,7 @@
 		0709D4669C6EEE0499E92A6F /* MouseTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MouseTracker.swift; sourceTree = "<group>"; };
 		0934C7576D72693AD3EB4A8F /* ShelfDropService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShelfDropService.swift; sourceTree = "<group>"; };
 		0BA066377F7D0AECFC494A9D /* NikiApprovalsPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NikiApprovalsPanel.swift; sourceTree = "<group>"; };
+		A6F73755B9114260BF7C4BC1 /* NikiConsolePanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NikiConsolePanel.swift; sourceTree = "<group>"; };
 		15948BEF57C0844742D8B99A /* NikiSurfacePanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NikiSurfacePanel.swift; sourceTree = "<group>"; };
 		C7FA370D2F2CB1A9B94D1088 /* NikiOrbGeometry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NikiOrbGeometry.swift; sourceTree = "<group>"; };
 		0C97DE9BACDB7A4DE4990B10 /* SpotifyController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpotifyController.swift; sourceTree = "<group>"; };
@@ -427,6 +429,7 @@
 			isa = PBXGroup;
 			children = (
 				0BA066377F7D0AECFC494A9D /* NikiApprovalsPanel.swift */,
+				A6F73755B9114260BF7C4BC1 /* NikiConsolePanel.swift */,
 				48C70B68F700015952D4AA79 /* NikiAuthViews.swift */,
 				EE90EC5AEF70F2290286BA29 /* NikiChatRendering.swift */,
 				83671BB29A5DA2D38DE950CA /* NikiChatSidebar.swift */,
@@ -1165,6 +1168,7 @@
 				55FC2C21F843D44A5657469E /* NikiAppDelegate.swift in Sources */,
 				E71A8A808F9B1A3D79862E68 /* NikiAppModel.swift in Sources */,
 				D62489431C76D1D9E3DE8F3F /* NikiApprovalsPanel.swift in Sources */,
+				38399EDEB3574CBDA9FABC76 /* NikiConsolePanel.swift in Sources */,
 				91E6C6E4CF9560DB896AAD07 /* NikiSurfacePanel.swift in Sources */,
 				86A576915E0E588CDE9D9E27 /* NikiOrbGeometry.swift in Sources */,
 				F77C75B853716B9575AC6215 /* NikiAuthViews.swift in Sources */,

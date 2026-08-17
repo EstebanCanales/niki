@@ -304,30 +304,61 @@ class WebcamManager: NSObject, ObservableObject {
     // pelean y una de las dos se queda sin imagen.
 
     private var pedidoDeCuadro: ((Data?) -> Void)?
+    private var cuadrosVistos = 0
     private let colaDeCuadro = DispatchQueue(label: "niki.webcam.cuadro")
 
-    /// Un JPEG del próximo cuadro de la cámara, o nil si no se pudo.
+    /// Cuántos cuadros se descartan antes de quedarse con uno.
     ///
-    /// Espera hasta `tiempoLimite` porque la cámara tarda en despertar: pedir el cuadro
-    /// apenas se prende devuelve negro o nada.
-    func capturarCuadro(tiempoLimite: TimeInterval = 3, completado: @escaping (Data?) -> Void) {
-        guard let salida = captureSession?.outputs.compactMap({ $0 as? AVCaptureVideoDataOutput }).first else {
-            completado(nil)
-            return
+    /// Los primeros que entrega una cámara recién prendida vienen oscuros: el ajuste
+    /// automático de exposición todavía no convergió. Un detector de caras sobre un cuadro
+    /// negro no encuentra nada, y el usuario ve "no se pudo sacar la foto" cuando estaba
+    /// perfectamente sentado frente a la cámara.
+    private static let cuadrosADescartar = 8
+
+    /// Un JPEG de la cámara, o nil si no se pudo.
+    ///
+    /// Espera a que la sesión exista y esté corriendo antes de pedir nada: `startSession()`
+    /// es asíncrono —crea la sesión en su propia cola— así que en la primera llamada
+    /// `captureSession` todavía es nil. Sin esta espera, la primera captura siempre
+    /// devolvía nil y el registro de cara fallaba con "solo se pudieron sacar 0 tomas",
+    /// que además hace pensar que el problema es la cámara.
+    func capturarCuadro(tiempoLimite: TimeInterval = 6, completado: @escaping (Data?) -> Void) {
+        let limite = Date().addingTimeInterval(tiempoLimite)
+
+        func intentar() {
+            guard let sesion = captureSession,
+                  sesion.isRunning,
+                  let salida = sesion.outputs.compactMap({ $0 as? AVCaptureVideoDataOutput }).first
+            else {
+                if Date() >= limite {
+                    DispatchQueue.main.async { completado(nil) }
+                    return
+                }
+                colaDeCuadro.asyncAfter(deadline: .now() + 0.15) { intentar() }
+                return
+            }
+
+            var yaContesto = false
+            let contestar: (Data?) -> Void = { datos in
+                guard !yaContesto else { return }
+                yaContesto = true
+                salida.setSampleBufferDelegate(nil, queue: nil)
+                self.pedidoDeCuadro = nil
+                self.cuadrosVistos = 0
+                DispatchQueue.main.async { completado(datos) }
+            }
+
+            cuadrosVistos = 0
+            pedidoDeCuadro = contestar
+            salida.setSampleBufferDelegate(self, queue: colaDeCuadro)
+            // Lo que quede del tiempo límite, no el total: ya se gastó parte esperando a
+            // que la sesión arrancara.
+            colaDeCuadro.asyncAfter(deadline: .now() + max(1, limite.timeIntervalSinceNow)) {
+                contestar(nil)
+            }
         }
 
-        var yaContesto = false
-        let contestar: (Data?) -> Void = { datos in
-            guard !yaContesto else { return }
-            yaContesto = true
-            salida.setSampleBufferDelegate(nil, queue: nil)
-            self.pedidoDeCuadro = nil
-            DispatchQueue.main.async { completado(datos) }
-        }
-
-        pedidoDeCuadro = contestar
-        salida.setSampleBufferDelegate(self, queue: colaDeCuadro)
-        colaDeCuadro.asyncAfter(deadline: .now() + tiempoLimite) { contestar(nil) }
+        colaDeCuadro.async { intentar() }
     }
 
     func stopSession() {
@@ -353,6 +384,10 @@ extension WebcamManager: AVCaptureVideoDataOutputSampleBufferDelegate {
                        from connection: AVCaptureConnection) {
         guard let pedido = pedidoDeCuadro,
               let buffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
+
+        // Los primeros cuadros de una cámara recién prendida vienen oscuros.
+        cuadrosVistos += 1
+        guard cuadrosVistos > Self.cuadrosADescartar else { return }
 
         let imagen = CIImage(cvPixelBuffer: buffer)
         let contexto = CIContext()

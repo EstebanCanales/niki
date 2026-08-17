@@ -52,8 +52,8 @@ final class NikiFaceRecognition: ObservableObject {
         mirando = true
         defer { enCurso = false; mirando = false }
 
-        WebcamManager.shared.startSession()
-        defer { WebcamManager.shared.stopSession() }
+        let apagarAlTerminar = await prenderCamara()
+        defer { if apagarAlTerminar { WebcamManager.shared.stopSession() } }
 
         guard let cuadro = await cuadroDeLaCamara() else {
             // Cámara ocupada por otra app, o tapada. No es "no sos vos".
@@ -76,6 +76,17 @@ final class NikiFaceRecognition: ObservableObject {
         teReconocio = nil
     }
 
+    /// Prende la cámara y dice si hay que apagarla al terminar.
+    ///
+    /// Devuelve false cuando ya estaba prendida: el espejo del notch usa la misma sesión
+    /// compartida, así que apagarla al terminar de mirar le cortaría la imagen a alguien
+    /// que la estaba usando.
+    private func prenderCamara() async -> Bool {
+        let yaEstaba = WebcamManager.shared.isSessionRunning
+        if !yaEstaba { WebcamManager.shared.startSession() }
+        return !yaEstaba
+    }
+
     private func cuadroDeLaCamara() async -> Data? {
         await withCheckedContinuation { continuation in
             WebcamManager.shared.capturarCuadro { datos in
@@ -95,8 +106,8 @@ final class NikiFaceRecognition: ObservableObject {
         mirando = true
         defer { mirando = false }
 
-        WebcamManager.shared.startSession()
-        defer { WebcamManager.shared.stopSession() }
+        let apagarAlTerminar = await prenderCamara()
+        defer { if apagarAlTerminar { WebcamManager.shared.stopSession() } }
 
         var cuadros: [Data] = []
         for i in 0 ..< tomas {

@@ -109,6 +109,46 @@ struct SidebarShell<Content: View>: View {
     }
 }
 
+/// Acomoda las vistas en filas y baja de línea cuando no entran.
+///
+/// SwiftUI no trae nada así: HStack aprieta todo en una fila y ScrollView horizontal
+/// esconde la mitad. Acá hace falta para que los seis grupos de ajustes se vean todos de
+/// una — que es el punto de haberlos agrupado.
+struct FlowLayout: Layout {
+    var spacing: CGFloat = 6
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let ancho = proposal.width ?? .infinity
+        var x: CGFloat = 0, y: CGFloat = 0, altoFila: CGFloat = 0
+        for vista in subviews {
+            let t = vista.sizeThatFits(.unspecified)
+            if x + t.width > ancho, x > 0 {
+                x = 0
+                y += altoFila + spacing
+                altoFila = 0
+            }
+            x += t.width + spacing
+            altoFila = max(altoFila, t.height)
+        }
+        return CGSize(width: proposal.width ?? x, height: y + altoFila)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x = bounds.minX, y = bounds.minY, altoFila: CGFloat = 0
+        for vista in subviews {
+            let t = vista.sizeThatFits(.unspecified)
+            if x + t.width > bounds.maxX, x > bounds.minX {
+                x = bounds.minX
+                y += altoFila + spacing
+                altoFila = 0
+            }
+            vista.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(t))
+            x += t.width + spacing
+            altoFila = max(altoFila, t.height)
+        }
+    }
+}
+
 struct SidebarCard<Content: View>: View {
     let content: Content
 
@@ -1028,12 +1068,133 @@ private struct NikiSettingsSidebar: View {
     /// Borrar pide dos toques: el primero arma, el segundo borra.
     @State private var confirmandoBorrado = false
 
+    /// Los ajustes agrupados por tema.
+    ///
+    /// Antes eran nueve secciones una abajo de la otra en un scroll de mil quinientos
+    /// píxeles, mezclando el tono de Niki con la URL del backend y el color del orbe.
+    /// Para cambiar algo había que acordarse de en qué altura estaba.
+    enum Grupo: String, CaseIterable, Identifiable {
+        case conversacion = "Conversación"
+        case vozIdentidad = "Voz e identidad"
+        case modelo = "Modelo"
+        case datos = "Datos"
+        case apariencia = "Apariencia"
+        case sistema = "Sistema"
+
+        var id: String { rawValue }
+
+        var simbolo: String {
+            switch self {
+            case .conversacion: return "bubble.left.and.text.bubble.right"
+            case .vozIdentidad: return "waveform.and.person.filled"
+            case .modelo: return "brain"
+            case .datos: return "chart.bar.doc.horizontal"
+            case .apariencia: return "paintbrush"
+            case .sistema: return "gearshape.2"
+            }
+        }
+    }
+
+    @State private var grupo: Grupo = .conversacion
+
     var body: some View {
-        SidebarShell(eyebrow: "Settings", title: "Preferences") {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
+        SidebarShell(eyebrow: "Settings", title: "Preferencias") {
+            VStack(alignment: .leading, spacing: 12) {
+                selectorDeGrupo
+
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 14) {
+                        contenido
+
+                        if !appModel.settingsError.isEmpty {
+                            Text(appModel.settingsError)
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(Color.red.opacity(0.78))
+                        }
+
+                        // Cerrar sesión no pertenece a ningún grupo: va al pie, siempre.
+                        actionButton("Cerrar sesión", secondary: true) {
+                            appModel.logout()
+                        }
+                    }
+                    .padding(.bottom, 4)
+                }
+                .scrollIndicators(.never)
+            }
+        }
+        .task {
+            await appModel.refreshSettingsData()
+        }
+    }
+
+    private var selectorDeGrupo: some View {
+        // Se envuelve en vez de hacer scroll horizontal: seis grupos entran en dos filas y
+        // así se ven todos de una, que es el punto de haberlos agrupado.
+        FlowLayout(spacing: 6) {
+            ForEach(Grupo.allCases) { g in
+                Button {
+                    grupo = g
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: g.simbolo).font(.system(size: 9, weight: .bold))
+                        Text(g.rawValue).font(.system(size: 11, weight: .semibold))
+                    }
+                    .foregroundStyle(grupo == g ? Color.white.opacity(0.9) : Color.white.opacity(0.45))
+                    .padding(.horizontal, 11)
+                    .frame(height: 28)
+                    .background(Capsule().fill(Color.white.opacity(grupo == g ? 0.12 : 0.04)))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var contenido: some View {
+        switch grupo {
+        case .conversacion: grupoConversacion
+        case .vozIdentidad: grupoVozIdentidad
+        case .modelo: grupoModelo
+        case .datos: grupoDatos
+        case .apariencia: grupoApariencia
+        case .sistema: grupoSistema
+        }
+    }
+
+    @ViewBuilder
+    private var grupoConversacion: some View {
+        Group {
+                    settingsSection("Niki persona") {
+                        VStack(spacing: 12) {
+                            field("Assistant name", text: $appModel.personaProfile.assistantName)
+                            dualRow(
+                                picker("Tone", selection: $appModel.personaProfile.tone),
+                                picker("Brevity", selection: $appModel.personaProfile.brevity)
+                            )
+                            picker("Response style", selection: $appModel.personaProfile.responseStyle)
+                            textArea("Operational rules", text: $appModel.personaProfile.operationalRules, height: 88)
+                            textArea("Forbidden behaviors", text: $appModel.personaProfile.forbiddenBehaviors, height: 88)
+                        }
+                    }
+
                     settingsSection("Profile") {
                         field("Display name", text: $appModel.displayName)
+                    }
+
+        }
+    }
+
+    @ViewBuilder
+    private var grupoVozIdentidad: some View {
+        Group {
+                    settingsSection("Cómo te reconoce") {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("La cara y la huella de voz se registran en el panel Identidad, en el dock. Las dos fallan en abierto: si no te reconoce, nada deja de andar.")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(Color.white.opacity(0.42))
+                                .fixedSize(horizontal: false, vertical: true)
+                            actionButton("Abrir Identidad") { appModel.selection = .identidad }
+                        }
                     }
 
                     settingsSection("Voz") {
@@ -1047,6 +1208,36 @@ private struct NikiSettingsSidebar: View {
                                 .font(.system(size: 11, weight: .medium))
                                 .foregroundStyle(Color.white.opacity(0.34))
                                 .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+
+
+
+        }
+    }
+
+    @ViewBuilder
+    private var grupoDatos: some View {
+        Group {
+                    settingsSection("Datos para entrenar") {
+                        datasetSection
+                    }
+
+        }
+    }
+
+    @ViewBuilder
+    private var grupoSistema: some View {
+        Group {
+                    settingsSection("Ajustes del notch") {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Lo que es del notch en sí —batería, música, calendario, apariencia de la isla— vive en su propia ventana. Acá quedó todo lo que es de Niki.")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(Color.white.opacity(0.42))
+                                .fixedSize(horizontal: false, vertical: true)
+                            actionButton("Abrir ajustes del notch") {
+                                SettingsWindowController.shared.showWindow()
+                            }
                         }
                     }
 
@@ -1074,23 +1265,6 @@ private struct NikiSettingsSidebar: View {
                                 .foregroundStyle(Color.white.opacity(0.34))
                                 .fixedSize(horizontal: false, vertical: true)
                         }
-                    }
-
-                    settingsSection("Niki persona") {
-                        VStack(spacing: 12) {
-                            field("Assistant name", text: $appModel.personaProfile.assistantName)
-                            dualRow(
-                                picker("Tone", selection: $appModel.personaProfile.tone),
-                                picker("Brevity", selection: $appModel.personaProfile.brevity)
-                            )
-                            picker("Response style", selection: $appModel.personaProfile.responseStyle)
-                            textArea("Operational rules", text: $appModel.personaProfile.operationalRules, height: 88)
-                            textArea("Forbidden behaviors", text: $appModel.personaProfile.forbiddenBehaviors, height: 88)
-                        }
-                    }
-
-                    settingsSection("Datos para entrenar") {
-                        datasetSection
                     }
 
                     settingsSection("Backend · HTTP") {
@@ -1160,6 +1334,12 @@ private struct NikiSettingsSidebar: View {
                         }
                     }
 
+        }
+    }
+
+    @ViewBuilder
+    private var grupoApariencia: some View {
+        Group {
                     settingsSection("Grid cells") {
                         VStack(alignment: .leading, spacing: 10) {
                             Text("Cell color")
@@ -1198,6 +1378,22 @@ private struct NikiSettingsSidebar: View {
                         }
                     }
 
+        }
+    }
+
+    @ViewBuilder
+    private var grupoModelo: some View {
+        Group {
+                    settingsSection("Proveedor") {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Con qué modelo piensa Niki y con qué cuenta —Kimi, Codex, o el que tengas— se elige en el panel Modelo del dock.")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(Color.white.opacity(0.42))
+                                .fixedSize(horizontal: false, vertical: true)
+                            actionButton("Abrir Modelo") { appModel.selection = .provider }
+                        }
+                    }
+
                     settingsSection("Runtime · Hermes") {
                         VStack(spacing: 12) {
                             field("API Server URL", text: $appModel.runtimeAPIURL)
@@ -1212,20 +1408,6 @@ private struct NikiSettingsSidebar: View {
                         }
                     }
 
-                    if !appModel.settingsError.isEmpty {
-                        Text(appModel.settingsError)
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(Color.red.opacity(0.78))
-                    }
-
-                    actionButton("Logout", secondary: true) {
-                        appModel.logout()
-                    }
-                }
-            }
-        }
-        .task {
-            await appModel.refreshSettingsData()
         }
     }
 

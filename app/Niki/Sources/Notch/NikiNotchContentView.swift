@@ -507,8 +507,39 @@ private struct OrbPanel: View {
             )
         }
         .overlay(alignment: .bottomTrailing) { marcaDeReconocido }
+        .overlay(alignment: .top) { avisoDeGesto }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Estado de Niki: \(NikiThinkingOrbState.from(agentState: appModel.agentState).label)")
+    }
+
+    /// Qué gesto entendió, un segundo y medio.
+    ///
+    /// Es una confirmación, no un aviso: si no apareciera, uno no sabría si el gesto se
+    /// entendió o si la acción pasó por otra cosa.
+    @ViewBuilder
+    private var avisoDeGesto: some View {
+        if let gesto = appModel.gestos.ultimo {
+            HStack(spacing: 5) {
+                Image(systemName: simboloDeGesto(gesto))
+                    .font(.system(size: 10, weight: .bold))
+                Text(gesto.descripcion)
+                    .font(.system(size: 10, weight: .semibold))
+            }
+            .foregroundStyle(.white.opacity(0.85))
+            .padding(.horizontal, 9)
+            .frame(height: 22)
+            .background(Capsule().fill(.white.opacity(0.14)))
+            .transition(.opacity.combined(with: .scale(scale: 0.9)))
+            .animation(.spring(response: 0.3, dampingFraction: 0.8), value: appModel.gestos.ultimo)
+        }
+    }
+
+    private func simboloDeGesto(_ g: NikiGesto) -> String {
+        switch g {
+        case .palma: return "hand.raised.fill"
+        case .pulgarArriba: return "hand.thumbsup.fill"
+        case .pulgarAbajo: return "hand.thumbsdown.fill"
+        }
     }
 
     /// Un punto cuando te reconoció por la cámara.

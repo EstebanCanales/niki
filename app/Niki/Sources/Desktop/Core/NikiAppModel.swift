@@ -109,6 +109,9 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
     let cara = NikiFaceRecognition()
     /// En qué anda el registro de cara. El notch lo muestra mientras pasa.
     @Published var registroDeCara = NikiRegistroDeCaraEstado()
+    /// Gestos con la mano durante la conversación. Ver NikiLectorDeGestos.
+    let gestos = NikiLectorDeGestos()
+    @AppStorage("niki.gestos.activos") var gestosActivos = true
     @Published var dataset: NikiDatasetResumen = .vacio
     @Published var datasetOcupado = false
     @Published var datasetError = ""
@@ -264,6 +267,27 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
 
     func cerrarRegistroDeCara() {
         registroDeCara = NikiRegistroDeCaraEstado()
+    }
+
+    /// Qué hace cada gesto.
+    ///
+    /// Los tres resuelven cosas en las que la voz falla justo cuando más falta hacen:
+    /// callarla exige hablarle encima de lo que está diciendo, y aprobar un borrado exige
+    /// ir a buscar el botón. Un gesto no compite con nada.
+    private func empezarAEscucharGestos() {
+        gestos.alReconocer = { [weak self] gesto in
+            guard let self else { return }
+            switch gesto {
+            case .palma:
+                self.interruptCurrentReply()
+            case .pulgarArriba, .pulgarAbajo:
+                // Solo si hay algo esperando permiso: un pulgar al aire no aprueba nada.
+                guard let pendiente = self.pendingApprovals.first else { return }
+                let eleccion = gesto == .pulgarArriba ? "once" : "deny"
+                Task { await self.respondToApproval(pendiente, choice: eleccion) }
+            }
+        }
+        gestos.empezar()
     }
 
     func cargarEstadoDeCara() async {
@@ -2124,6 +2148,7 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
         // está es justo cuando alguien empieza a hablar. Va en su propia tarea para no
         // demorar ni un milisegundo el arranque de la escucha.
         Task { @MainActor [weak self] in await self?.cara.mirar() }
+        if gestosActivos { empezarAEscucharGestos() }
         sttLabTask = Task { @MainActor [weak self] in
             guard let self else { return }
             guard await self.startCapture() else { return }
@@ -2312,6 +2337,7 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
         // El punto de "te reconocí" vale para esta conversación. Si queda encendido, la
         // próxima vez el notch lo muestra antes de haber mirado a nadie.
         cara.olvidarVeredicto()
+        gestos.parar()
         notchCallDismissed = false
         autoVoice = false
         sttLabTask?.cancel()

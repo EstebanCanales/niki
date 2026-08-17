@@ -305,6 +305,8 @@ class WebcamManager: NSObject, ObservableObject {
 
     private var pedidoDeCuadro: ((Data?) -> Void)?
     private var cuadrosVistos = 0
+    /// Quien quiera mirar todos los cuadros, no uno solo. Lo usa el lector de gestos.
+    private var observador: ((CVPixelBuffer) -> Void)?
     private let colaDeCuadro = DispatchQueue(label: "niki.webcam.cuadro")
 
     /// Cuántos cuadros se descartan antes de quedarse con uno.
@@ -361,6 +363,30 @@ class WebcamManager: NSObject, ObservableObject {
         colaDeCuadro.async { intentar() }
     }
 
+    /// Mira todos los cuadros mientras la sesión esté prendida.
+    ///
+    /// Distinto de `capturarCuadro`, que se queda con uno y se va: los gestos necesitan
+    /// ver el movimiento, o sea varios cuadros por segundo. Se entrega el buffer crudo y
+    /// no un JPEG porque Vision trabaja directo sobre él — codificar a JPEG diez veces por
+    /// segundo para decodificarlo enseguida sería trabajo puro al pedo.
+    func observarCuadros(_ observador: @escaping (CVPixelBuffer) -> Void) {
+        guard let salida = captureSession?.outputs.compactMap({ $0 as? AVCaptureVideoDataOutput }).first else {
+            return
+        }
+        self.observador = observador
+        salida.setSampleBufferDelegate(self, queue: colaDeCuadro)
+    }
+
+    func dejarDeObservar() {
+        observador = nil
+        // El delegate se suelta solo si tampoco hay una captura suelta esperando; si la
+        // hay, ella lo suelta cuando termina.
+        if pedidoDeCuadro == nil,
+           let salida = captureSession?.outputs.compactMap({ $0 as? AVCaptureVideoDataOutput }).first {
+            salida.setSampleBufferDelegate(nil, queue: nil)
+        }
+    }
+
     func stopSession() {
         sessionQueue.async { [weak self] in
             guard let self = self else { return }
@@ -382,10 +408,16 @@ extension WebcamManager: AVCaptureVideoDataOutputSampleBufferDelegate {
     func captureOutput(_ output: AVCaptureOutput,
                        didOutput sampleBuffer: CMSampleBuffer,
                        from connection: AVCaptureConnection) {
-        guard let pedido = pedidoDeCuadro,
-              let buffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
+        guard let buffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
 
-        // Los primeros cuadros de una cámara recién prendida vienen oscuros.
+        // Quien mira todos los cuadros (los gestos) los recibe siempre, incluidos los
+        // primeros: para detectar una mano no molesta que el cuadro venga algo oscuro.
+        observador?(buffer)
+
+        guard let pedido = pedidoDeCuadro else { return }
+
+        // Para quedarse con UNO, en cambio, sí importa: los primeros de una cámara recién
+        // prendida vienen sin exposición y un detector de caras no encuentra nada ahí.
         cuadrosVistos += 1
         guard cuadrosVistos > Self.cuadrosADescartar else { return }
 

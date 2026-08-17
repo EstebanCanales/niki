@@ -112,6 +112,8 @@
 		D1C9BC3CED4647E489E39DFB /* NotchRegistroDeCara.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0EC0657328994CD4BFA7624F /* NotchRegistroDeCara.swift */; };
 		9F10CBE054245C8CF9FB5168 /* NikiNotchViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D27C615C9FE75E74C2A4CB2 /* NikiNotchViewModel.swift */; };
 		A1949F53FC6D9B7AF1554B95 /* NikiAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83105CD2582B4B46B6E986EF /* NikiAPIClient.swift */; };
+		8304A708F95144D7B4ADD691 /* NikiLectorDeGestos.swift in Sources */ = {isa = PBXBuildFile; fileRef = 708E76BA6F80461798EE9189 /* NikiLectorDeGestos.swift */; };
+		B1EB9747CFA640A690473C09 /* NikiGestos.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF99456968DC432184FDF57F /* NikiGestos.swift */; };
 		978FE6AB80524C0693C88A53 /* NikiRegistroDeCara.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51F5EC6AE0B4463B8C1DF5A2 /* NikiRegistroDeCara.swift */; };
 		C94232C375B8439B9568355C /* NikiFaceRecognition.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F903A6F53CF4F4EAB5D1719 /* NikiFaceRecognition.swift */; };
 		A618C1103BF0AAE28764DF8A /* NSMenu+AssociatedObject.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80E311639EDDD29B51948704 /* NSMenu+AssociatedObject.swift */; };
@@ -317,6 +319,8 @@
 		8037A029C3C1F2F4F762A59C /* MediaKeyInterceptor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaKeyInterceptor.swift; sourceTree = "<group>"; };
 		80E311639EDDD29B51948704 /* NSMenu+AssociatedObject.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NSMenu+AssociatedObject.swift"; sourceTree = "<group>"; };
 		83105CD2582B4B46B6E986EF /* NikiAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NikiAPIClient.swift; sourceTree = "<group>"; };
+		708E76BA6F80461798EE9189 /* NikiLectorDeGestos.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NikiLectorDeGestos.swift; sourceTree = "<group>"; };
+		BF99456968DC432184FDF57F /* NikiGestos.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NikiGestos.swift; sourceTree = "<group>"; };
 		51F5EC6AE0B4463B8C1DF5A2 /* NikiRegistroDeCara.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NikiRegistroDeCara.swift; sourceTree = "<group>"; };
 		3F903A6F53CF4F4EAB5D1719 /* NikiFaceRecognition.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NikiFaceRecognition.swift; sourceTree = "<group>"; };
 		8349E1431D1D0E974E19BAD7 /* NikiMcpPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NikiMcpPanel.swift; sourceTree = "<group>"; };
@@ -662,6 +666,8 @@
 			isa = PBXGroup;
 			children = (
 				83105CD2582B4B46B6E986EF /* NikiAPIClient.swift */,
+				708E76BA6F80461798EE9189 /* NikiLectorDeGestos.swift */,
+				BF99456968DC432184FDF57F /* NikiGestos.swift */,
 				51F5EC6AE0B4463B8C1DF5A2 /* NikiRegistroDeCara.swift */,
 				3F903A6F53CF4F4EAB5D1719 /* NikiFaceRecognition.swift */,
 				50EF5ABF1DC2D51BC2899B80 /* NikiAppModel.swift */,
@@ -1182,6 +1188,8 @@
 				A618C1103BF0AAE28764DF8A /* NSMenu+AssociatedObject.swift in Sources */,
 				B78A2E71D88ED3F1D708247D /* NSScreen+UUID.swift in Sources */,
 				A1949F53FC6D9B7AF1554B95 /* NikiAPIClient.swift in Sources */,
+				8304A708F95144D7B4ADD691 /* NikiLectorDeGestos.swift in Sources */,
+				B1EB9747CFA640A690473C09 /* NikiGestos.swift in Sources */,
 				978FE6AB80524C0693C88A53 /* NikiRegistroDeCara.swift in Sources */,
 				C94232C375B8439B9568355C /* NikiFaceRecognition.swift in Sources */,
 				72DD4B37848E47C4DA8CAB8E /* NikiApp.swift in Sources */,

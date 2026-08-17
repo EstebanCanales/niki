@@ -1187,6 +1187,20 @@ private struct NikiSettingsSidebar: View {
     @ViewBuilder
     private var grupoVozIdentidad: some View {
         Group {
+                    settingsSection("Gestos con la mano") {
+                        VStack(alignment: .leading, spacing: 10) {
+                            toggleRow("Entender gestos mientras hablás", isOn: $appModel.gestosActivos)
+                            Text("Palma abierta la calla, pulgar arriba aprueba lo que esté esperando permiso y pulgar abajo lo rechaza. Se sostiene el gesto medio segundo para que una mano que pasa no dispare nada.")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(Color.white.opacity(0.34))
+                                .fixedSize(horizontal: false, vertical: true)
+                            Text("Con esto encendido la cámara queda prendida durante la conversación, no solo un instante al empezar.")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(Color.orange.opacity(0.55))
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+
                     settingsSection("Cómo te reconoce") {
                         VStack(alignment: .leading, spacing: 8) {
                             Text("La cara y la huella de voz se registran en el panel Identidad, en el dock. Las dos fallan en abierto: si no te reconoce, nada deja de andar.")

@@ -28,6 +28,13 @@ struct NikiDockView: View {
                         }
                         .buttonStyle(.plain)
                         .help(item.title)
+                        // Un botón que solo tiene un símbolo no le dice nada a VoiceOver:
+                        // el dock entero era once botones sin nombre. Con esto además se
+                        // puede comprobar desde afuera qué paneles están llegando de
+                        // verdad, que es como se descubrió que tres estaban invisibles.
+                        .accessibilityIdentifier("dock-\(item.rawValue)")
+                        .accessibilityLabel(item.title)
+                        .accessibilityAddTraits(selection == item ? [.isButton, .isSelected] : .isButton)
                         .onHover { inside in
                             withAnimation(.easeOut(duration: 0.18)) {
                                 hoveredItem = inside ? item : (hoveredItem == item ? nil : hoveredItem)

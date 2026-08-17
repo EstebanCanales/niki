@@ -39,7 +39,7 @@ struct NikiIdentidadPanel: View {
         SidebarCard {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 10) {
-                    Image(systemName: appModel.cara.hayPerfil ? "faceid" : "person.crop.square.badge.camera")
+                    Image(systemName: iconoCara)
                         .font(.system(size: 17, weight: .semibold))
                         .foregroundStyle(appModel.cara.hayPerfil ? Color.green.opacity(0.8) : Color.white.opacity(0.3))
                     Text(titulo)
@@ -68,7 +68,7 @@ struct NikiIdentidadPanel: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
-                if appModel.cara.disponible {
+                if appModel.cara.disponible == true {
                     HStack(spacing: 10) {
                         boton(appModel.cara.hayPerfil ? "Registrar de nuevo" : "Registrar mi cara") {
                             Task { await registrar() }
@@ -84,13 +84,22 @@ struct NikiIdentidadPanel: View {
         }
     }
 
+    private var iconoCara: String {
+        if appModel.cara.disponible == nil { return "person.crop.square" }
+        return appModel.cara.hayPerfil ? "faceid" : "person.crop.square.badge.camera"
+    }
+
     private var titulo: String {
-        if !appModel.cara.disponible { return "La cámara no está instalada en el backend" }
-        return appModel.cara.hayPerfil ? "Niki reconoce tu cara" : "Tu cara no está registrada"
+        switch appModel.cara.disponible {
+        case nil: return "Viendo si está instalada…"
+        case false: return "La cámara no está instalada en el backend"
+        default: return appModel.cara.hayPerfil ? "Niki reconoce tu cara" : "Tu cara no está registrada"
+        }
     }
 
     private var explicacion: String {
-        if !appModel.cara.disponible {
+        if appModel.cara.disponible == nil { return "" }
+        if appModel.cara.disponible == false {
             return "Falta el entorno con OpenCV o los modelos. Sin eso, esta parte simplemente no corre y nada más deja de andar."
         }
         if appModel.cara.hayPerfil {

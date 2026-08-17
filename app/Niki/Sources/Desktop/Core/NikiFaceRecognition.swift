@@ -20,7 +20,12 @@ final class NikiFaceRecognition: ObservableObject {
     @Published private(set) var teReconocio: Bool?
     @Published private(set) var hayPerfil = false
     @Published private(set) var mirando = false
-    @Published private(set) var disponible = false
+    /// nil mientras no se preguntó, true/false después.
+    ///
+    /// La diferencia importa: con un simple `false` inicial, el panel afirmaba "la cámara
+    /// no está instalada en el backend" durante el primer cuarto de segundo, que es un
+    /// cartel falso mandando a arreglar algo que no está roto.
+    @Published private(set) var disponible: Bool?
 
     private var cliente: NikiAPIClient?
     /// Para no encender la cámara dos veces si llegan dos turnos pegados.

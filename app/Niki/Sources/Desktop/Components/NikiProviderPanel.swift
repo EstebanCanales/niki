@@ -88,10 +88,19 @@ struct NikiProviderPanel: View {
 
             if conCredencial.isEmpty {
                 SidebarCard {
-                    Text("Ningún proveedor tiene credencial. Definí su clave en app/backend/.env.")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(Color.white.opacity(0.45))
-                        .fixedSize(horizontal: false, vertical: true)
+                    if appModel.agentProvidersCargando {
+                        HStack(spacing: 8) {
+                            ProgressView().scaleEffect(0.5).frame(width: 14, height: 14)
+                            Text("Preguntándole al runtime…")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(Color.white.opacity(0.45))
+                        }
+                    } else {
+                        Text("Ningún proveedor tiene credencial. Definí su clave en app/backend/.env.")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(Color.white.opacity(0.45))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
             }
 

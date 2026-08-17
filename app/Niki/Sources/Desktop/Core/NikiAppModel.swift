@@ -228,7 +228,9 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
 
     private var recorder: AVAudioRecorder?
     // MARK: - Huella de voz
-    @Published var speakerAvailable = false
+    /// nil mientras no se preguntó. Igual que en la cara: sin la distinción, el panel
+    /// afirma "no está instalada" antes de haber preguntado.
+    @Published var speakerAvailable: Bool?
     @Published var speakerEnrolled = false
     @Published var speakerThreshold: Double?
     @Published var speakerSamples = 0
@@ -298,9 +300,22 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
     @Published var agentRuntimeState: String = "?"
     @Published var agentSwitching = false
     @Published var agentError = ""
+    /// Se está pidiendo la lista de proveedores.
+    ///
+    /// Hace falta porque la consulta tarda unos cuatro segundos —el backend levanta un
+    /// Python para preguntarle al runtime— y mientras tanto la lista está vacía. Sin
+    /// distinguir "vacía porque no cargó" de "vacía porque no hay", el panel afirmaba
+    /// "Ningún proveedor tiene credencial. Definí su clave en .env" con cuatro
+    /// proveedores conectados. Un cartel que dice algo falso y manda a editar un archivo
+    /// es peor que no decir nada.
+    @Published var agentProvidersCargando = false
 
     /// Carga proveedores y estado del runtime.
     func loadAgentProviders() async {
+        // Solo la primera vez muestra "cargando": al refrescar ya hay una lista en
+        // pantalla y vaciarla para volver a llenarla es un parpadeo sin sentido.
+        agentProvidersCargando = agentProviders.isEmpty
+        defer { agentProvidersCargando = false }
         do {
             let r = try await client.agentProviders()
             agentProviders = r.providers

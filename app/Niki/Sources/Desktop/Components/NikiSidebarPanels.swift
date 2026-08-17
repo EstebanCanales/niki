@@ -597,7 +597,7 @@ struct NikiSpeakerPanel: View {
                         .foregroundStyle(Color.white.opacity(0.85))
                 }
 
-                if !appModel.speakerAvailable {
+                if appModel.speakerAvailable == false {
                     Text("La huella de voz no está instalada en el backend.")
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(Color.white.opacity(0.4))
@@ -629,7 +629,7 @@ struct NikiSpeakerPanel: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
-                if appModel.speakerAvailable {
+                if appModel.speakerAvailable == true {
                     Button {
                         Task { await appModel.enrollSpeaker() }
                     } label: {

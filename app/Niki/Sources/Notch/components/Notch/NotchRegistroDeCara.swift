@@ -9,12 +9,28 @@ import SwiftUI
 /// exactamente lo que pasaba acá. Cada vista se arma la suya con la misma sesión.
 struct VistaDeCamara: NSViewRepresentable {
     let sesion: AVCaptureSession
+    var radio: CGFloat = 18
 
     func makeNSView(context: Context) -> NSView {
         let vista = NSView()
         vista.wantsLayer = true
+
         let capa = AVCaptureVideoPreviewLayer(session: sesion)
         capa.videoGravity = .resizeAspectFill
+
+        // Espejado y esquinas redondeadas se hacen ACÁ, en la capa, y no con
+        // `.scaleEffect` y `.clipShape` de SwiftUI. SwiftUI no puede transformar de verdad
+        // una capa de vídeo en vivo: la compone aparte y de ahí salen los bordes sucios y
+        // las sombras raras que se veían. AVFoundation tiene su propio espejado.
+        if let conexion = capa.connection, conexion.isVideoMirroringSupported {
+            conexion.automaticallyAdjustsVideoMirroring = false
+            conexion.isVideoMirrored = true
+        }
+        capa.cornerRadius = radio
+        capa.masksToBounds = true
+        // Sin esto, el fondo de la capa asoma en las esquinas redondeadas como un halo.
+        capa.backgroundColor = NSColor.black.cgColor
+
         capa.frame = vista.bounds
         vista.layer = capa
         return vista
@@ -26,6 +42,7 @@ struct VistaDeCamara: NSViewRepresentable {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         vista.layer?.frame = vista.bounds
+        (vista.layer as? AVCaptureVideoPreviewLayer)?.cornerRadius = radio
         CATransaction.commit()
     }
 }
@@ -72,9 +89,7 @@ struct NotchRegistroDeCara: View {
                 .fill(Color.white.opacity(0.05))
 
             if let sesion = webcam.sesion, webcam.isSessionRunning {
-                VistaDeCamara(sesion: sesion)
-                    .scaleEffect(x: -1, y: 1)
-                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                VistaDeCamara(sesion: sesion, radio: 18)
             } else {
                 VStack(spacing: 6) {
                     Image(systemName: "web.camera")

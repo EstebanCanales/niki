@@ -28,6 +28,15 @@ struct NikiNotchContentView: View {
     /// controles abajo, sin campo de texto ni tabs.
     private var inCall: Bool { appModel.sttLabActive }
 
+    /// El notch está dedicado a una sola cosa: llamada, registro de cara o de voz.
+    ///
+    /// En esos tres casos no va la barra de arriba ni las tabs. Faltaba para los dos
+    /// registros y por eso la cámara salía cortada: la barra se dibujaba igual, comía
+    /// altura, y el cuadrado de 148 más los textos ya llegaban justo al límite.
+    private var dedicado: Bool {
+        inCall || appModel.registroDeCara.activo || appModel.enrolling
+    }
+
     private var openNotchWidth: CGFloat {
         // Durante el registro de cara el notch se hace cuadrado: lo que hay que mirar es
         // la cámara, y una cámara cuadrada dentro de una barra ancha deja dos huecos
@@ -37,8 +46,8 @@ struct NikiNotchContentView: View {
     }
 
     private var tabContentHeight: CGFloat {
-        if appModel.registroDeCara.activo { return 236 }
-        if appModel.enrolling { return 130 }
+        if appModel.registroDeCara.activo { return 248 }
+        if appModel.enrolling { return 148 }
         if inCall { return 186 }
         switch coordinator.currentView {
         case .home:
@@ -51,8 +60,8 @@ struct NikiNotchContentView: View {
     }
 
     private var openSurfaceHeight: CGFloat {
-        if appModel.registroDeCara.activo { return 264 }
-        if appModel.enrolling { return 158 }
+        if appModel.registroDeCara.activo { return 262 }
+        if appModel.enrolling { return 162 }
         if inCall { return 214 }
         switch coordinator.currentView {
         case .home:
@@ -86,9 +95,9 @@ struct NikiNotchContentView: View {
                 notchBackground
 
                 if vm.notchState == .open {
-                    VStack(spacing: inCall ? 0 : 8) {
-                        // Durante la llamada no hay tabs: la vista es solo orbe + controles.
-                        if !inCall {
+                    VStack(spacing: dedicado ? 0 : 8) {
+                        // Dedicado: sin barra ni tabs, todo el espacio para lo que importa.
+                        if !dedicado {
                             NotchTopBar(
                                 state: missionStateLabel,
                                 fileCount: appModel.chatAttachments.count,
@@ -101,12 +110,12 @@ struct NikiNotchContentView: View {
                                 maxWidth: .infinity,
                                 minHeight: tabContentHeight,
                                 maxHeight: tabContentHeight,
-                                alignment: inCall ? .center : .top
+                                alignment: dedicado ? .center : .top
                             )
                     }
-                    .padding(.top, inCall ? 6 : 8)
-                    .padding(.horizontal, inCall ? 12 : 16)
-                    .padding(.bottom, inCall ? 6 : 8)
+                    .padding(.top, dedicado ? 6 : 8)
+                    .padding(.horizontal, dedicado ? 12 : 16)
+                    .padding(.bottom, dedicado ? 6 : 8)
                     .frame(maxWidth: .infinity, alignment: .top)
                     .transition(.opacity.combined(with: .scale(scale: 0.96)))
                 } else {

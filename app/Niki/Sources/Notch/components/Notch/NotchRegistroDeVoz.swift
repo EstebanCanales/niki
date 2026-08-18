@@ -38,7 +38,9 @@ struct NotchRegistroDeVoz: View {
     /// una forma de onda, no un medidor de progreso: lo que dice es "cuánto sonido entra
     /// ahora", y esa lectura es inmediata cuando crece para los dos lados.
     private var onda: some View {
-        let nivel = Double(appModel.audioLevel)
+        // Con el registro terminado el nivel queda quieto en cero; la onda plana ahí es
+        // correcta, no un error.
+        let nivel = appModel.enrollResultado == nil ? Double(appModel.audioLevel) : 0
         return HStack(spacing: 3) {
             ForEach(0 ..< 21, id: \.self) { i in
                 // Las del centro reaccionan más que las de las puntas: da la forma de onda
@@ -66,14 +68,13 @@ struct NotchRegistroDeVoz: View {
     }
 
     private var titulo: String {
-        if !appModel.enrolling {
-            return appModel.speakerStatusText.isEmpty ? "Voz registrada" : appModel.speakerStatusText
-        }
+        if let resultado = appModel.enrollResultado { return resultado }
         return "Frase \(min(appModel.enrollProgress + 1, appModel.enrollTotal)) de \(appModel.enrollTotal)"
     }
 
     private var detalle: String {
-        guard appModel.enrolling else { return "" }
+        // Terminado: el título ya dice todo, y una segunda línea sería ruido.
+        if appModel.enrollResultado != nil { return "" }
         if Double(appModel.audioLevel) < 0.06 {
             return "No entra sonido. ¿Está mudo el micrófono?"
         }

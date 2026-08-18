@@ -242,6 +242,12 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
     /// Cuántas tomas se grabaron en el registro en curso.
     @Published var enrollProgress = 0
     @Published var enrollTotal = 5
+    /// Cómo terminó el registro de voz, para poder mostrarlo antes de bajar el notch.
+    ///
+    /// Hace falta un estado aparte de `speakerStatusText` porque la vista del notch solo
+    /// existe mientras `enrolling` es true: si se apagaba al terminar, el mensaje final
+    /// —salió bien, o por qué no— se desmontaba en el mismo instante en que se sabía.
+    @Published var enrollResultado: String?
     @Published var enrolling = false
     @Published var speakerStatusText = ""
 
@@ -319,8 +325,20 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
         appDelegate?.openNotch()
         enrolling = true
         enrollProgress = 0
+        enrollResultado = nil
         speakerStatusText = ""
-        defer { enrolling = false }
+        // El notch se queda cuatro segundos mostrando cómo terminó, igual que el registro
+        // de cara, y recién ahí baja.
+        defer {
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.enrollResultado = self.speakerStatusText.isEmpty
+                    ? "Listo." : self.speakerStatusText
+                try? await Task.sleep(nanoseconds: 4_000_000_000)
+                self.enrolling = false
+                self.enrollResultado = nil
+            }
+        }
 
         var tomas: [Data] = []
         for i in 0..<enrollTotal {

@@ -224,7 +224,17 @@ def enroll(user_id: str, frames: list) -> dict:
     # Igual que en la voz: la toma que MENOS se parece al centro marca cuánto varía tu
     # propia cara entre poses. Una constante inventada sería estricta con unos y laxa
     # con otros.
-    similitudes = [float(np.dot(e, centro)) for e in embs]
+    # El umbral se calcula con la MISMA métrica que después usa la verificación: cuánto
+    # se parece una toma a la que mejor le calce de las otras. Antes se medía contra el
+    # promedio y se verificaba contra el máximo, dos escalas distintas, y el umbral
+    # quedaba más laxo de lo que decía.
+    #
+    # Dejar una afuera y compararla con el resto es justo lo que va a pasar en el uso
+    # real: una foto nueva contra las guardadas.
+    similitudes = []
+    for i, e in enumerate(embs):
+        otras = [o for j, o in enumerate(embs) if j != i]
+        similitudes.append(max(float(np.dot(e, o)) for o in otras))
     peor = min(similitudes)
     umbral = max(UMBRAL_MIN, min(UMBRAL_MAX, peor - MARGEN_UMBRAL))
 
@@ -232,6 +242,12 @@ def enroll(user_id: str, frames: list) -> dict:
     perfil = {
         "userId": user_id,
         "centroid": centro.tolist(),
+        # Todas las tomas, no solo su promedio. Es lo que hace FaceUnlock (guarda hasta
+        # treinta y cinco) y tiene un motivo: el promedio de "de frente", "de perfil" y
+        # "mirando abajo" es una cara que no existe, y se parece poco a las tres. Al
+        # verificar se compara contra la que MÁS se parezca, así cada pose se defiende
+        # sola. El centro se conserva igual, como respaldo y para poder comparar.
+        "vistas": [e.tolist() for e in embs],
         "threshold": umbral,
         "samples": len(embs),
         "selfSimilarity": {"min": peor, "mean": sum(similitudes) / len(similitudes)},
@@ -256,7 +272,13 @@ def verify(user_id: str, frame_b64: str) -> dict:
         # Cámara tapada, de espaldas, a oscuras. No es "no sos vos": es "no vi a nadie".
         return {"ok": True, "enrolled": True, "match": True, "score": None, "faceFound": False}
 
-    score = float(np.dot(emb, np.array(perfil["centroid"])))
+    # Contra la vista que más se parezca, no contra el promedio. Los perfiles viejos no
+    # tienen "vistas", así que se cae al centro y siguen funcionando.
+    vistas = perfil.get("vistas")
+    if vistas:
+        score = max(float(np.dot(emb, np.array(v))) for v in vistas)
+    else:
+        score = float(np.dot(emb, np.array(perfil["centroid"])))
     return {
         "ok": True,
         "enrolled": True,

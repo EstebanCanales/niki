@@ -42,6 +42,9 @@ struct NikiNotchContentView: View {
         // la cámara, y una cámara cuadrada dentro de una barra ancha deja dos huecos
         // negros a los costados que no aportan nada.
         if appModel.registroDeCara.activo { return 260 }
+        // El registro de voz también se angosta. Faltaba, y por eso se veía tan pobre:
+        // ciento cuarenta puntos de contenido flotando en el medio del notch entero.
+        if appModel.enrolling { return 300 }
         return inCall ? 300 : openNotchSize.width
     }
 

@@ -254,7 +254,7 @@ private struct NikiTasksSidebar: View {
             Text(label)
                 .font(.system(size: 10, weight: .bold))
                 .tracking(1.4)
-                .foregroundStyle(Color.white.opacity(0.34))
+                .foregroundStyle(Color.white.opacity(0.52))
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
@@ -273,7 +273,7 @@ private struct NikiTasksSidebar: View {
         HStack(spacing: 10) {
             Image(systemName: "plus")
                 .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(Color.white.opacity(0.36))
+                .foregroundStyle(Color.white.opacity(0.55))
 
             TextField("Create task...", text: $appModel.taskDraft)
                 .textFieldStyle(.plain)
@@ -351,8 +351,7 @@ private struct NikiTasksSidebar: View {
                     .foregroundStyle(Color.white.opacity(0.38))
                 Text(title)
                     .font(.system(size: 12, weight: .bold))
-                    .tracking(1.6)
-                    .foregroundStyle(Color.white.opacity(0.46))
+                        .foregroundStyle(Color.white.opacity(0.46))
                 Text("\(items.count)")
                     .font(.system(size: 11, weight: .bold))
                     .foregroundStyle(Color.white.opacity(0.30))
@@ -375,7 +374,7 @@ private struct NikiTasksSidebar: View {
                 } label: {
                     Image(systemName: item.status == .open ? "circle" : "checkmark.circle.fill")
                         .font(.system(size: 20, weight: .semibold))
-                        .foregroundStyle(item.status == .open ? Color.white.opacity(0.34) : Color.green.opacity(0.9))
+                        .foregroundStyle(item.status == .open ? Color.white.opacity(0.52) : Color.green.opacity(0.9))
                         .frame(width: 28, height: 28)
                 }
                 .buttonStyle(.plain)
@@ -1105,21 +1104,25 @@ private struct NikiSettingsSidebar: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 14) {
                         contenido
+                            .id(grupo)
 
                         if !appModel.settingsError.isEmpty {
                             Text(appModel.settingsError)
                                 .font(.system(size: 12, weight: .medium))
                                 .foregroundStyle(Color.red.opacity(0.78))
                         }
-
-                        // Cerrar sesión no pertenece a ningún grupo: va al pie, siempre.
-                        actionButton("Cerrar sesión", secondary: true) {
-                            appModel.logout()
-                        }
                     }
                     .padding(.bottom, 4)
                 }
                 .scrollIndicators(.never)
+
+                // Cerrar sesión no pertenece a ningún grupo, así que va anclado al pie y
+                // fuera del scroll. Adentro caía en un lugar distinto según el grupo — en
+                // Apariencia quedaba pegado a los colores, como si fuera uno más.
+                Divider().overlay(Color.white.opacity(0.08))
+                actionButton("Cerrar sesión", secondary: true) {
+                    appModel.logout()
+                }
             }
         }
         .task {
@@ -1133,16 +1136,22 @@ private struct NikiSettingsSidebar: View {
         FlowLayout(spacing: 6) {
             ForEach(Grupo.allCases) { g in
                 Button {
-                    grupo = g
+                    // Con animación y volviendo al principio: sin `.id(grupo)` el scroll
+                    // se quedaba en la altura del grupo anterior, así que uno aterrizaba
+                    // en la mitad de una sección sin saber por qué.
+                    withAnimation(.easeOut(duration: 0.18)) { grupo = g }
                 } label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: g.simbolo).font(.system(size: 9, weight: .bold))
-                        Text(g.rawValue).font(.system(size: 11, weight: .semibold))
-                    }
-                    .foregroundStyle(grupo == g ? Color.white.opacity(0.9) : Color.white.opacity(0.45))
-                    .padding(.horizontal, 11)
-                    .frame(height: 28)
-                    .background(Capsule().fill(Color.white.opacity(grupo == g ? 0.12 : 0.04)))
+                    // Sin ícono a propósito: medido con las métricas reales, las seis
+                    // cápsulas con ícono suman más que el ancho disponible y "Sistema"
+                    // quedaba solo en una segunda fila, como si fuera otra cosa. El
+                    // nombre solo alcanza para saber qué es cada una.
+                    Text(g.rawValue)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(grupo == g ? Color.white.opacity(0.92) : Color.white.opacity(0.5))
+                        .padding(.horizontal, 10)
+                        .frame(height: 28)
+                        .background(Capsule().fill(Color.white.opacity(grupo == g ? 0.14 : 0.04)))
+                        .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
             }
@@ -1164,21 +1173,21 @@ private struct NikiSettingsSidebar: View {
     @ViewBuilder
     private var grupoConversacion: some View {
         Group {
-                    settingsSection("Niki persona") {
+                    settingsSection("Cómo se comporta") {
                         VStack(spacing: 12) {
-                            field("Assistant name", text: $appModel.personaProfile.assistantName)
+                            field("Cómo se llama ella", text: $appModel.personaProfile.assistantName)
                             dualRow(
-                                picker("Tone", selection: $appModel.personaProfile.tone),
-                                picker("Brevity", selection: $appModel.personaProfile.brevity)
+                                picker("Tono", selection: $appModel.personaProfile.tone),
+                                picker("Largo", selection: $appModel.personaProfile.brevity)
                             )
-                            picker("Response style", selection: $appModel.personaProfile.responseStyle)
-                            textArea("Operational rules", text: $appModel.personaProfile.operationalRules, height: 88)
-                            textArea("Forbidden behaviors", text: $appModel.personaProfile.forbiddenBehaviors, height: 88)
+                            picker("Estilo", selection: $appModel.personaProfile.responseStyle)
+                            textArea("Reglas", text: $appModel.personaProfile.operationalRules, height: 88)
+                            textArea("Lo que no tiene que hacer", text: $appModel.personaProfile.forbiddenBehaviors, height: 88)
                         }
                     }
 
-                    settingsSection("Profile") {
-                        field("Display name", text: $appModel.displayName)
+                    settingsSection("Tu nombre") {
+                        field("Cómo te llamás", text: $appModel.displayName)
                     }
 
         }
@@ -1192,7 +1201,7 @@ private struct NikiSettingsSidebar: View {
                             toggleRow("Entender gestos mientras hablás", isOn: $appModel.gestosActivos)
                             Text("Palma abierta la calla, pulgar arriba aprueba lo que esté esperando permiso y pulgar abajo lo rechaza. Se sostiene el gesto medio segundo para que una mano que pasa no dispare nada.")
                                 .font(.system(size: 11, weight: .medium))
-                                .foregroundStyle(Color.white.opacity(0.34))
+                                .foregroundStyle(Color.white.opacity(0.52))
                                 .fixedSize(horizontal: false, vertical: true)
                             Text("Con esto encendido la cámara queda prendida durante la conversación, no solo un instante al empezar.")
                                 .font(.system(size: 11, weight: .medium))
@@ -1211,16 +1220,16 @@ private struct NikiSettingsSidebar: View {
                         }
                     }
 
-                    settingsSection("Voz") {
+                    settingsSection("Transcripción") {
                         VStack(alignment: .leading, spacing: 10) {
                             toggleRow("Mostrar STT Lab", isOn: $appModel.sttLabEnabled)
                             Text("El STT Lab muestra el panel detallado de transcripción (chunks, latencias, diagnóstico). Apagado por defecto; al activarlo aparece su botón en el dock.")
                                 .font(.system(size: 11, weight: .medium))
-                                .foregroundStyle(Color.white.opacity(0.34))
+                                .foregroundStyle(Color.white.opacity(0.52))
                                 .fixedSize(horizontal: false, vertical: true)
                             Text("La voz de Niki se genera localmente con Qwen3-TTS cuando el entorno de voz está configurado.")
                                 .font(.system(size: 11, weight: .medium))
-                                .foregroundStyle(Color.white.opacity(0.34))
+                                .foregroundStyle(Color.white.opacity(0.52))
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                     }
@@ -1262,8 +1271,7 @@ private struct NikiSettingsSidebar: View {
                                 VStack(alignment: .leading, spacing: 8) {
                                     Text("Modificador (tocar dos veces)")
                                         .font(.system(size: 11, weight: .semibold))
-                                        .tracking(1.6)
-                                        .foregroundStyle(Color.white.opacity(0.36))
+                                                                .foregroundStyle(Color.white.opacity(0.55))
                                     Picker("Modificador", selection: $appModel.doubleTapModifier) {
                                         Text("Option ⌥").tag("option")
                                         Text("Command ⌘").tag("command")
@@ -1276,20 +1284,20 @@ private struct NikiSettingsSidebar: View {
                             }
                             Text("Tocá dos veces seguidas la tecla elegida para abrir la ventana de Niki desde cualquier app. Requiere permiso de Accesibilidad.")
                                 .font(.system(size: 11, weight: .medium))
-                                .foregroundStyle(Color.white.opacity(0.34))
+                                .foregroundStyle(Color.white.opacity(0.52))
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                     }
 
-                    settingsSection("Backend · HTTP") {
+                    settingsSection("Conexión con el backend") {
                         VStack(spacing: 12) {
-                            field("Base URL", text: $appModel.backendBaseURL)
-                            field("API Key", text: $appModel.backendAPIKey, secure: true)
+                            field("Dirección", text: $appModel.backendBaseURL)
+                            field("Clave", text: $appModel.backendAPIKey, secure: true)
                             HStack(spacing: 10) {
-                                actionButton(healthStatus == "checking" ? "Checking..." : "Test connection") {
+                                actionButton(healthStatus == "checking" ? "Probando…" : "Probar conexión") {
                                     Task { await checkConnection() }
                                 }
-                                actionButton(appModel.settingsSaved ? "Saved ✓" : "Save") {
+                                actionButton(appModel.settingsSaved ? "Guardado ✓" : "Guardar") {
                                     Task { await appModel.saveSettings() }
                                 }
                             }
@@ -1299,7 +1307,7 @@ private struct NikiSettingsSidebar: View {
                         }
                     }
 
-                    settingsSection("Niki Notch bridge") {
+                    settingsSection("Puente con el notch") {
                         VStack(alignment: .leading, spacing: 12) {
                             HStack(spacing: 10) {
                                 bridgeStatusDot
@@ -1310,7 +1318,7 @@ private struct NikiSettingsSidebar: View {
                                         .lineLimit(2)
                                     Text("Desktop writes backend URL, API key, and user id into the notch config.")
                                         .font(.system(size: 11, weight: .medium))
-                                        .foregroundStyle(Color.white.opacity(0.34))
+                                        .foregroundStyle(Color.white.opacity(0.52))
                                         .lineLimit(2)
                                 }
                             }
@@ -1325,10 +1333,10 @@ private struct NikiSettingsSidebar: View {
                                     )
                             )
 
-                            infoPill("Config file", value: "~/.niki/notch-config.json")
+                            infoPill("Archivo", value: "~/.niki/notch-config.json")
                             dualRow(
                                 infoPill("Backend", value: appModel.backendBaseURL.isEmpty ? "http://127.0.0.1:8000" : appModel.backendBaseURL),
-                                infoPill("User", value: appModel.userID.isEmpty ? "user-demo" : appModel.userID)
+                                infoPill("Usuario", value: appModel.userID.isEmpty ? "user-demo" : appModel.userID)
                             )
                             toggleRow(
                                 "Show / close notch",
@@ -1354,12 +1362,11 @@ private struct NikiSettingsSidebar: View {
     @ViewBuilder
     private var grupoApariencia: some View {
         Group {
-                    settingsSection("Grid cells") {
+                    settingsSection("Fondo y color") {
                         VStack(alignment: .leading, spacing: 10) {
                             Text("Cell color")
                                 .font(.system(size: 11, weight: .semibold))
-                                .tracking(1.6)
-                                .foregroundStyle(Color.white.opacity(0.36))
+                                                .foregroundStyle(Color.white.opacity(0.55))
                             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
                                 ForEach(nikiGridColorPresets, id: \.value) { preset in
                                     let active = appModel.orbAccentHex.lowercased() == preset.value.lowercased()
@@ -1408,7 +1415,7 @@ private struct NikiSettingsSidebar: View {
                         }
                     }
 
-                    settingsSection("Runtime · Hermes") {
+                    settingsSection("Runtime del agente") {
                         VStack(spacing: 12) {
                             field("API Server URL", text: $appModel.runtimeAPIURL)
                             field("Runtime API Key", text: $appModel.runtimeAPIKey, secure: true)
@@ -1418,7 +1425,7 @@ private struct NikiSettingsSidebar: View {
                             toggleRow("Diagnostics mode", isOn: $appModel.runtimeDiagnosticsEnabled)
                             infoPill("Runtime source", value: "Hermes via backend")
                             infoPill("Config file", value: "~/.hermes/config.yaml")
-                            infoPill("Live runtime", value: appModel.runtimeConnected ? "Connected" : "Offline")
+                            infoPill("Estado", value: appModel.runtimeConnected ? "Connected" : "Offline")
                         }
                     }
 
@@ -1437,7 +1444,7 @@ private struct NikiSettingsSidebar: View {
 
             Text("Se guardan las conversaciones y las señales de cuáles no sirvieron —cuándo la cortaste, cuándo repreguntaste, qué aprobaste— para poder entrenar un modelo propio. Queda todo en esta máquina.")
                 .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(Color.white.opacity(0.34))
+                .foregroundStyle(Color.white.opacity(0.52))
                 .fixedSize(horizontal: false, vertical: true)
 
             dualRow(
@@ -1482,13 +1489,13 @@ private struct NikiSettingsSidebar: View {
 
     private var statusLine: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(healthStatus == "ready" ? "Connected" : healthMessage)
+            Text(healthStatus == "ready" ? "Conectado" : healthMessage)
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(healthStatus == "ready" ? Color.green.opacity(0.82) : Color.red.opacity(0.82))
             if !modelInfo.isEmpty {
                 Text(modelInfo)
                     .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(Color.white.opacity(0.34))
+                    .foregroundStyle(Color.white.opacity(0.52))
             }
         }
     }
@@ -1521,7 +1528,6 @@ private struct NikiSettingsSidebar: View {
             VStack(alignment: .leading, spacing: 14) {
                 Text(title)
                     .font(.system(size: 12, weight: .semibold))
-                    .tracking(1.8)
                     .foregroundStyle(Color.white.opacity(0.5))
                 content()
             }
@@ -1532,8 +1538,7 @@ private struct NikiSettingsSidebar: View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title)
                 .font(.system(size: 11, weight: .semibold))
-                .tracking(1.6)
-                .foregroundStyle(Color.white.opacity(0.36))
+                .foregroundStyle(Color.white.opacity(0.55))
             Group {
                 if secure {
                     SecureField("", text: text)
@@ -1561,8 +1566,7 @@ private struct NikiSettingsSidebar: View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title)
                 .font(.system(size: 11, weight: .semibold))
-                .tracking(1.6)
-                .foregroundStyle(Color.white.opacity(0.36))
+                .foregroundStyle(Color.white.opacity(0.55))
             TextEditor(text: text)
                 .scrollContentBackground(.hidden)
                 .font(.system(size: 13, weight: .medium))
@@ -1584,8 +1588,7 @@ private struct NikiSettingsSidebar: View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title)
                 .font(.system(size: 11, weight: .semibold))
-                .tracking(1.6)
-                .foregroundStyle(Color.white.opacity(0.36))
+                .foregroundStyle(Color.white.opacity(0.55))
             Picker(title, selection: selection) {
                 ForEach(Array(T.allCases), id: \.self) { value in
                     Text(value.rawValue.replacingOccurrences(of: "_", with: " ").capitalized).tag(value)
@@ -1618,8 +1621,7 @@ private struct NikiSettingsSidebar: View {
         VStack(alignment: .leading, spacing: 8) {
             Text(label)
                 .font(.system(size: 11, weight: .semibold))
-                .tracking(1.6)
-                .foregroundStyle(Color.white.opacity(0.36))
+                .foregroundStyle(Color.white.opacity(0.55))
             Text(value)
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(Color.white.opacity(0.76))
@@ -1645,19 +1647,25 @@ private struct NikiSettingsSidebar: View {
     }
 
     private func actionButton(_ title: String, secondary: Bool = false, action: @escaping () -> Void) -> some View {
-        Button(title, action: action)
-            .buttonStyle(.plain)
-            .font(.system(size: 12, weight: .semibold))
-            .foregroundStyle(Color.white.opacity(0.82))
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .background(
-                Capsule(style: .continuous)
-                    .fill(Color.white.opacity(secondary ? 0.05 : 0.08))
-                    .overlay(
-                        Capsule(style: .continuous)
-                            .stroke(Color.white.opacity(0.08), lineWidth: 1)
-                    )
-            )
+        // El relleno y la cápsula van ADENTRO del label. Estaban afuera, o sea aplicados
+        // al Button ya construido, y el área que respondía al clic era solo la del texto:
+        // apuntarle al borde de la cápsula no hacía nada y parecía que el botón fallaba.
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(Color.white.opacity(0.82))
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(
+                    Capsule(style: .continuous)
+                        .fill(Color.white.opacity(secondary ? 0.05 : 0.08))
+                        .overlay(
+                            Capsule(style: .continuous)
+                                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                        )
+                )
+                .contentShape(Capsule(style: .continuous))
+        }
+        .buttonStyle(.plain)
     }
 }

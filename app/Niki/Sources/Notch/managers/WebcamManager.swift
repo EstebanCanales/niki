@@ -305,17 +305,36 @@ class WebcamManager: NSObject, ObservableObject {
 
     private var pedidoDeCuadro: ((Data?) -> Void)?
     private var cuadrosVistos = 0
+    /// Cuándo se empezó a pedir el cuadro, para poder rendirse con el brillo.
+    private var desdeCuando = Date()
+    /// El cuadro más claro que se vio hasta ahora. Si se acaba el tiempo, se manda ese en
+    /// vez del último: si la cámara alcanzó a abrir un instante, esa toma sirve.
+    private var mejorCuadro: (brillo: Double, datos: Data)?
     /// Quien quiera mirar todos los cuadros, no uno solo. Lo usa el lector de gestos.
     private var observador: ((CVPixelBuffer) -> Void)?
     private let colaDeCuadro = DispatchQueue(label: "niki.webcam.cuadro")
 
-    /// Cuántos cuadros se descartan antes de quedarse con uno.
+    /// Cuántos cuadros se descartan de entrada, pase lo que pase.
     ///
-    /// Los primeros que entrega una cámara recién prendida vienen oscuros: el ajuste
-    /// automático de exposición todavía no convergió. Un detector de caras sobre un cuadro
-    /// negro no encuentra nada, y el usuario ve "no se pudo sacar la foto" cuando estaba
-    /// perfectamente sentado frente a la cámara.
-    private static let cuadrosADescartar = 8
+    /// Contar cuadros no alcanza y está medido: con ocho descartados, las cinco fotos que
+    /// llegaron al backend tenían brillo medio 0-2 sobre 255. Ocho cuadros son un cuarto
+    /// de segundo y una webcam de Mac tarda uno o dos en abrir el diafragma. Esto es solo
+    /// el piso; lo que decide de verdad es `brilloMinimo`.
+    private static let cuadrosADescartar = 4
+
+    /// Debajo de este brillo medio (0-255) el cuadro se considera inservible.
+    ///
+    /// Es la condición que faltaba: en vez de suponer cuánto tarda la cámara, se mira si
+    /// la foto tiene algo. Un cuarto oscuro con la pantalla prendida da bastante más que
+    /// esto; las tomas negras que fallaron daban 0 y 2.
+    private static let brilloMinimo: Double = 12
+
+    /// Después de este tiempo se acepta el cuadro aunque siga oscuro.
+    ///
+    /// Sin esta salida, alguien con la cámara tapada o en un cuarto de verdad a oscuras se
+    /// quedaría esperando para siempre. Es mejor mandar una foto oscura y que el backend
+    /// diga "no vi a nadie" que colgarse.
+    private static let esperaPorBrillo: TimeInterval = 2.5
 
     /// Un JPEG de la cámara, o nil si no se pudo.
     ///
@@ -347,10 +366,13 @@ class WebcamManager: NSObject, ObservableObject {
                 salida.setSampleBufferDelegate(nil, queue: nil)
                 self.pedidoDeCuadro = nil
                 self.cuadrosVistos = 0
+                self.mejorCuadro = nil
                 DispatchQueue.main.async { completado(datos) }
             }
 
             cuadrosVistos = 0
+            mejorCuadro = nil
+            desdeCuando = Date()
             pedidoDeCuadro = contestar
             salida.setSampleBufferDelegate(self, queue: colaDeCuadro)
             // Lo que quede del tiempo límite, no el total: ya se gastó parte esperando a
@@ -423,20 +445,42 @@ extension WebcamManager: AVCaptureVideoDataOutputSampleBufferDelegate {
 
         guard let pedido = pedidoDeCuadro else { return }
 
-        // Para quedarse con UNO, en cambio, sí importa: los primeros de una cámara recién
-        // prendida vienen sin exposición y un detector de caras no encuentra nada ahí.
+        // Un piso de cuadros descartados, y después la condición que importa: que la foto
+        // tenga algo. Contar cuadros no alcanza — con ocho descartados las cinco tomas que
+        // llegaron al backend tenían brillo 0-2 sobre 255.
         cuadrosVistos += 1
         guard cuadrosVistos > Self.cuadrosADescartar else { return }
 
+        let brillo = NikiBrillo.medio(buffer)
+        let seAcaboElTiempo = Date().timeIntervalSince(desdeCuando) >= Self.esperaPorBrillo
+
+        guard let datos = Self.jpeg(de: buffer) else { return }
+
+        // Se guarda el más claro visto: si la cámara alcanzó a abrir un instante y después
+        // volvió a cerrarse, esa toma es la que sirve.
+        if brillo > (mejorCuadro?.brillo ?? -1) {
+            mejorCuadro = (brillo, datos)
+        }
+
+        if brillo >= Self.brilloMinimo {
+            pedido(datos)
+            return
+        }
+        if seAcaboElTiempo {
+            // Se manda el mejor igual: mejor una foto oscura, que el backend responderá
+            // "no vi a nadie", que dejar al usuario esperando sin respuesta.
+            pedido(mejorCuadro?.datos ?? datos)
+        }
+    }
+
+    private static func jpeg(de buffer: CVPixelBuffer) -> Data? {
         let imagen = CIImage(cvPixelBuffer: buffer)
-        let contexto = CIContext()
         // JPEG con calidad media: lo que necesita el reconocedor es la geometría de la
         // cara, no el detalle, y esto viaja por HTTP en cada verificación.
-        let datos = contexto.jpegRepresentation(
+        return CIContext().jpegRepresentation(
             of: imagen,
             colorSpace: CGColorSpaceCreateDeviceRGB(),
             options: [kCGImageDestinationLossyCompressionQuality as CIImageRepresentationOption: 0.7]
         )
-        pedido(datos)
     }
 }

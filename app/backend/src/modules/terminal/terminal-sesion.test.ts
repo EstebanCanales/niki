@@ -4,7 +4,19 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 
-import { guionParaSesion, sesionDeLaIA, sesionPropia } from "./terminal-sesion";
+import { guionParaSesion, sesionDeLaIA, sesionesDeNiki, sesionPropia } from "./terminal-sesion";
+
+/** Un log falso del runtime, con las líneas que deja al abrir cada sesión. */
+function logConSesiones(temp: string, ...ids: string[]): string {
+  const ruta = path.join(temp, "agent.log");
+  fs.writeFileSync(
+    ruta,
+    ids
+      .map((id) => `2026-08-17 13:02:02,024 INFO [x] tools.environments.base: Session snapshot created (session=${id}, cwd=/tmp)\n`)
+      .join(""),
+  );
+  return ruta;
+}
 
 /** Un temporal propio por test: el de verdad tiene las sesiones reales del runtime. */
 function tempFalso() {
@@ -23,27 +35,55 @@ function fabricarSesionDeLaIA(temp: string, id: string, cwd: string, hace = 0) {
 test("encuentra la sesión que la IA está usando", () => {
   const temp = tempFalso();
   fabricarSesionDeLaIA(temp, "abc123456789", os.tmpdir());
+  const log = logConSesiones(temp, "abc123456789");
 
-  const s = sesionDeLaIA(temp);
+  const s = sesionDeLaIA(temp, log);
   assert.equal(s?.id, "abc123456789");
   assert.equal(s?.cwd, os.tmpdir());
   assert.equal(s?.compartidaConLaIA, true);
 });
 
-test("entre varias sesiones toma la más reciente, no la primera", () => {
+test("entre varias sesiones toma la última que abrió Niki", () => {
   // Los archivos de gateways anteriores quedan en el temporal. Tomar uno viejo sería
   // aterrizar en el directorio de anteayer.
   const temp = tempFalso();
-  fabricarSesionDeLaIA(temp, "aaaaaaaaaaaa", "/usr", 60 * 60 * 1000);
+  fabricarSesionDeLaIA(temp, "aaaaaaaaaaaa", "/usr");
   fabricarSesionDeLaIA(temp, "ffffffffffff", os.tmpdir());
+  const log = logConSesiones(temp, "aaaaaaaaaaaa", "ffffffffffff");
 
-  assert.equal(sesionDeLaIA(temp)?.id, "ffffffffffff");
+  assert.equal(sesionDeLaIA(temp, log)?.id, "ffffffffffff");
+});
+
+test("no se mete en la sesión de otro Hermes de la misma máquina", () => {
+  // El Hermes personal de Esteban (~/.hermes) escribe en el mismo temporal y con el mismo
+  // formato de nombre. Antes se tomaba el archivo más reciente y la terminal de Niki
+  // terminaba parada en el directorio del otro — pasó de verdad.
+  const temp = tempFalso();
+  fabricarSesionDeLaIA(temp, "de1a1a1a1a1a", os.tmpdir());   // de Niki
+  fabricarSesionDeLaIA(temp, "de0000000000", "/usr");        // del otro Hermes, más nuevo
+  const log = logConSesiones(temp, "de1a1a1a1a1a");          // el log solo conoce la suya
+
+  assert.equal(sesionDeLaIA(temp, log)?.id, "de1a1a1a1a1a");
+});
+
+test("sin log no hay sesión de la IA", () => {
+  // Es lo correcto: si no se puede probar que la sesión es de Niki, mejor abrir una
+  // propia que meterse en la de cualquiera.
+  const temp = tempFalso();
+  fabricarSesionDeLaIA(temp, "abc123456789", os.tmpdir());
+  assert.equal(sesionDeLaIA(temp, path.join(temp, "no-existe.log")), null);
+});
+
+test("las sesiones salen del log en orden, la más nueva primero", () => {
+  const temp = tempFalso();
+  const log = logConSesiones(temp, "111111111111", "222222222222", "333333333333");
+  assert.deepEqual(sesionesDeNiki(log), ["333333333333", "222222222222", "111111111111"]);
 });
 
 test("una sesión sin snapshot no sirve: sería compartir a medias", () => {
   const temp = tempFalso();
   fs.writeFileSync(path.join(temp, "hermes-cwd-5010cd012345.txt"), `${os.tmpdir()}\n`);
-  assert.equal(sesionDeLaIA(temp), null);
+  assert.equal(sesionDeLaIA(temp, logConSesiones(temp, "5010cd012345")), null);
 });
 
 test("si el directorio guardado ya no existe, esa sesión se descarta", () => {
@@ -51,12 +91,12 @@ test("si el directorio guardado ya no existe, esa sesión se descarta", () => {
   // comando se perdería sin explicación.
   const temp = tempFalso();
   fabricarSesionDeLaIA(temp, "b0114d012345", path.join(temp, "ya-no-esta"));
-  assert.equal(sesionDeLaIA(temp), null);
+  assert.equal(sesionDeLaIA(temp, logConSesiones(temp, "b0114d012345")), null);
 });
 
 test("sin sesión de la IA se abre una propia, y se dice que lo es", () => {
   const temp = tempFalso();
-  assert.equal(sesionDeLaIA(temp), null);
+  assert.equal(sesionDeLaIA(temp, logConSesiones(temp)), null);
 
   const s = sesionPropia("/Users/x/proyecto", temp);
   assert.equal(s.compartidaConLaIA, false);
@@ -75,7 +115,7 @@ test("la sesión propia recuerda dónde quedó", () => {
 test("el guion sigue el mismo orden que el del runtime", () => {
   const temp = tempFalso();
   fabricarSesionDeLaIA(temp, "07de41234567", os.tmpdir());
-  const s = sesionDeLaIA(temp)!;
+  const s = sesionDeLaIA(temp, logConSesiones(temp, "07de41234567"))!;
   const g = guionParaSesion(s, "echo hola");
 
   // Cualquier diferencia de orden acá significa que la IA y Esteban terminan en sesiones
@@ -97,7 +137,7 @@ test("un directorio con espacios o comillas no rompe el guion", () => {
   fs.mkdirSync(raro);
   fabricarSesionDeLaIA(temp, "4a4012345678", raro);
 
-  const g = guionParaSesion(sesionDeLaIA(temp)!, "pwd");
+  const g = guionParaSesion(sesionDeLaIA(temp, logConSesiones(temp, "4a4012345678"))!, "pwd");
   assert.ok(g.includes("'comillas'\\''"), "el nombre tiene que ir escapado");
 });
 
@@ -106,7 +146,7 @@ test("el código de salida del comando es el que sale, no el de los pasos que le
   // antes, `false` devolvería 0 porque el último paso salió bien.
   const temp = tempFalso();
   fabricarSesionDeLaIA(temp, "c0d160123456", os.tmpdir());
-  const g = guionParaSesion(sesionDeLaIA(temp)!, "false");
+  const g = guionParaSesion(sesionDeLaIA(temp, logConSesiones(temp, "c0d160123456"))!, "false");
 
   assert.ok(g.includes("__niki_ec=$?"), "hay que guardar el código apenas termina");
   assert.ok(g.trimEnd().endsWith("exit $__niki_ec"), "y devolverlo al final");

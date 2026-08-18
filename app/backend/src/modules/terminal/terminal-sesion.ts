@@ -17,8 +17,15 @@ import * as path from "path";
  * la misma sesión que la IA — mismo directorio, mismas variables — sin tocar el fork.
  *
  * El `<id>` es un uuid al azar que el runtime genera al crear su entorno, no el id de la
- * conversación: no se puede deducir, hay que encontrarlo. Como el gateway tiene un solo
- * entorno vivo por vez, el más recientemente escrito es el que la IA está usando ahora.
+ * conversación: no se puede deducir, hay que encontrarlo. Se saca del log de Niki, donde
+ * el runtime deja "Session snapshot created (session=...)" al abrir su entorno.
+ *
+ * Antes se tomaba el archivo más reciente del temporal, y eso estaba mal: si en la misma
+ * máquina corre otro Hermes —el personal de Esteban, en ~/.hermes— escribe en el mismo
+ * directorio con el mismo formato de nombre, y la terminal de Niki terminaba metida en la
+ * sesión del otro. Pasó: la terminal apareció parada en /Users/estebancanales, que era
+ * donde estaba el Hermes personal. El log de agent-home, en cambio, es de Niki y de nadie
+ * más.
  *
  * ## Qué se comparte y qué no (medido, no supuesto)
  *
@@ -38,6 +45,12 @@ import * as path from "path";
  */
 
 /** Dónde escribe el runtime, que es `/tmp` salvo que TMPDIR diga otra cosa. En macOS dice. */
+/** El log del runtime de Niki. Es de Niki y de nadie más: por eso sirve para distinguir
+ *  sus sesiones de las de cualquier otro Hermes que corra en la misma máquina. */
+export const LOG_DE_NIKI = path.resolve(
+  __dirname, "..", "..", "..", "agent-home", "logs", "agent.log",
+);
+
 export function directorioTemporal(): string {
   return process.env.TMPDIR?.replace(/\/$/, "") || os.tmpdir() || "/tmp";
 }
@@ -58,25 +71,32 @@ export type SesionDeTerminal = {
  * Se elige por fecha de modificación y no por nombre: los archivos de gateways anteriores
  * quedan en el temporal, y tomar uno viejo sería aterrizar en el directorio de anteayer.
  */
-export function sesionDeLaIA(temp = directorioTemporal()): SesionDeTerminal | null {
-  let candidatos: { id: string; mtime: number }[] = [];
+/** Las sesiones que abrió el runtime de Niki, la más nueva primero. */
+export function sesionesDeNiki(log = LOG_DE_NIKI): string[] {
+  let texto = "";
   try {
-    candidatos = fs
-      .readdirSync(temp)
-      .map((n) => /^hermes-cwd-([0-9a-f]{6,})\.txt$/.exec(n))
-      .filter((m): m is RegExpExecArray => m !== null)
-      .map((m) => {
-        try {
-          return { id: m[1], mtime: fs.statSync(path.join(temp, m[0])).mtimeMs };
-        } catch {
-          return { id: m[1], mtime: 0 };
-        }
-      })
-      .filter((c) => c.mtime > 0)
-      .sort((a, b) => b.mtime - a.mtime);
+    // Solo el final del archivo: crece sin parar y lo único que interesa es lo último.
+    const fd = fs.openSync(log, "r");
+    const { size } = fs.fstatSync(fd);
+    const desde = Math.max(0, size - 200_000);
+    const buffer = Buffer.alloc(size - desde);
+    fs.readSync(fd, buffer, 0, buffer.length, desde);
+    fs.closeSync(fd);
+    texto = buffer.toString("utf8");
   } catch {
-    return null;
+    return [];
   }
+
+  const ids: string[] = [];
+  for (const m of texto.matchAll(/Session snapshot created \(session=([0-9a-f]{6,})/g)) {
+    ids.push(m[1]);
+  }
+  return ids.reverse();
+}
+
+export function sesionDeLaIA(temp = directorioTemporal(), log = LOG_DE_NIKI): SesionDeTerminal | null {
+  const candidatos = sesionesDeNiki(log).map((id) => ({ id }));
+  if (candidatos.length === 0) return null;
 
   for (const { id } of candidatos) {
     const archivoCwd = path.join(temp, `hermes-cwd-${id}.txt`);

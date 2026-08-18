@@ -101,6 +101,45 @@ def descodificar(jpeg_b64: str):
     return imagen
 
 
+def buscar_cara(imagen):
+    """La cara más grande de la imagen, probando las cuatro orientaciones.
+
+    YuNet solo encuentra caras derechas: una imagen rotada noventa grados no le dice nada.
+    Y por dónde salga orientado un cuadro de la cámara depende del pipeline que lo generó
+    —CoreImage, la orientación del sensor, cómo se codificó a JPEG—, cosa que no se puede
+    dar por sentada desde acá.
+
+    Probar cuatro rotaciones cuesta milisegundos con un modelo de 227 KB, y convierte "no
+    encontré ninguna cara" en "no hay nadie", que es lo que uno quiere que signifique.
+
+    Se queda con la orientación de MAYOR confianza, no con la primera que dé algo. Medido:
+    con la cara girada noventa grados, YuNet igual "encuentra" una cara en la orientación
+    equivocada, y el recorte que sale de ahí da un puntaje de 0.12 contra el 0.96 de la
+    buena. Quedarse con la primera convertía una foto perfectamente válida en un rechazo.
+    """
+    import cv2
+
+    rotaciones = [
+        None,
+        cv2.ROTATE_90_CLOCKWISE,
+        cv2.ROTATE_180,
+        cv2.ROTATE_90_COUNTERCLOCKWISE,
+    ]
+    mejor = (0.0, None, None)
+    for giro in rotaciones:
+        vista = imagen if giro is None else cv2.rotate(imagen, giro)
+        alto, ancho = vista.shape[:2]
+        _, caras = detector(ancho, alto).detect(vista)
+        if caras is None or len(caras) == 0:
+            continue
+        # La última columna de cada detección es la confianza de YuNet.
+        cara = max(caras, key=lambda c: float(c[-1]))
+        confianza = float(cara[-1])
+        if confianza > mejor[0]:
+            mejor = (confianza, vista, cara)
+    return mejor[1], mejor[2]
+
+
 def embedding(jpeg_b64: str):
     """Los 128 números que representan la cara más grande del cuadro.
 
@@ -110,12 +149,9 @@ def embedding(jpeg_b64: str):
     import numpy as np
 
     imagen = descodificar(jpeg_b64)
-    alto, ancho = imagen.shape[:2]
-    _, caras = detector(ancho, alto).detect(imagen)
-    if caras is None or len(caras) == 0:
+    imagen, mayor = buscar_cara(imagen)
+    if mayor is None:
         return None
-
-    mayor = max(caras, key=lambda c: float(c[2]) * float(c[3]))
     alineada = reconocedor().alignCrop(imagen, mayor)
     emb = reconocedor().feature(alineada)
     vector = np.asarray(emb).flatten().astype(np.float64)

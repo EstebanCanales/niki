@@ -104,6 +104,19 @@ def main():
 
     revisar("hay margen entre las dos", propio > ajeno * 2, f"{propio:.3f} contra {ajeno:.3f}")
 
+    # La misma cara girada. La cámara puede entregar el cuadro en cualquier orientación
+    # según cómo lo genere el pipeline, y una foto perfectamente válida no puede
+    # rechazarse por eso. Medido antes de arreglarlo: 0.12 contra 0.96.
+    import cv2
+    derecha = cv2.imread(os.path.join(FOTOS, "a5.jpg"))
+    for nombre, giro in [("g90", cv2.ROTATE_90_CLOCKWISE),
+                         ("g180", cv2.ROTATE_180),
+                         ("g270", cv2.ROTATE_90_COUNTERCLOCKWISE)]:
+        cv2.imwrite(os.path.join(FOTOS, f"{nombre}.jpg"), cv2.rotate(derecha, giro))
+        r = pedir({"op": "verify", "userId": usuario, "frame": b64(f"{nombre}.jpg")})
+        revisar(f"la reconoce girada {nombre[1:]} grados", r.get("match") is True,
+                f"puntaje {r.get('score'):.3f}")
+
     r = pedir({"op": "verify", "userId": usuario, "frame": b64("nada.jpg")})
     revisar("cámara tapada no es 'no sos vos'",
             r.get("match") is True and r.get("faceFound") is False, r)

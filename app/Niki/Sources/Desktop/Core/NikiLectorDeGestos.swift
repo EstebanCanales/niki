@@ -23,7 +23,6 @@ final class NikiLectorDeGestos: ObservableObject {
     @Published private(set) var mirando = false
 
     private let gestos = NikiGestos()
-    private var apagarAlTerminar = false
     /// Cuántos cuadros se saltean. Vision sobre una mano cuesta unos milisegundos; a
     /// treinta cuadros por segundo eso es trabajo constante para nada. Uno de cada tres
     /// da unos diez por segundo, de sobra para un gesto que se sostiene medio segundo.
@@ -37,9 +36,7 @@ final class NikiLectorDeGestos: ObservableObject {
         guard !mirando else { return }
         mirando = true
 
-        let yaEstaba = WebcamManager.shared.isSessionRunning
-        apagarAlTerminar = !yaEstaba
-        if !yaEstaba { WebcamManager.shared.startSession() }
+        WebcamManager.shared.retener()
 
         WebcamManager.shared.observarCuadros { [weak self] buffer in
             // Llega en la cola de la cámara, no en la principal.
@@ -52,7 +49,7 @@ final class NikiLectorDeGestos: ObservableObject {
         guard mirando else { return }
         mirando = false
         WebcamManager.shared.dejarDeObservar()
-        if apagarAlTerminar { WebcamManager.shared.stopSession() }
+        WebcamManager.shared.soltar()
         ultimo = nil
     }
 

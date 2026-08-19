@@ -385,6 +385,91 @@ class WebcamManager: NSObject, ObservableObject {
         colaDeCuadro.async { intentar() }
     }
 
+    // ── Quién necesita la cámara ──────────────────────────────────────────────
+    //
+    // Siete lugares la prendían y apagaban, cada uno con su propio "¿ya estaba
+    // prendida?". Ese chequeo miente: `isSessionRunning` se actualiza después de que la
+    // sesión arranca, así que dos que empiecen a la vez —y al empezar una videollamada
+    // arrancan tres— ven ambos "apagada", ambos creen que la prendieron ellos, y el
+    // primero que termina la apaga mientras el otro la está usando. De ahí que la cámara
+    // "no se prenda del todo".
+    //
+    // Con conteo de referencias nadie tiene que adivinar: se pide y se suelta, y la
+    // sesión vive mientras haya al menos uno que la necesite.
+
+    private var retenciones = 0
+    private var espejoRetenido = false
+    private let candado = NSLock()
+
+    /// Cuánto se deja la cámara prendida después de que la suelta el último.
+    ///
+    /// Apagarla en el acto sale caro: `stopSession` destruye la sesión entera, así que la
+    /// próxima vez hay que crearla de nuevo y esperar otra vez a que el sensor exponga —
+    /// uno o dos segundos. Y en una conversación se pide y se suelta seguido: mirar la
+    /// cara, sacar una foto, mirar de nuevo a los quince segundos.
+    ///
+    /// Cuatro segundos cubren esos huecos sin dejar la luz verde prendida cuando ya nadie
+    /// la usa.
+    private static let graciaAntesDeApagar: TimeInterval = 4
+
+    private var apagadoPendiente: DispatchWorkItem?
+
+    /// Pide la cámara. Se prende si era el primero.
+    func retener() {
+        // Si había un apagado en camino, se cancela: quien vuelve a pedirla dentro de la
+        // gracia se encuentra la cámara ya despierta.
+        apagadoPendiente?.cancel()
+        apagadoPendiente = nil
+
+        candado.lock()
+        retenciones += 1
+        let primero = retenciones == 1
+        candado.unlock()
+        if primero { startSession() }
+    }
+
+    /// La suelta. Se apaga si era el último.
+    func soltar() {
+        candado.lock()
+        // Soltar sin haber pedido no apaga nada. Sin este guardia, una llamada de más
+        // —que pasa: el espejo cierra en onDisappear y en el toque— disparaba un apagado
+        // aunque la cuenta ya estuviera en cero.
+        guard retenciones > 0 else { candado.unlock(); return }
+        retenciones -= 1
+        let ultimo = retenciones == 0
+        candado.unlock()
+        guard ultimo else { return }
+
+        let apagar = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.candado.lock()
+            let sigueEnCero = self.retenciones == 0
+            self.candado.unlock()
+            if sigueEnCero { self.stopSession() }
+        }
+        apagadoPendiente = apagar
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.graciaAntesDeApagar, execute: apagar)
+    }
+
+    /// El espejo del notch es un interruptor del usuario, no un préstamo: se prende y se
+    /// apaga cuando él quiere, y sus llamadas no vienen de a pares. Con un lugar propio,
+    /// idempotente, sus idas y vueltas no pueden descuadrar la cuenta de los demás.
+    func alternarEspejo() {
+        if espejoRetenido { soltarEspejo() } else { retenerEspejo() }
+    }
+
+    func retenerEspejo() {
+        guard !espejoRetenido else { return }
+        espejoRetenido = true
+        retener()
+    }
+
+    func soltarEspejo() {
+        guard espejoRetenido else { return }
+        espejoRetenido = false
+        soltar()
+    }
+
     /// La sesión de captura, para quien necesite su propia capa de vista previa.
     ///
     /// `previewLayer` es una sola instancia compartida, y una capa de Core Animation vive

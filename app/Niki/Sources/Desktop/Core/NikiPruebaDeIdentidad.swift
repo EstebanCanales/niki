@@ -89,9 +89,8 @@ final class NikiPruebaDeIdentidad: ObservableObject {
     private static let tomasDePrueba = 3
 
     private func probarCamara(_ cliente: NikiAPIClient) async {
-        let yaEstaba = WebcamManager.shared.isSessionRunning
-        if !yaEstaba { WebcamManager.shared.startSession() }
-        defer { if !yaEstaba { WebcamManager.shared.stopSession() } }
+        WebcamManager.shared.retener()
+        defer { WebcamManager.shared.soltar() }
 
         agregar("Mirá la cámara", .aviso, "sacando \(Self.tomasDePrueba) fotos…")
 

@@ -2199,9 +2199,9 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
         // La cámara queda prendida toda la videollamada, no se apaga entre miradas: el
         // punto es que se vea la imagen en el notch, y prenderla y apagarla cada quince
         // segundos daría un parpadeo además de tardar en exponer cada vez.
-        WebcamManager.shared.startSession()
+        WebcamManager.shared.retener()
         miradaTask = Task { @MainActor [weak self] in
-            defer { WebcamManager.shared.stopSession() }
+            defer { WebcamManager.shared.soltar() }
             while !Task.isCancelled, self?.videollamada == true, self?.sttLabActive == true {
                 await self?.cara.mirar()
                 try? await Task.sleep(nanoseconds: 15_000_000_000)

@@ -135,11 +135,11 @@ class NikiNotchViewModel: NSObject, ObservableObject {
 
         switch webcamManager.authorizationStatus {
         case .authorized:
-            if webcamManager.isSessionRunning {
-                webcamManager.stopSession()
+            if isCameraExpanded {
+                webcamManager.soltarEspejo()
                 isCameraExpanded = false
             } else if webcamManager.cameraAvailable {
-                webcamManager.startSession()
+                webcamManager.retenerEspejo()
                 isCameraExpanded = true
             }
 

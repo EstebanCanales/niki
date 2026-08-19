@@ -48,7 +48,9 @@ struct CameraPreviewView: View {
                 handleCameraTap()
             }
             .onDisappear {
-                webcamManager.stopSession()
+                // Suelta lo suyo y nada más: si la cara o los gestos están usando la
+                // cámara, sigue prendida para ellos.
+                webcamManager.soltarEspejo()
             }
         }
         .aspectRatio(1, contentMode: .fit)
@@ -61,10 +63,8 @@ struct CameraPreviewView: View {
         
         switch webcamManager.authorizationStatus {
         case .authorized:
-            if webcamManager.isSessionRunning {
-                webcamManager.stopSession()
-            } else if webcamManager.cameraAvailable {
-                webcamManager.startSession()
+            if webcamManager.cameraAvailable || webcamManager.isSessionRunning {
+                webcamManager.alternarEspejo()
             }
         case .denied, .restricted:
             DispatchQueue.main.async {

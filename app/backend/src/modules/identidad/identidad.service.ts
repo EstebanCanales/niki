@@ -92,20 +92,55 @@ export class IdentidadService {
    * caía, todo fallaba en abierto **en silencio** y nadie se enteraba de que la identidad
    * había dejado de existir. Fallar en abierto está bien; hacerlo sin avisar, no.
    */
-  salud(userId: string) {
-    const v = this.veredicto(userId);
+  /**
+   * Lo que se puede decir sin preguntarle a nadie: si las piezas están instaladas.
+   *
+   * Va en el camino del turno, que corre en cada mensaje. La versión buena consulta a los
+   * workers —un proceso de Python de ida y vuelta— y eso no puede pagarse por turno solo
+   * para escribir una línea informativa en la consola.
+   */
+  saludRapida(): string[] {
     const problemas: string[] = [];
     if (!this.cara.available) problemas.push("la huella de cara no está instalada");
-    else if (!v.porCara.registrado) problemas.push("no hay una cara registrada");
     if (!this.voz.available) problemas.push("la huella de voz no está instalada");
-    else if (!v.porVoz.registrado) problemas.push("no hay una voz registrada");
+    return problemas;
+  }
+
+  async salud(userId: string) {
+    // Se le pregunta a los workers, no al veredicto guardado. El veredicto es lo último
+    // que se supo y puede estar viejo: en una prueba dijo que había una voz registrada
+    // justo después de haberla borrado, porque miraba el recuerdo en vez de mirar el
+    // disco. Una función que se llama "salud" no puede contestar de memoria.
+    const [caraOk, vozOk] = await Promise.all([
+      this.registrado(this.cara, userId),
+      this.registrado(this.voz, userId),
+    ]);
+
+    const problemas: string[] = [];
+    if (!this.cara.available) problemas.push("la huella de cara no está instalada");
+    else if (!caraOk) problemas.push("no hay una cara registrada");
+    if (!this.voz.available) problemas.push("la huella de voz no está instalada");
+    else if (!vozOk) problemas.push("no hay una voz registrada");
 
     return {
-      // Con una de las dos alcanza para poder afirmar algo.
-      puedeIdentificar: problemas.length < 2,
+      // Con una de las dos alcanza para poder afirmar algo. Con ninguna, este sistema
+      // no puede decir nada de nadie y conviene que se sepa.
+      puedeIdentificar: caraOk || vozOk,
       problemas,
       modo: this.modo(),
     };
+  }
+
+  private async registrado(
+    huella: { available: boolean; status(userId: string): Promise<{ enrolled: boolean }> },
+    userId: string,
+  ): Promise<boolean> {
+    if (!huella.available) return false;
+    try {
+      return (await huella.status(userId)).enrolled;
+    } catch {
+      return false;
+    }
   }
 
   /** Lo que se sabe ahora mismo de esta persona. */
@@ -141,7 +176,13 @@ export class IdentidadService {
     );
   }
 
-  /** Olvida lo que se sabía. Al colgar, o al cambiar de usuario. */
+  /**
+   * Olvida lo que se sabía. Al colgar, al cambiar de usuario, o al borrar una huella.
+   *
+   * Lo último es lo que motivó llamarlo desde afuera: al borrar el perfil de cara, el
+   * veredicto guardado seguía diciendo "es él" durante cinco minutos, apoyado en una
+   * comparación contra un perfil que ya no existía.
+   */
   olvidar(userId: string) {
     this.ultimo.delete(userId);
   }

@@ -997,7 +997,8 @@ export class RuntimeService implements OnModuleDestroy {
     // gentileza de no llamar. Ahora la compuerta está donde están las escrituras.
     const { decision, motivo, veredicto } = this.identidad.decidirTurno(userId);
     const puedeEscribir = this.identidad.puedeEscribir(decision);
-    const salud = this.identidad.salud(userId);
+    // La rápida: la buena consulta a los workers y esto corre en cada turno.
+    const pendiente = this.identidad.saludRapida();
 
     this.broadcastEvent(
       decision === "pasa" ? "info" : "warning",
@@ -1010,7 +1011,7 @@ export class RuntimeService implements OnModuleDestroy {
         `cara: ${describirSenal(veredicto.porCara)}`,
         `voz: ${describirSenal(veredicto.porVoz)}`,
         `escribe: ${puedeEscribir ? "sí" : "no"}`,
-        salud.problemas.length ? `pendiente: ${salud.problemas.join("; ")}` : "",
+        pendiente.length ? `pendiente: ${pendiente.join("; ")}` : "",
       ].filter(Boolean).join("\n"),
     );
 

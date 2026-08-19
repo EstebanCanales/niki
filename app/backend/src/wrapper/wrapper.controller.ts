@@ -512,13 +512,13 @@ export class WrapperController {
 
   /** Quién está del otro lado, según la cara y la voz juntas. */
   @Get("identidad")
-  identidadActual(@Req() req: Request) {
+  async identidadActual(@Req() req: Request) {
     this.wrapperService.assertAuthorized(req);
     return {
       ok: true,
       ...this.identidad.veredicto(actingUserIdFrom(req)),
       disponible: this.identidad.disponibilidad(),
-      salud: this.identidad.salud(actingUserIdFrom(req)),
+      salud: await this.identidad.salud(actingUserIdFrom(req)),
     };
   }
 
@@ -539,7 +539,11 @@ export class WrapperController {
   @HttpCode(200)
   async caraOlvidar(@Req() req: Request, @Body() body?: { userId?: string }) {
     this.wrapperService.assertAuthorized(req);
-    return this.faceService.forget(body?.userId?.trim() || actingUserIdFrom(req));
+    const usuario = body?.userId?.trim() || actingUserIdFrom(req);
+    // Sin esto el veredicto guardado seguía diciendo "es él" cinco minutos más, apoyado
+    // en un perfil recién borrado.
+    this.identidad.olvidar(usuario);
+    return this.faceService.forget(usuario);
   }
 
   @Post("voice/synthesize")

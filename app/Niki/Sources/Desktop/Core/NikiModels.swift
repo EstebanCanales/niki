@@ -875,6 +875,21 @@ struct NikiCaraRegistro: Codable {
     let samples: Int?
 }
 
+/// Qué se ve en un cuadro de la cámara, en números. No compara con nadie.
+struct NikiCaraDiagnostico: Codable {
+    let ok: Bool
+    let error: String?
+    let ancho: Int?
+    let alto: Int?
+    let brillo: Double?
+    let bytes: Int?
+    let caraEncontrada: Bool?
+    let confianza: Double?
+    let orientacion: Int?
+    let caras: Int?
+    let motivo: String?
+}
+
 /// Estado de la huella de voz.
 struct NikiSpeakerStatus: Codable {
     let available: Bool

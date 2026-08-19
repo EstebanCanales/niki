@@ -111,6 +111,8 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
     @Published var registroDeCara = NikiRegistroDeCaraEstado()
     /// Gestos con la mano durante la conversación. Ver NikiLectorDeGestos.
     let gestos = NikiLectorDeGestos()
+    /// Prueba de punta a punta de cámara, micrófono y servicios. Ver NikiPruebaDeIdentidad.
+    let prueba = NikiPruebaDeIdentidad()
     @AppStorage("niki.gestos.activos") var gestosActivos = true
     @Published var dataset: NikiDatasetResumen = .vacio
     @Published var datasetOcupado = false
@@ -298,6 +300,7 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
 
     func cargarEstadoDeCara() async {
         cara.configurar(cliente: client)
+        prueba.configurar(cliente: client)
         await cara.cargarEstado()
     }
 

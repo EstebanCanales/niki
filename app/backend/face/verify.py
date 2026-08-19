@@ -120,13 +120,13 @@ def buscar_cara(imagen):
     import cv2
 
     rotaciones = [
-        None,
-        cv2.ROTATE_90_CLOCKWISE,
-        cv2.ROTATE_180,
-        cv2.ROTATE_90_COUNTERCLOCKWISE,
+        (None, 0),
+        (cv2.ROTATE_90_CLOCKWISE, 90),
+        (cv2.ROTATE_180, 180),
+        (cv2.ROTATE_90_COUNTERCLOCKWISE, 270),
     ]
-    mejor = (0.0, None, None)
-    for giro in rotaciones:
+    mejor = {"confianza": 0.0, "vista": None, "cara": None, "grados": None, "caras": 0}
+    for giro, grados in rotaciones:
         vista = imagen if giro is None else cv2.rotate(imagen, giro)
         alto, ancho = vista.shape[:2]
         _, caras = detector(ancho, alto).detect(vista)
@@ -135,9 +135,10 @@ def buscar_cara(imagen):
         # La última columna de cada detección es la confianza de YuNet.
         cara = max(caras, key=lambda c: float(c[-1]))
         confianza = float(cara[-1])
-        if confianza > mejor[0]:
-            mejor = (confianza, vista, cara)
-    return mejor[1], mejor[2]
+        if confianza > mejor["confianza"]:
+            mejor = {"confianza": confianza, "vista": vista, "cara": cara,
+                     "grados": grados, "caras": len(caras)}
+    return mejor
 
 
 def embedding(jpeg_b64: str):
@@ -148,8 +149,8 @@ def embedding(jpeg_b64: str):
     """
     import numpy as np
 
-    imagen = descodificar(jpeg_b64)
-    imagen, mayor = buscar_cara(imagen)
+    hallazgo = buscar_cara(descodificar(jpeg_b64))
+    imagen, mayor = hallazgo["vista"], hallazgo["cara"]
     if mayor is None:
         return None
     alineada = reconocedor().alignCrop(imagen, mayor)
@@ -289,6 +290,48 @@ def verify(user_id: str, frame_b64: str) -> dict:
     }
 
 
+def diagnostico(frame_b64: str) -> dict:
+    """Qué se ve en un cuadro, en números. No registra ni compara con nadie.
+
+    Existe porque durante varias rondas el registro falló y lo único que se sabía era "no
+    funciona". Cuando por fin se guardaron las fotos y se les miró el brillo —0 y 2 sobre
+    255— la causa apareció en dos minutos. Esto devuelve esos números sin que nadie tenga
+    que ir a buscar archivos.
+    """
+    import numpy as np
+
+    try:
+        imagen = descodificar(frame_b64)
+    except Exception as error:
+        return {"ok": False, "error": str(error)}
+
+    alto, ancho = imagen.shape[:2]
+    brillo = float(imagen.mean())
+    hallazgo = buscar_cara(imagen)
+
+    salida = {
+        "ok": True,
+        "ancho": ancho,
+        "alto": alto,
+        "brillo": round(brillo, 1),
+        "bytes": len(frame_b64) * 3 // 4,
+        "caraEncontrada": hallazgo["cara"] is not None,
+    }
+    if hallazgo["cara"] is not None:
+        c = hallazgo["cara"]
+        salida["confianza"] = round(hallazgo["confianza"], 3)
+        salida["orientacion"] = hallazgo["grados"]
+        salida["caras"] = hallazgo["caras"]
+        # Qué parte del cuadro ocupa la cara: muy chica es "estás lejos", y explica
+        # tanto un registro pobre como un reconocimiento que no engancha.
+        salida["tamañoCara"] = round(float(c[2]) * float(c[3]) / (ancho * alto) * 100, 1)
+    elif brillo < 12:
+        salida["motivo"] = "el cuadro está casi negro: la cámara no llegó a exponer"
+    else:
+        salida["motivo"] = "hay luz pero no se ve una cara de frente"
+    return salida
+
+
 def manejar(pedido: dict) -> dict:
     op = pedido.get("op")
     user_id = str(pedido.get("userId") or "anon")
@@ -301,6 +344,8 @@ def manejar(pedido: dict) -> dict:
         return {"ok": True, "enrolled": bool(perfil),
                 "threshold": perfil.get("threshold") if perfil else None,
                 "samples": perfil.get("samples") if perfil else 0}
+    if op == "diagnostico":
+        return diagnostico(pedido.get("frame") or "")
     if op == "forget":
         try:
             os.remove(ruta_perfil(user_id))

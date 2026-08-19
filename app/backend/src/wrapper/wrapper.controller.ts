@@ -481,6 +481,16 @@ export class WrapperController {
     return { ok: true, ...r };
   }
 
+  /** Qué ve la cámara ahora mismo, en números. No registra nada. */
+  @Post("cara/diagnostico")
+  @HttpCode(200)
+  async caraDiagnostico(@Req() req: Request, @Body() body?: { frame?: string }) {
+    this.wrapperService.assertAuthorized(req);
+    const frame = Buffer.from(String(body?.frame ?? ""), "base64");
+    if (frame.length === 0) return { ok: false, error: "Falta el cuadro." };
+    return this.faceService.diagnostico(frame);
+  }
+
   @Post("cara/olvidar")
   @HttpCode(200)
   async caraOlvidar(@Req() req: Request, @Body() body?: { userId?: string }) {

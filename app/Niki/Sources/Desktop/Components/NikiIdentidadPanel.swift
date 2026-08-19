@@ -13,12 +13,14 @@ import SwiftUI
 struct NikiIdentidadPanel: View {
     @EnvironmentObject private var appModel: NikiAppModel
     @State private var registrandoCara = false
+    @State private var copiado = false
     @State private var errorCara = ""
 
     var body: some View {
         SidebarShell(eyebrow: "Identidad", title: "Cómo te reconoce") {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
+                    tarjetaPrueba
                     tarjetaCara
                     NikiSpeakerPanel()
 
@@ -32,6 +34,89 @@ struct NikiIdentidadPanel: View {
             .scrollIndicators(.never)
         }
         .task { await appModel.cargarEstadoDeCara() }
+    }
+
+    /// Probar todo y ver los números.
+    ///
+    /// Va primero a propósito. Cuando algo no anda, lo que hace falta no es otro botón de
+    /// registrar: es saber qué está pasando. Cada línea de acá dice un número, porque un
+    /// "ok" no alcanza para arreglar nada.
+    private var tarjetaPrueba: some View {
+        SidebarCard {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 10) {
+                    Image(systemName: "stethoscope")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Color.white.opacity(0.4))
+                    Text("Probar todo")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.white.opacity(0.82))
+                    Spacer(minLength: 8)
+                    if appModel.prueba.corriendo {
+                        ProgressView().scaleEffect(0.5).frame(width: 16, height: 16)
+                    }
+                }
+
+                Text("Prende la cámara y el micrófono un segundo y dice qué ve, con números. No registra nada.")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(Color.white.opacity(0.52))
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if !appModel.prueba.lineas.isEmpty {
+                    VStack(alignment: .leading, spacing: 5) {
+                        ForEach(appModel.prueba.lineas) { linea in
+                            HStack(alignment: .top, spacing: 7) {
+                                Circle()
+                                    .fill(colorDe(linea.estado))
+                                    .frame(width: 6, height: 6)
+                                    .padding(.top, 4)
+                                Text(linea.que)
+                                    .font(.system(size: 11.5, weight: .semibold))
+                                    .foregroundStyle(Color.white.opacity(0.72))
+                                    .frame(width: 108, alignment: .leading)
+                                Text(linea.dato)
+                                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                                    .foregroundStyle(Color.white.opacity(0.55))
+                                    .textSelection(.enabled)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                    }
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(Color.black.opacity(0.22))
+                    )
+                }
+
+                HStack(spacing: 10) {
+                    boton(appModel.prueba.corriendo ? "Probando…" : "Probar todo") {
+                        Task { await appModel.prueba.correr() }
+                    }
+                    .disabled(appModel.prueba.corriendo)
+                    if !appModel.prueba.lineas.isEmpty {
+                        boton(copiado ? "Copiado ✓" : "Copiar") {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(appModel.prueba.comoTexto(), forType: .string)
+                            copiado = true
+                            Task {
+                                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                                copiado = false
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func colorDe(_ estado: NikiLineaDePrueba.Estado) -> Color {
+        switch estado {
+        case .bien: return Color.green.opacity(0.75)
+        case .aviso: return Color.orange.opacity(0.75)
+        case .mal: return Color.red.opacity(0.8)
+        }
     }
 
     private var tarjetaCara: some View {

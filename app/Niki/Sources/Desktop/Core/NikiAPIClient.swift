@@ -248,6 +248,14 @@ struct NikiAPIClient {
         )
     }
 
+    func caraDiagnostico(_ jpeg: Data) async throws -> NikiCaraDiagnostico {
+        let body = try JSONSerialization.data(withJSONObject: ["frame": jpeg.base64EncodedString()])
+        return try await decodeResponse(
+            NikiCaraDiagnostico.self,
+            from: try request("/cara/diagnostico", method: "POST", body: body)
+        )
+    }
+
     func caraOlvidar() async throws -> NikiCaraEstado {
         try await decodeResponse(
             NikiCaraEstado.self,

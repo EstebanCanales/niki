@@ -65,6 +65,29 @@ export class FaceService implements OnModuleDestroy {
     });
   }
 
+  /**
+   * Qué se ve en un cuadro, en números, sin registrar ni comparar con nadie.
+   *
+   * Es la herramienta que faltaba: durante varias rondas el registro falló y lo único que
+   * se sabía era "no funciona". Esto responde brillo, tamaño, si hay cara, con cuánta
+   * confianza y en qué orientación.
+   */
+  async diagnostico(frame: Buffer) {
+    return this.worker.enviar<{
+      ok: boolean;
+      error?: string;
+      ancho?: number;
+      alto?: number;
+      brillo?: number;
+      bytes?: number;
+      caraEncontrada?: boolean;
+      confianza?: number;
+      orientacion?: number;
+      caras?: number;
+      motivo?: string;
+    }>({ op: "diagnostico", frame: frame.toString("base64") });
+  }
+
   async forget(userId: string) {
     return this.worker.enviar<{ ok: boolean; enrolled: boolean }>({ op: "forget", userId });
   }

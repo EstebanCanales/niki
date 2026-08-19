@@ -59,23 +59,35 @@ MARGEN_UMBRAL = 0.12
 # a Esteban. Con 0.60 sigue habiendo distancia de sobra con un impostor.
 UMBRAL_MIN, UMBRAL_MAX = 0.363, 0.60
 
-# Confianza mínima para creerle a YuNet que eso es una cara. Por debajo suele ser un
-# reflejo o un cuadro en la pared.
-CONFIANZA_MINIMA = 0.85
+# Confianza mínima para creerle a YuNet que eso es una cara.
+#
+# Estaba en 0.85, que es un valor de foto de estudio: en las de prueba daba 0.94 y parecía
+# bien. Pero una webcam con la cara de costado, a contraluz o a medio metro da bastante
+# menos, y ahí 0.85 rechaza una cara perfectamente buena. 0.6 es lo que usan los ejemplos
+# de webcam de OpenCV; un falso positivo tampoco hace daño, porque después el reconocedor
+# lo compara con el perfil y no coincide con nadie.
+CONFIANZA_MINIMA = 0.6
+
+# Para el diagnóstico se busca con el umbral por el piso: interesa saber si YuNet vio algo
+# que se le parece a una cara y con cuánta confianza, aunque no llegue al corte. "No hay
+# ninguna cara" y "hay una cara con 0.7 y la estoy rechazando" son problemas distintos.
+CONFIANZA_DIAGNOSTICO = 0.2
 
 _detector = None
+_detector_umbral = None
 _reconocedor = None
 
 
-def detector(ancho: int, alto: int):
-    global _detector
-    if _detector is None:
+def detector(ancho: int, alto: int, umbral: float = CONFIANZA_MINIMA):
+    global _detector, _detector_umbral
+    if _detector is None or _detector_umbral != umbral:
         import cv2
 
         _detector = cv2.FaceDetectorYN.create(
             os.path.join(MODELOS, "yunet.onnx"), "", (ancho, alto),
-            score_threshold=CONFIANZA_MINIMA,
+            score_threshold=umbral,
         )
+        _detector_umbral = umbral
     # El tamaño se fija por cuadro: la cámara puede cambiar de resolución entre llamadas.
     _detector.setInputSize((ancho, alto))
     return _detector
@@ -101,7 +113,7 @@ def descodificar(jpeg_b64: str):
     return imagen
 
 
-def buscar_cara(imagen):
+def buscar_cara(imagen, umbral: float = CONFIANZA_MINIMA):
     """La cara más grande de la imagen, probando las cuatro orientaciones.
 
     YuNet solo encuentra caras derechas: una imagen rotada noventa grados no le dice nada.
@@ -129,7 +141,7 @@ def buscar_cara(imagen):
     for giro, grados in rotaciones:
         vista = imagen if giro is None else cv2.rotate(imagen, giro)
         alto, ancho = vista.shape[:2]
-        _, caras = detector(ancho, alto).detect(vista)
+        _, caras = detector(ancho, alto, umbral).detect(vista)
         if caras is None or len(caras) == 0:
             continue
         # La última columna de cada detección es la confianza de YuNet.
@@ -309,6 +321,11 @@ def diagnostico(frame_b64: str) -> dict:
     brillo = float(imagen.mean())
     hallazgo = buscar_cara(imagen)
 
+    # La foto queda en disco siempre, no solo cuando falla: con el brillo ya arreglado, lo
+    # único que queda por saber cuando no encuentra cara es qué está viendo la cámara —
+    # encuadre, distancia, contraluz— y eso no se deduce de un número.
+    guardar_para_mirar([frame_b64])
+
     salida = {
         "ok": True,
         "ancho": ancho,
@@ -325,10 +342,17 @@ def diagnostico(frame_b64: str) -> dict:
         # Qué parte del cuadro ocupa la cara: muy chica es "estás lejos", y explica
         # tanto un registro pobre como un reconocimiento que no engancha.
         salida["tamañoCara"] = round(float(c[2]) * float(c[3]) / (ancho * alto) * 100, 1)
+    elif apenas and apenas["cara"] is not None:
+        salida["confianzaFloja"] = round(apenas["confianza"], 3)
+        salida["orientacion"] = apenas["grados"]
+        salida["motivo"] = (
+            f"se ve algo parecido a una cara con confianza {apenas['confianza']:.2f}, "
+            f"pero el corte está en {CONFIANZA_MINIMA}"
+        )
     elif brillo < 12:
         salida["motivo"] = "el cuadro está casi negro: la cámara no llegó a exponer"
     else:
-        salida["motivo"] = "hay luz pero no se ve una cara de frente"
+        salida["motivo"] = "no se ve ninguna cara, ni siquiera con el umbral por el piso"
     return salida
 
 

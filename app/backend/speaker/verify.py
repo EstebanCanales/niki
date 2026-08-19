@@ -32,7 +32,13 @@ PERFILES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "profiles")
 MARGEN_UMBRAL = 0.08
 # Suelo y techo del umbral. Por debajo del suelo verifica cualquier cosa; por encima del
 # techo no pasa ni el dueño.
-UMBRAL_MIN, UMBRAL_MAX = 0.25, 0.65
+#
+# El techo bajó de 0.65 a 0.55 con números medidos, no a ojo. Probado con habla de verdad:
+# la misma voz diciendo una frase NUEVA da 0.89, y otra persona da 0.32. Con 0.65 el
+# margen del dueño era de 0.24 y el del impostor 0.33 — o sea que el corte estaba más
+# cerca de rechazarlo a él que de aceptar a otro, al revés de lo que conviene en algo que
+# personaliza y no autoriza. Con 0.55 quedan 0.34 y 0.23.
+UMBRAL_MIN, UMBRAL_MAX = 0.25, 0.55
 
 _modelo = None
 

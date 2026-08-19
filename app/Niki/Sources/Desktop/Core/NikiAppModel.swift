@@ -282,7 +282,7 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
     /// se registre sin verse es como cortarse el pelo sin espejo.
     func registrarCaraEnElNotch() async {
         guard !registroDeCara.activo else { return }
-        registroDeCara = NikiRegistroDeCaraEstado(fase: .despertando, total: 5)
+        registroDeCara = NikiRegistroDeCaraEstado(fase: .despertando, total: 7)
         appDelegate?.openNotch()
 
         _ = await cara.registrar { [weak self] estado in

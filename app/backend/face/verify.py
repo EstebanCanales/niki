@@ -45,6 +45,18 @@ DIAGNOSTICO = os.path.join(BASE, "diagnostico")
 # pose: cualquier giro de cabeza después queda afuera.
 MINIMO_TOMAS = 4
 
+# Cuánto tiene que parecerse una toma a alguna otra para creer que son la misma persona.
+#
+# Existe por un perfil real que salió mal: cinco tomas que eran dos cosas distintas. Dos
+# se parecían entre sí (0.47) y nada a las otras tres (0.10 a 0.15) — un 0.10 entre dos
+# fotos es distancia de personas distintas. El promedio de eso es una cara que no existe,
+# y arrastró el umbral hasta el piso, con lo cual el perfil aceptaba a cualquiera y no
+# terminaba de reconocer a nadie.
+#
+# 0.5 está a mitad de camino entre lo que dan dos fotos de la misma persona (0.7 a 0.9) y
+# dos de personas distintas (0.1 a 0.25).
+COHERENCIA_MINIMA = 0.5
+
 # Margen bajo el umbral aprendido, por el mismo motivo que en la voz: las tomas del
 # registro son todas del mismo momento y la misma luz, así que su dispersión subestima la
 # del uso real. Acá el margen es más grande porque la cara varía más que la voz —
@@ -231,6 +243,33 @@ def enroll(user_id: str, frames: list) -> dict:
             "guardadasEn": guardadas,
         }
 
+    # Se descartan las tomas que no coinciden con ninguna otra. Sin esto, una foto que
+    # agarró la pared o media cara entra al perfil como si fuera él y lo envenena: el
+    # centro pasa a ser el promedio de dos cosas distintas.
+    descartadas = []
+    coherentes = []
+    for i, e in enumerate(embs):
+        mejor = max((float(np.dot(e, o)) for j, o in enumerate(embs) if j != i), default=0.0)
+        (coherentes if mejor >= COHERENCIA_MINIMA else descartadas).append((i + 1, e, mejor))
+
+    if len(coherentes) < MINIMO_TOMAS:
+        guardadas = guardar_para_mirar(frames)
+        cuales = ", ".join(str(i) for i, _, _ in descartadas)
+        return {
+            "ok": False,
+            "error": (
+                f"Solo {len(coherentes)} de {len(embs)} tomas se parecen entre sí. "
+                f"Las tomas {cuales} muestran algo distinto — probá quedándote quieto y "
+                f"mirando a la cámara todo el tiempo."
+            ),
+            "tomasCoherentes": len(coherentes),
+            "guardadasEn": guardadas,
+        }
+
+    if descartadas:
+        # Se sigue, pero sin las malas y dejando dicho cuáles fueron.
+        embs = [e for _, e, _ in coherentes]
+
     centro = np.mean(embs, axis=0)
     centro = centro / np.linalg.norm(centro)
 
@@ -263,11 +302,13 @@ def enroll(user_id: str, frames: list) -> dict:
         "vistas": [e.tolist() for e in embs],
         "threshold": umbral,
         "samples": len(embs),
+        "descartadas": [i for i, _, _ in descartadas],
         "selfSimilarity": {"min": peor, "mean": sum(similitudes) / len(similitudes)},
     }
     with open(ruta_perfil(user_id), "w") as fh:
         json.dump(perfil, fh)
     return {"ok": True, "enrolled": True, "threshold": umbral, "samples": len(embs),
+            "descartadas": len(descartadas),
             "selfSimilarity": perfil["selfSimilarity"]}
 
 

@@ -111,8 +111,13 @@ final class NikiFaceRecognition: ObservableObject {
     /// `alCambiar` se llama en cada paso para que el notch pueda mostrar en qué anda.
     /// Antes esto pasaba a ciegas: la cámara se prendía, sacaba cinco fotos y devolvía un
     /// cartel. Si salías cortado o a contraluz te enterabas al final y sin saber por qué.
+    /// Siete tomas y no cinco, como hace FaceUnlock.
+    ///
+    /// El backend descarta las que no coinciden con las demás —un registro real de Esteban
+    /// tuvo dos que mostraban algo distinto— y hacen falta cuatro buenas. Con cinco, perder
+    /// dos ya obliga a repetir todo; con siete, sobra margen.
     func registrar(
-        tomas: Int = 5,
+        tomas: Int = 7,
         entreTomas: TimeInterval = 1.0,
         alCambiar: @MainActor (NikiRegistroDeCaraEstado) -> Void = { _ in }
     ) async -> String? {

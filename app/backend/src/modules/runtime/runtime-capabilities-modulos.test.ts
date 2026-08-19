@@ -25,6 +25,7 @@ const MODULOS_DEL_DOCK = [
   "consola",
   "terminal",
   "identidad",
+  "verme",
   "settings",
 ];
 

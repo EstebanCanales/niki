@@ -32,6 +32,7 @@ export type RuntimeCapabilityInputs = {
     consola?: boolean;
     terminal?: boolean;
     identidad?: boolean;
+    verme?: boolean;
   };
 };
 
@@ -69,6 +70,9 @@ export function projectRuntimeCapabilities(input: RuntimeCapabilityInputs): Runt
       // Identidad sí depende: sin el entorno de la huella de cara ni el de la voz, el
       // panel no tendría más que dos carteles diciendo que no está instalado.
       identidad: moduleState(input.flags.identidad !== false, input.identidadDisponible === true),
+      // Hablar con la cámara prendida: hace falta la huella de cara instalada, igual que
+      // Identidad. Sin eso el botón prometería algo que no puede cumplir.
+      verme: moduleState(input.flags.verme !== false, input.identidadDisponible === true),
     },
     capabilities: {
       computer_use: {

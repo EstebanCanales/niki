@@ -46,8 +46,8 @@ struct NikiSidebarPanels: View {
                 NikiIdentidadPanel()
             case .discover:
                 NikiDiscoverPanel()
-            case .call:
-                // El botón de voz no abre panel (controla la conversación). Fallback inocuo.
+            case .call, .verme:
+                // Ninguno de los dos abre panel: controlan la conversación. Fallback inocuo.
                 NikiMicPanel()
             case .mic:
                 NikiMicPanel()

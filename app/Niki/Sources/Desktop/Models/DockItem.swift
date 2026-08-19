@@ -13,6 +13,7 @@ enum DockItem: String, CaseIterable, Identifiable {
     case identidad   // Cara y voz: cómo Niki sabe que sos vos
     case discover
     case call        // Voz: inicia/detiene la conversación con Niki
+    case verme       // Conversación con la cámara prendida: Niki te ve mientras hablan
     case mic         // Selector de micrófonos
     case sttLab      // Panel detallado de STT (oculto salvo que se active en Settings)
     case settings
@@ -33,6 +34,7 @@ enum DockItem: String, CaseIterable, Identifiable {
         case .identidad: return "Identidad"
         case .discover: return "Discover"
         case .call: return "Voz"
+        case .verme: return "Que me vea"
         case .mic: return "Micrófono"
         case .sttLab: return "STT Lab"
         case .settings: return "Settings"
@@ -53,6 +55,7 @@ enum DockItem: String, CaseIterable, Identifiable {
         case .identidad: return "faceid"
         case .discover: return "sparkles"
         case .call: return "waveform"
+        case .verme: return "video.fill"
         case .mic: return "mic.fill"
         case .sttLab: return "waveform.badge.magnifyingglass"
         case .settings: return "gearshape.2"

@@ -129,6 +129,16 @@ struct NikiDockView: View {
             appModel.toggleSttLab()
             return
         }
+        if item == .verme {
+            // Hablar con la cámara prendida. Si ya está andando, la apaga y la
+            // conversación sigue: apretarlo de nuevo no debería colgar.
+            if appModel.videollamada {
+                appModel.videollamada = false
+            } else {
+                appModel.startVideollamada()
+            }
+            return
+        }
         if item == .mic {
             // El micrófono sale como menú pequeño hacia arriba, no como sidebar.
             appModel.refreshMicDevices()
@@ -140,7 +150,10 @@ struct NikiDockView: View {
 
     @ViewBuilder
     private func modeBackground(for item: DockItem) -> some View {
-        if item == .call {
+        if item == .verme, appModel.videollamada {
+            // Mismo tratamiento que el botón de voz cuando está activo: se ve encendido.
+            Circle().fill(Color.green.opacity(0.18))
+        } else if item == .call {
             // Call mode activo: fondo de acento propio (no comparte matchedGeometry con la
             // selección, así nunca colapsa el botón cuando hay un panel abierto a la vez).
             if appModel.sttLabActive {

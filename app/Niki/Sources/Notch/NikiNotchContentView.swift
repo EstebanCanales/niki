@@ -45,12 +45,14 @@ struct NikiNotchContentView: View {
         // El registro de voz también se angosta. Faltaba, y por eso se veía tan pobre:
         // ciento cuarenta puntos de contenido flotando en el medio del notch entero.
         if appModel.enrolling { return 300 }
+        if appModel.videollamada && inCall { return 340 }
         return inCall ? 300 : openNotchSize.width
     }
 
     private var tabContentHeight: CGFloat {
         if appModel.registroDeCara.activo { return 248 }
         if appModel.enrolling { return 148 }
+        if appModel.videollamada && inCall { return 150 }
         if inCall { return 186 }
         switch coordinator.currentView {
         case .home:
@@ -65,6 +67,7 @@ struct NikiNotchContentView: View {
     private var openSurfaceHeight: CGFloat {
         if appModel.registroDeCara.activo { return 262 }
         if appModel.enrolling { return 162 }
+        if appModel.videollamada && inCall { return 178 }
         if inCall { return 214 }
         switch coordinator.currentView {
         case .home:
@@ -194,7 +197,9 @@ struct NikiNotchContentView: View {
 
     @ViewBuilder
     private var tabContent: some View {
-        if appModel.registroDeCara.activo {
+        if appModel.videollamada && inCall {
+            panelDeVideollamada
+        } else if appModel.registroDeCara.activo {
             NotchRegistroDeCara()
         } else if appModel.enrolling {
             NotchRegistroDeVoz()
@@ -203,6 +208,68 @@ struct NikiNotchContentView: View {
         } else {
             homeContent
         }
+    }
+
+    /// Videollamada: vos y ella, al mismo tiempo.
+    ///
+    /// La cámara ocupa el lugar principal y el orbe va al costado, más chico. Es al revés
+    /// que en la llamada normal a propósito: en una llamada de voz lo único que hay para
+    /// mirar es el estado de Niki; acá lo que uno quiere ver es que la cámara lo está
+    /// tomando bien, que es justo lo que venía fallando.
+    private var panelDeVideollamada: some View {
+        HStack(spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(Color.white.opacity(0.05))
+
+                if let sesion = WebcamManager.shared.sesion, WebcamManager.shared.isSessionRunning {
+                    VistaDeCamara(sesion: sesion, radio: 16)
+                } else {
+                    Image(systemName: "video.slash")
+                        .font(.system(size: 20, weight: .light))
+                        .foregroundStyle(.white.opacity(0.25))
+                }
+
+                // Te reconoció: el mismo borde que en el registro, verde y discreto.
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(appModel.cara.teReconocio == true
+                            ? Color.green.opacity(0.7) : Color.white.opacity(0.10),
+                            lineWidth: appModel.cara.teReconocio == true ? 2 : 1)
+                    .animation(.easeOut(duration: 0.3), value: appModel.cara.teReconocio)
+            }
+            .frame(width: 132, height: 132)
+
+            VStack(spacing: 10) {
+                OrbPanel(size: 76, calm: true)
+                    .frame(width: 76, height: 76)
+
+                HStack(spacing: 8) {
+                    NotchCallButton(
+                        symbol: appModel.callMuted ? "mic.slash.fill" : "mic.fill",
+                        tint: appModel.callMuted ? Color(red: 1, green: 0.55, blue: 0.45) : .white.opacity(0.9),
+                        fill: appModel.callMuted
+                            ? Color(red: 1, green: 0.4, blue: 0.3).opacity(0.18)
+                            : Color.white.opacity(0.07),
+                        help: appModel.callMuted ? "Reactivar micrófono" : "Silenciar micrófono"
+                    ) { appModel.toggleCallMute() }
+
+                    NotchCallButton(
+                        symbol: "video.slash.fill",
+                        tint: .white.opacity(0.66),
+                        fill: Color.white.opacity(0.05),
+                        help: "Apagar la cámara y seguir hablando"
+                    ) { appModel.videollamada = false }
+
+                    NotchCallButton(
+                        symbol: "phone.down.fill",
+                        tint: Color(red: 1, green: 0.45, blue: 0.42),
+                        fill: Color(red: 1, green: 0.32, blue: 0.32).opacity(0.16),
+                        help: "Terminar"
+                    ) { appModel.endCall() }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     /// Modo llamada: orbe al centro, controles abajo. Sin input.

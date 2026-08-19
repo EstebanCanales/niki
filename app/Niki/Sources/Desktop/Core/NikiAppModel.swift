@@ -113,6 +113,23 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
     let gestos = NikiLectorDeGestos()
     /// Prueba de punta a punta de cámara, micrófono y servicios. Ver NikiPruebaDeIdentidad.
     let prueba = NikiPruebaDeIdentidad()
+    /// La conversación es con la cámara prendida: Niki te ve mientras hablan.
+    ///
+    /// Es una conversación normal más la cámara, no un modo aparte: la voz, los gestos y
+    /// el reconocimiento son los mismos. Lo que cambia es que la cámara queda prendida
+    /// todo el rato en vez de mirar una vez al empezar, así que te reconoce aunque te
+    /// hayas movido y los gestos andan durante toda la charla.
+    @Published var videollamada = false {
+        didSet {
+            guard oldValue != videollamada, !videollamada else { return }
+            // Apagar la cámara sin cortar la conversación: el botón de "apagar cámara"
+            // del notch y el del dock hacen esto.
+            miradaTask?.cancel()
+            miradaTask = nil
+            cara.olvidarVeredicto()
+        }
+    }
+    private var miradaTask: Task<Void, Never>?
     @AppStorage("niki.gestos.activos") var gestosActivos = true
     @Published var dataset: NikiDatasetResumen = .vacio
     @Published var datasetOcupado = false
@@ -208,6 +225,11 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
         }
         // Voz + micrófono (+ STT Lab solo si se activa en Settings) + settings.
         items.append(.call)
+        // Hablar con la cámara prendida. Solo si hay con qué ver: sin el entorno de la
+        // huella de cara el botón prometería algo que no puede cumplir.
+        if cara.disponible == true {
+            items.append(.verme)
+        }
         items.append(.mic)
         if sttLabEnabled {
             items.append(.sttLab)
@@ -2146,6 +2168,38 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
         selection = .chat
     }
 
+    /// Empieza a hablar con la cámara prendida.
+    func startVideollamada() {
+        guard !sttLabActive else {
+            // Ya está hablando: se le prende la cámara sin cortar nada.
+            videollamada = true
+            empezarAMirarSeguido()
+            return
+        }
+        videollamada = true
+        startSttLab()
+    }
+
+    /// Mira cada tanto mientras dure la videollamada.
+    ///
+    /// Cada quince segundos y no todo el tiempo: reconocer una cara cuesta, y quién está
+    /// sentado no cambia entre un cuadro y el siguiente. Alcanza para que el veredicto no
+    /// se venza —vale cinco minutos— y para notar si se levantó y vino otra persona.
+    private func empezarAMirarSeguido() {
+        miradaTask?.cancel()
+        // La cámara queda prendida toda la videollamada, no se apaga entre miradas: el
+        // punto es que se vea la imagen en el notch, y prenderla y apagarla cada quince
+        // segundos daría un parpadeo además de tardar en exponer cada vez.
+        WebcamManager.shared.startSession()
+        miradaTask = Task { @MainActor [weak self] in
+            defer { WebcamManager.shared.stopSession() }
+            while !Task.isCancelled, self?.videollamada == true, self?.sttLabActive == true {
+                await self?.cara.mirar()
+                try? await Task.sleep(nanoseconds: 15_000_000_000)
+            }
+        }
+    }
+
     func startSttLab() {
         guard !sttLabActive else { return }
         refreshMicDevices()
@@ -2170,6 +2224,7 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
         // demorar ni un milisegundo el arranque de la escucha.
         Task { @MainActor [weak self] in await self?.cara.mirar() }
         if gestosActivos { empezarAEscucharGestos() }
+        if videollamada { empezarAMirarSeguido() }
         sttLabTask = Task { @MainActor [weak self] in
             guard let self else { return }
             guard await self.startCapture() else { return }
@@ -2359,6 +2414,9 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
         // próxima vez el notch lo muestra antes de haber mirado a nadie.
         cara.olvidarVeredicto()
         gestos.parar()
+        videollamada = false
+        miradaTask?.cancel()
+        miradaTask = nil
         notchCallDismissed = false
         autoVoice = false
         sttLabTask?.cancel()

@@ -1,4 +1,7 @@
 import { Inject, Injectable, Logger } from "@nestjs/common";
+import * as path from "path";
+
+import { BACKEND } from "../voice/worker-json";
 
 import { FaceService } from "../voice/face.service";
 import { SpeakerService } from "../voice/speaker.service";
@@ -8,6 +11,14 @@ import {
   type SenalDeIdentidad,
   type VeredictoDeIdentidad,
 } from "./identidad.types";
+import {
+  AjusteDeIdentidad,
+  decidir,
+  puedeEscribir,
+  type Decision,
+  type ModoAjeno,
+  type ResultadoDePolitica,
+} from "./politica";
 
 /**
  * Quién está del otro lado.
@@ -37,10 +48,65 @@ export class IdentidadService {
    */
   private static readonly VIGENCIA_MS = 5 * 60_000;
 
+  private readonly ajuste = new AjusteDeIdentidad(
+    path.join(BACKEND, "agent-home", "identidad"),
+  );
+
   constructor(
     @Inject(FaceService) private readonly cara: FaceService,
     @Inject(SpeakerService) private readonly voz: SpeakerService,
   ) {}
+
+  /**
+   * Qué hacer con un turno: la decisión, con su motivo.
+   *
+   * Este es el punto por el que pasa todo. Antes la compuerta vivía en la app —si la voz
+   * no coincidía, el cliente no mandaba el turno— y el backend no verificaba nada, aunque
+   * es el que escribe la memoria y el dataset. O sea que la protección era que el cliente
+   * tuviera la gentileza de no llamar.
+   */
+  decidirTurno(userId: string): ResultadoDePolitica & { veredicto: VeredictoDeIdentidad } {
+    const veredicto = this.veredicto(userId);
+    const r = decidir(veredicto, this.modo());
+    return { ...r, veredicto };
+  }
+
+  /** ¿Este turno puede dejar rastro en la memoria, el dataset o el contexto? */
+  puedeEscribir(decision: Decision): boolean {
+    return puedeEscribir(decision);
+  }
+
+  modo(): ModoAjeno {
+    return this.ajuste.leer();
+  }
+
+  cambiarModo(modo: ModoAjeno) {
+    this.ajuste.escribir(modo);
+    this.logger.log(`[identidad] modo para voces ajenas → ${modo}`);
+  }
+
+  /**
+   * Si el sistema de identidad está en condiciones de decir algo.
+   *
+   * Existe por la parte de "asegurándose del funcionamiento": hasta ahora, si un worker se
+   * caía, todo fallaba en abierto **en silencio** y nadie se enteraba de que la identidad
+   * había dejado de existir. Fallar en abierto está bien; hacerlo sin avisar, no.
+   */
+  salud(userId: string) {
+    const v = this.veredicto(userId);
+    const problemas: string[] = [];
+    if (!this.cara.available) problemas.push("la huella de cara no está instalada");
+    else if (!v.porCara.registrado) problemas.push("no hay una cara registrada");
+    if (!this.voz.available) problemas.push("la huella de voz no está instalada");
+    else if (!v.porVoz.registrado) problemas.push("no hay una voz registrada");
+
+    return {
+      // Con una de las dos alcanza para poder afirmar algo.
+      puedeIdentificar: problemas.length < 2,
+      problemas,
+      modo: this.modo(),
+    };
+  }
 
   /** Lo que se sabe ahora mismo de esta persona. */
   veredicto(userId: string): VeredictoDeIdentidad {

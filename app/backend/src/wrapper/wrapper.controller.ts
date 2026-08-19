@@ -518,7 +518,21 @@ export class WrapperController {
       ok: true,
       ...this.identidad.veredicto(actingUserIdFrom(req)),
       disponible: this.identidad.disponibilidad(),
+      salud: this.identidad.salud(actingUserIdFrom(req)),
     };
+  }
+
+  /** Qué hace Niki cuando la voz o la cara dicen que no es Esteban. */
+  @Post("identidad/modo")
+  @HttpCode(200)
+  identidadModo(@Req() req: Request, @Body() body?: { modo?: string }) {
+    this.wrapperService.assertAuthorized(req);
+    const modo = String(body?.modo ?? "");
+    if (modo !== "sinDatos" && modo !== "ignorar" && modo !== "avisar") {
+      return { ok: false, error: "modo tiene que ser sinDatos, ignorar o avisar" };
+    }
+    this.identidad.cambiarModo(modo);
+    return { ok: true, modo };
   }
 
   @Post("cara/olvidar")

@@ -131,6 +131,10 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
     }
     private var miradaTask: Task<Void, Never>?
     @AppStorage("niki.gestos.activos") var gestosActivos = true
+    /// Qué hace cuando quien habla no es Esteban. La decisión la toma el backend —un
+    /// ajuste que viajara en cada pedido lo podría falsear cualquiera— así que esto es
+    /// solo el reflejo local de lo que hay allá.
+    @Published var modoAjeno = "sinDatos"
     @Published var dataset: NikiDatasetResumen = .vacio
     @Published var datasetOcupado = false
     @Published var datasetError = ""
@@ -320,9 +324,14 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
         gestos.empezar()
     }
 
+    func guardarModoAjeno(_ modo: String) async {
+        _ = try? await client.identidadModo(modo)
+    }
+
     func cargarEstadoDeCara() async {
         cara.configurar(cliente: client)
         prueba.configurar(cliente: client)
+        if let ident = try? await client.identidadActual() { modoAjeno = ident.salud.modo }
         await cara.cargarEstado()
     }
 
@@ -2506,10 +2515,15 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
                     .joined(separator: " ")
                 sttLog("[STT] dijiste: \"\(text)\" \(ms)ms provider=\(res.provider ?? "?")")
 
-                // Puerta de locutor. Solo se cierra si hay un perfil registrado Y la voz
-                // no coincide: sin perfil, o con la huella caída, el turno pasa igual.
-                // Fallar cerrado acá convertiría cualquier problema de esa pieza en
-                // "Niki no me escucha", que es mucho peor que responderle a otra persona.
+                // Puerta de locutor, como atajo. La garantía está en el backend, que es
+                // donde se escribe la memoria y el dataset (ver `decidirTurno`): esto solo
+                // evita el viaje de ida y vuelta cuando ya se sabe que no es él. Si esta
+                // línea desapareciera, el sistema seguiría siendo correcto — más lento
+                // para el caso raro, y nada más.
+                //
+                // Sigue fallando en abierto: sin perfil, o con la huella caída, el turno
+                // pasa igual. Fallar cerrado acá convertiría cualquier problema de esa
+                // pieza en "Niki no me escucha".
                 if let v = res.speaker, v.enrolled, !v.match {
                     sttLog(String(format: "[STT] descartado: no sos vos (%.2f < %.2f)",
                                   v.score ?? 0, v.threshold ?? 0))

@@ -895,6 +895,26 @@ struct NikiCaraDiagnostico: Codable {
     let tamañoCara: Double?
 }
 
+/// Quién está del otro lado, y si el sistema está en condiciones de decirlo.
+struct NikiIdentidadSalud: Codable {
+    let puedeIdentificar: Bool
+    let problemas: [String]
+    let modo: String
+}
+
+struct NikiIdentidad: Codable {
+    let ok: Bool
+    let confianza: String
+    let resumen: String
+    let salud: NikiIdentidadSalud
+}
+
+struct NikiIdentidadModo: Codable {
+    let ok: Bool
+    let modo: String?
+    let error: String?
+}
+
 /// Estado de la huella de voz.
 struct NikiSpeakerStatus: Codable {
     let available: Bool

@@ -74,7 +74,16 @@ import { RuntimeSurfaceIntentService } from "./runtime-surface-intent.service";
 import { NikiVoiceRuntimeService } from "./niki-voice-runtime.service";
 import { esRuidoDeConsola, etiquetaDeHerramienta } from "./runtime-consola";
 import { preguntaRepetida } from "./runtime-repeticion";
+import { IdentidadService } from "../identidad/identidad.service";
+import type { SenalDeIdentidad } from "../identidad/identidad.types";
 import { TurnRecorderService } from "./turn-recorder.service";
+
+/** Una señal de identidad en una línea, para el evento de la consola. */
+function describirSenal(s: SenalDeIdentidad): string {
+  if (!s.registrado) return "sin registrar";
+  if (s.coincide === null) return "no pudo mirar";
+  return `${s.coincide ? "coincide" : "NO coincide"} (${s.puntaje?.toFixed(2)} contra ${s.umbral?.toFixed(2)})`;
+}
 
 /**
  * Cuánto detalle se manda con cada evento de diagnóstico.
@@ -386,6 +395,8 @@ export class RuntimeService implements OnModuleDestroy {
     private readonly voiceRuntime: NikiVoiceRuntimeService,
     @Inject(TurnRecorderService)
     private readonly turnRecorder: TurnRecorderService,
+    @Inject(IdentidadService)
+    private readonly identidad: IdentidadService,
   ) {
     this.ensureHeartbeat();
     this.ensureHermesConfigWatch();
@@ -810,6 +821,8 @@ export class RuntimeService implements OnModuleDestroy {
     userId: string,
     sessionId: string,
     channel: string,
+    /** Etapa 5: si este turno puede dejar rastro. Ver `decidirTurno`. */
+    puedeEscribir: boolean,
   ): Promise<boolean> {
     const history = (body.messages ?? [])
       .slice(0, -1)
@@ -841,7 +854,16 @@ export class RuntimeService implements OnModuleDestroy {
       res.write("data: [DONE]\n\n");
       res.end();
 
-      // Nada de esto lo espera el usuario: va después de cerrar el stream.
+      // ── 5. CERRAR ─────────────────────────────────────────────────────────
+      //
+      // Nada de esto lo espera el usuario: va después de cerrar el stream. Y nada de esto
+      // pasa si el turno no se confirmó como suyo — un turno ajeno no deja rastro, ni en
+      // el contexto ni en el dataset.
+      if (!puedeEscribir) {
+        this.broadcastPatch({ agent: { state: "idle", model: "voz", channel: "Niki app -> voz", currentTask: "", summary: full.slice(0, 180) } });
+        return true;
+      }
+
       void this.conversationContext
         .recordAssistantReply(userId, sessionId, channel, full)
         .catch(() => undefined);
@@ -890,6 +912,17 @@ export class RuntimeService implements OnModuleDestroy {
     }
   }
 
+  /**
+   * ¿Este turno puede dejar rastro? Una sola regla, un solo lugar.
+   *
+   * Todo lo que escribe —memoria, dataset, contexto— pasa por acá. Tenerlo suelto en cada
+   * sitio es como se escapan: la señal de "cayó al agente" se me pasó en la primera
+   * versión y un turno ajeno igual dejó una línea en el dataset.
+   */
+  private dejaRastro(userId: string): boolean {
+    return this.identidad.puedeEscribir(this.identidad.decidirTurno(userId).decision);
+  }
+
   /** Qué hay guardado para entrenar: cuántos turnos, de qué días, cuánto ocupa. */
   resumenDataset() {
     return this.turnRecorder.resumen();
@@ -933,6 +966,9 @@ export class RuntimeService implements OnModuleDestroy {
     const sessionId = String(body.sessionId ?? "").trim();
     if (!sessionId) throw new BadRequestException("sessionId is required");
     const dicho = String(body.spoken ?? "").trim();
+    // Una interrupción es una señal sobre un turno. Si el turno no era suyo, la señal
+    // tampoco: enseñaría a partir de una conversación que no es la de Esteban.
+    if (!this.dejaRastro("user-demo")) return { ok: true, anotado: false };
     this.turnRecorder.signal(
       sessionId,
       "interrupcion",
@@ -950,9 +986,52 @@ export class RuntimeService implements OnModuleDestroy {
     const sessionId = String(body.sessionId ?? "session").trim() || "session";
     const channel = String(body.channel ?? "niki-agent").trim() || "niki-agent";
 
+    // ── 1. IDENTIFICAR ───────────────────────────────────────────────────────
+    //
+    // Antes que nada, porque de esto depende todo lo demás. La cara y la voz se
+    // respaldan: cuando una no puede mirar, la otra sostiene el veredicto.
+    //
+    // Esto vive acá y no en la app a propósito. La compuerta estaba del lado del cliente
+    // —si la voz no coincidía, no mandaba el turno— pero el que escribe la memoria y el
+    // dataset es este método. O sea que la protección era que el cliente tuviera la
+    // gentileza de no llamar. Ahora la compuerta está donde están las escrituras.
+    const { decision, motivo, veredicto } = this.identidad.decidirTurno(userId);
+    const puedeEscribir = this.identidad.puedeEscribir(decision);
+    const salud = this.identidad.salud(userId);
+
+    this.broadcastEvent(
+      decision === "pasa" ? "info" : "warning",
+      "identidad",
+      "identidad.turno",
+      `Turno: ${decision}`,
+      motivo,
+      [
+        `confianza: ${veredicto.confianza}`,
+        `cara: ${describirSenal(veredicto.porCara)}`,
+        `voz: ${describirSenal(veredicto.porVoz)}`,
+        `escribe: ${puedeEscribir ? "sí" : "no"}`,
+        salud.problemas.length ? `pendiente: ${salud.problemas.join("; ")}` : "",
+      ].filter(Boolean).join("\n"),
+    );
+
+    // ── 2. DECIDIR ───────────────────────────────────────────────────────────
+    if (decision === "descarta") {
+      // El ajuste dice no contestarle a quien no es él. Se cierra el stream sin escribir
+      // nada y sin decir por qué: explicarlo sería contarle a un desconocido cómo
+      // funciona la puerta.
+      this.logger.log(`[runtime] [${correlationId}] turno descartado: ${motivo}`);
+      this.setupSse(res);
+      res.write("data: [DONE]\n\n");
+      res.end();
+      return;
+    }
+
     // El contexto corto es de proceso y lo lee buildRuntimeContext — va primero y sin
-    // await porque no toca la red.
-    this.conversationContext.captureUserTurnContext(userId, sessionId, channel, input);
+    // await porque no toca la red. Solo para turnos confirmados: si no, la conversación
+    // de otro se le mezcla a Esteban en el contexto del turno siguiente.
+    if (puedeEscribir) {
+      this.conversationContext.captureUserTurnContext(userId, sessionId, channel, input);
+    }
 
     // Todo lo que necesita memoria arranca junto. UserMemoryService deduplica las
     // lecturas en vuelo y las cachea 30 s, así que estos tres caminos comparten una
@@ -964,10 +1043,13 @@ export class RuntimeService implements OnModuleDestroy {
     ]);
 
     // Guardar hechos explícitos es una escritura que nadie lee en esta respuesta:
-    // esperarla solo retrasaba el primer token.
-    void this.conversationContext
-      .persistExplicitFacts(userId, input, memoryEntries)
-      .catch((error) => this.logger.warn(`[runtime] persistExplicitFacts: ${String(error)}`));
+    // esperarla solo retrasaba el primer token. Y no se hace si el turno no es suyo: lo
+    // que diga otra persona no puede terminar en la memoria de Esteban.
+    if (puedeEscribir) {
+      void this.conversationContext
+        .persistExplicitFacts(userId, input, memoryEntries)
+        .catch((error) => this.logger.warn(`[runtime] persistExplicitFacts: ${String(error)}`));
+    }
 
     // body.messages incluye el turno actual como último elemento (ver NikiAppModel
     // buildHermesMessages) — lo excluimos para no duplicarlo como "historial".
@@ -981,7 +1063,7 @@ export class RuntimeService implements OnModuleDestroy {
     // Señal para el dataset: si repregunta lo mismo, la respuesta anterior no sirvió.
     // Se calcula del historial que ya vino en el pedido, sin estado ni llamadas extra.
     const repregunta = preguntaRepetida(surfaceHistory, input);
-    if (repregunta) this.turnRecorder.signal(sessionId, "repeticion", repregunta);
+    if (repregunta && puedeEscribir) this.turnRecorder.signal(sessionId, "repeticion", repregunta);
 
     void this.surfaceIntent
       .detect(input, this.hasActiveSurface, surfaceHistory)
@@ -1015,11 +1097,11 @@ export class RuntimeService implements OnModuleDestroy {
       this.voiceRuntime.isEnabled() &&
       !this.voiceRuntime.needsFullAgent(input)
     ) {
-      const handled = await this.streamVoiceReply(res, input, body, userId, sessionId, channel);
+      const handled = await this.streamVoiceReply(res, input, body, userId, sessionId, channel, puedeEscribir);
       if (handled) return;
       // Si la ruta rápida falló antes de escribir nada, se cae a Hermes sin que se note.
       // Para el dataset sí se anota: ese turno era más difícil de lo que parecía.
-      this.turnRecorder.signal(sessionId, "cayo-al-agente");
+      if (puedeEscribir) this.turnRecorder.signal(sessionId, "cayo-al-agente");
     }
 
     this.broadcastEvent("info", "runtime", "runtime.chat.request", "Hermes request started", input.slice(0, 180));
@@ -1273,7 +1355,8 @@ export class RuntimeService implements OnModuleDestroy {
           summary: (fullText.trim() || "Completed").slice(0, 180),
         },
       });
-      await this.conversationContext.recordAssistantReply(
+      // ── 5. CERRAR ─────────────────────────────────────────────────────────
+      if (puedeEscribir) await this.conversationContext.recordAssistantReply(
         userId,
         sessionId,
         channel,
@@ -1389,7 +1472,7 @@ export class RuntimeService implements OnModuleDestroy {
       // señal más limpia que hay — no hay que inferir nada. Las aprobaciones no llevan
       // sessionId, así que se atan por runId.
       const aprobada = resolution.decision !== "deny";
-      this.turnRecorder.signal(
+      if (this.dejaRastro("user-demo")) this.turnRecorder.signal(
         resolution.runId,
         aprobada ? "aprobacion" : "rechazo",
         `${resolution.decision}: ${matchedTools.get(resolution.id) ?? ""}`.trim(),

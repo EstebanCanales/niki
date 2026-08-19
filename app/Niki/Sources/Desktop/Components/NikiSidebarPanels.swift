@@ -1196,6 +1196,29 @@ private struct NikiSettingsSidebar: View {
     @ViewBuilder
     private var grupoVozIdentidad: some View {
         Group {
+                    settingsSection("Si no sos vos") {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Picker("", selection: $appModel.modoAjeno) {
+                                Text("Contesta sin mis datos").tag("sinDatos")
+                                Text("No contesta").tag("ignorar")
+                                Text("Contesta normal").tag("avisar")
+                            }
+                            .pickerStyle(.segmented)
+                            .labelsHidden()
+                            .onChange(of: appModel.modoAjeno) { _, nuevo in
+                                Task { await appModel.guardarModoAjeno(nuevo) }
+                            }
+                            Text("Qué hace cuando la voz o la cara dicen que quien está no sos vos. En los tres casos ese turno no escribe nada: ni en tu memoria, ni en el dataset, ni en el contexto de la conversación.")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(Color.white.opacity(0.52))
+                                .fixedSize(horizontal: false, vertical: true)
+                            Text("Cuando no se puede saber quién es —cámara tapada, sin voz registrada— contesta igual pero sin usar nada personal tuyo.")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(Color.white.opacity(0.38))
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+
                     settingsSection("Gestos con la mano") {
                         VStack(alignment: .leading, spacing: 10) {
                             toggleRow("Entender gestos mientras hablás", isOn: $appModel.gestosActivos)

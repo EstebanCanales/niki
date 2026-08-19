@@ -248,6 +248,18 @@ struct NikiAPIClient {
         )
     }
 
+    func identidadActual() async throws -> NikiIdentidad {
+        try await decodeResponse(NikiIdentidad.self, from: try request("/identidad"))
+    }
+
+    func identidadModo(_ modo: String) async throws -> NikiIdentidadModo {
+        let body = try JSONSerialization.data(withJSONObject: ["modo": modo])
+        return try await decodeResponse(
+            NikiIdentidadModo.self,
+            from: try request("/identidad/modo", method: "POST", body: body)
+        )
+    }
+
     func caraDiagnostico(_ jpeg: Data) async throws -> NikiCaraDiagnostico {
         let body = try JSONSerialization.data(withJSONObject: ["frame": jpeg.base64EncodedString()])
         return try await decodeResponse(

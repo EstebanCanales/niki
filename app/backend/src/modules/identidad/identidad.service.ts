@@ -40,6 +40,13 @@ export class IdentidadService {
   private readonly ultimo = new Map<string, { cara: SenalDeIdentidad; voz: SenalDeIdentidad; at: number }>();
 
   /**
+   * Cuántas personas se recuerdan. Hoy hay una, pero un mapa sin tope es un mapa sin
+   * tope: si alguna vez esto atiende a varios, o alguien manda un userId distinto en cada
+   * pedido, crece para siempre.
+   */
+  private static readonly MAX_PERSONAS = 50;
+
+  /**
    * Cuánto vale un veredicto antes de olvidarlo.
    *
    * Cinco minutos: lo suficiente para que una conversación entera se apoye en el
@@ -168,6 +175,10 @@ export class IdentidadService {
     const cara = parcial.cara ?? (vigente ? previo!.cara : SIN_SENAL);
     const voz = parcial.voz ?? (vigente ? previo!.voz : SIN_SENAL);
     this.ultimo.set(userId, { cara, voz, at: Date.now() });
+    if (this.ultimo.size > IdentidadService.MAX_PERSONAS) {
+      const masVieja = this.ultimo.keys().next().value;
+      if (masVieja !== undefined) this.ultimo.delete(masVieja);
+    }
 
     const v = juntarSenales(cara, voz);
     this.logger.log(

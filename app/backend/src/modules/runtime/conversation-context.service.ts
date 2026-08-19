@@ -51,6 +51,16 @@ export class ConversationContextService {
   private readonly logger = new Logger(ConversationContextService.name);
   private readonly shortContext = new Map<string, ShortConversationContext>();
 
+  /**
+   * Cuántas conversaciones se recuerdan de a poco.
+   *
+   * Sin tope esto crece una entrada por cada conversación nueva y no se vacía nunca: un
+   * backend que corre días acumula todas las que hubo, cada una con hasta doce tareas
+   * adentro. No es una fuga rápida, es la misma clase de descuido que ya apareció en el
+   * registro de turnos — y se arregla igual.
+   */
+  private static readonly MAX_CONVERSACIONES = 200;
+
   constructor(
     @Inject(IdentityService)
     private readonly identityService: IdentityService,
@@ -274,6 +284,14 @@ export class ConversationContextService {
       channel,
       updatedAt: patch.updatedAt ?? nowIso(),
     });
+
+    // Map conserva el orden de inserción, así que la primera clave es la conversación
+    // más vieja. Se la reinserta al escribir, con lo cual lo que se descarta es siempre
+    // lo que hace más tiempo que nadie toca.
+    if (this.shortContext.size > ConversationContextService.MAX_CONVERSACIONES) {
+      const masVieja = this.shortContext.keys().next().value;
+      if (masVieja !== undefined) this.shortContext.delete(masVieja);
+    }
   }
 
   private async rememberExplicitFacts(userId: string, input: string, memoryEntries?: StoredMemoryEntry[]) {

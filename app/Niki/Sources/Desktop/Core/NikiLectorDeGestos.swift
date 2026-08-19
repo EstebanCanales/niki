@@ -22,11 +22,14 @@ final class NikiLectorDeGestos: ObservableObject {
     @Published private(set) var ultimo: NikiGesto?
     @Published private(set) var mirando = false
 
-    private let gestos = NikiGestos()
+    /// Lo usa la cola de la cámara, igual que `salteoInterno`.
+    private nonisolated let gestos = NikiGestos()
     /// Cuántos cuadros se saltean. Vision sobre una mano cuesta unos milisegundos; a
     /// treinta cuadros por segundo eso es trabajo constante para nada. Uno de cada tres
     /// da unos diez por segundo, de sobra para un gesto que se sostiene medio segundo.
-    private var salteo = 0
+    /// Lo lleva la cola de la cámara. `nonisolated(unsafe)` porque solo ese hilo lo toca:
+    /// marcarlo así es más honesto que envolverlo en un candado que no hace falta.
+    private nonisolated(unsafe) var salteoInterno = 0
 
     /// Qué hacer con cada gesto. Lo pone quien lo usa, para que esta clase no sepa nada
     /// de conversaciones ni de aprobaciones.
@@ -38,10 +41,22 @@ final class NikiLectorDeGestos: ObservableObject {
 
         WebcamManager.shared.retener()
 
+        // El reconocimiento corre EN la cola de la cámara, no en la principal, y por dos
+        // motivos que son bugs si se hace al revés:
+        //
+        // 1. El buffer que entrega AVFoundation solo vale mientras dura la llamada:
+        //    después lo recicla para el cuadro siguiente. Mirarlo desde una tarea que
+        //    corre más tarde es leer memoria que ya es otra cosa.
+        // 2. A treinta cuadros por segundo, crear una tarea por cuadro para saltear dos
+        //    de cada tres es treinta saltos al hilo principal por segundo para nada.
+        //
+        // Lo único que cruza a la principal es el gesto, cuando hay uno: unas pocas veces
+        // por conversación en vez de treinta por segundo.
         WebcamManager.shared.observarCuadros { [weak self] buffer in
-            // Llega en la cola de la cámara, no en la principal.
             guard let self else { return }
-            Task { @MainActor in self.procesar(buffer) }
+            guard self.debeMirar() else { return }
+            guard let gesto = self.gestos.mirar(buffer) else { return }
+            Task { @MainActor in self.reconocido(gesto) }
         }
     }
 
@@ -53,10 +68,15 @@ final class NikiLectorDeGestos: ObservableObject {
         ultimo = nil
     }
 
-    private func procesar(_ buffer: CVPixelBuffer) {
-        salteo += 1
-        guard salteo % 3 == 0 else { return }
-        guard let gesto = gestos.mirar(buffer) else { return }
+    /// Uno de cada tres cuadros. Corre en la cola de la cámara, y `salteo` solo lo toca
+    /// ella, así que no hace falta sincronizarlo.
+    private nonisolated func debeMirar() -> Bool {
+        salteoInterno += 1
+        return salteoInterno % 3 == 0
+    }
+
+    @MainActor
+    private func reconocido(_ gesto: NikiGesto) {
         ultimo = gesto
         alReconocer?(gesto)
         // El aviso en pantalla dura poco: es una confirmación de que se entendió, no algo

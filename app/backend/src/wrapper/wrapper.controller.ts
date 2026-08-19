@@ -484,8 +484,14 @@ export class WrapperController {
   @HttpCode(200)
   async caraVerificar(@Req() req: Request, @Body() body?: { userId?: string; frame?: string }) {
     this.wrapperService.assertAuthorized(req);
-    const frame = Buffer.from(String(body?.frame ?? ""), "base64");
-    if (frame.length === 0) return { ok: false, error: "Falta el cuadro." };
+    const crudo = String(body?.frame ?? "");
+    const frame = Buffer.from(crudo, "base64");
+    // Se distinguen los dos casos: `Buffer.from` de algo que no es base64 devuelve vacío
+    // igual que si no hubiera llegado nada, y decir "falta el cuadro" cuando en realidad
+    // llegó algo ilegible manda a buscar el problema al lugar equivocado.
+    if (frame.length === 0) {
+      return { ok: false, error: crudo ? "El cuadro no es una imagen válida." : "Falta el cuadro." };
+    }
     const usuario = body?.userId?.trim() || actingUserIdFrom(req);
     const r = await this.faceService.verify(usuario, frame);
     // Se anota para que el agente lo sepa. Sin esto el veredicto moría en un punto verde

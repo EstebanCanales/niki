@@ -888,6 +888,11 @@ struct NikiCaraDiagnostico: Codable {
     let orientacion: Int?
     let caras: Int?
     let motivo: String?
+    /// Confianza de lo mejor que vio cuando no llegó al corte. Distingue "no hay cara"
+    /// de "hay una y la estoy rechazando por poco".
+    let confianzaFloja: Double?
+    /// Qué porcentaje del cuadro ocupa la cara. Muy chico es "estás lejos".
+    let tamañoCara: Double?
 }
 
 /// Estado de la huella de voz.

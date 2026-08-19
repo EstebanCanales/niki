@@ -81,43 +81,66 @@ final class NikiPruebaDeIdentidad: ObservableObject {
         }
     }
 
+    /// Cuántos cuadros mira, separados en el tiempo.
+    ///
+    /// Uno solo no alcanza y está medido: mirando hacia abajo el detector no encuentra
+    /// nada, y justo cuando uno aprieta el botón está mirando el botón, no la cámara.
+    /// Tres tomas repartidas en tres segundos dan tiempo a levantar la vista.
+    private static let tomasDePrueba = 3
+
     private func probarCamara(_ cliente: NikiAPIClient) async {
         let yaEstaba = WebcamManager.shared.isSessionRunning
         if !yaEstaba { WebcamManager.shared.startSession() }
         defer { if !yaEstaba { WebcamManager.shared.stopSession() } }
 
+        agregar("Mirá la cámara", .aviso, "sacando \(Self.tomasDePrueba) fotos…")
+
         let empezo = Date()
-        let cuadro = await withCheckedContinuation { c in
-            WebcamManager.shared.capturarCuadro { c.resume(returning: $0) }
+        var mejor: (NikiCaraDiagnostico, Data)?
+        var conCara = 0
+
+        for i in 0 ..< Self.tomasDePrueba {
+            if i > 0 { try? await Task.sleep(nanoseconds: 1_200_000_000) }
+            guard let cuadro = await withCheckedContinuation({ c in
+                WebcamManager.shared.capturarCuadro { c.resume(returning: $0) }
+            }) else { continue }
+            guard let d = try? await cliente.caraDiagnostico(cuadro) else { continue }
+            if d.caraEncontrada == true { conCara += 1 }
+            // Se queda con la mejor: la que encontró cara, y entre esas la de más
+            // confianza. Si ninguna encontró, la más clara, que dice más del encuadre.
+            let mejorHastaAhora = mejor?.0
+            let mejora = mejorHastaAhora == nil
+                || (d.caraEncontrada == true && mejorHastaAhora?.caraEncontrada != true)
+                || (d.caraEncontrada == true && (d.confianza ?? 0) > (mejorHastaAhora?.confianza ?? 0))
+                || (mejorHastaAhora?.caraEncontrada != true && (d.brillo ?? 0) > (mejorHastaAhora?.brillo ?? 0))
+            if mejora { mejor = (d, cuadro) }
         }
         let tardo = Date().timeIntervalSince(empezo)
 
-        guard let cuadro else {
+        lineas.removeAll { $0.que == "Mirá la cámara" }
+
+        guard let (d, cuadro) = mejor else {
             agregar("Cámara", .mal,
                     String(format: "no entregó ningún cuadro en %.1f s — ¿la usa otra app?", tardo))
             return
         }
-        agregar("Cámara", .bien, String(format: "cuadro en %.1f s, %d KB", tardo, cuadro.count / 1024))
+        agregar("Cámara", .bien,
+                String(format: "%d fotos en %.1f s, la mejor de %d KB",
+                       Self.tomasDePrueba, tardo, cuadro.count / 1024))
 
-        guard let d = try? await cliente.caraDiagnostico(cuadro) else {
-            agregar("Qué se ve", .mal, "el backend no pudo analizar el cuadro")
-            return
-        }
-        let resolucion = "\(d.ancho ?? 0)x\(d.alto ?? 0)"
         let brillo = d.brillo ?? 0
-
-        // El brillo es el número que resolvió el caso real: las tomas que fallaban daban
-        // 0 y 2 sobre 255.
         agregar("Brillo", brillo >= 12 ? .bien : .mal,
-                String(format: "%.0f de 255 en %@%@", brillo, resolucion,
+                String(format: "%.0f de 255 en %d x %d%@", brillo, d.ancho ?? 0, d.alto ?? 0,
                        brillo < 12 ? "  ← casi negro, la cámara no expuso" : ""))
 
         if d.caraEncontrada == true {
             let orientacion = (d.orientacion ?? 0) == 0 ? "derecha" : "girada \(d.orientacion ?? 0)°"
             agregar("Tu cara", .bien,
-                    String(format: "encontrada con confianza %.2f, %@", d.confianza ?? 0, orientacion))
+                    String(format: "%d de %d fotos, confianza %.2f, %@, ocupa %.1f%% del cuadro",
+                           conCara, Self.tomasDePrueba, d.confianza ?? 0, orientacion, d.tamañoCara ?? 0))
         } else {
             agregar("Tu cara", .mal, d.motivo ?? "no se encontró ninguna cara")
+            agregar("La foto quedó en", .aviso, "app/backend/face/diagnostico/")
         }
     }
 

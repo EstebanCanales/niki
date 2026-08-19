@@ -134,7 +134,18 @@ final class NikiFaceRecognition: ObservableObject {
             estado.fase = .sacando(paso: i + 1)
             alCambiar(estado)
 
-            let cuadro = await cuadroDeLaCamara()
+            // Cada toma se verifica en el momento: si no se te ve, se reintenta en vez de
+            // gastarla. Medido: mirando hacia abajo el detector no encuentra nada, y al
+            // registrarse uno mira la pantalla, no la cámara.
+            var cuadro: Data?
+            for intento in 0 ..< 3 {
+                if intento > 0 { try? await Task.sleep(nanoseconds: 700_000_000) }
+                guard let c = await cuadroDeLaCamara() else { continue }
+                cuadro = c
+                if let d = try? await cliente.caraDiagnostico(c), d.caraEncontrada == true {
+                    break
+                }
+            }
             estado.hechas = i + 1
             if let cuadro {
                 cuadros.append(cuadro)

@@ -16,6 +16,7 @@ import {
 import { FileInterceptor } from "@nestjs/platform-express";
 import type { Request, Response } from "express";
 
+import { IdentidadService } from "../modules/identidad/identidad.service";
 import { FaceService } from "../modules/voice/face.service";
 import { SpeakerService } from "../modules/voice/speaker.service";
 import { VoiceService } from "../modules/voice/voice.service";
@@ -41,6 +42,7 @@ export class WrapperController {
     @Inject(VoiceService) private readonly voiceService: VoiceService,
     @Inject(SpeakerService) private readonly speakerService: SpeakerService,
     @Inject(FaceService) private readonly faceService: FaceService,
+    @Inject(IdentidadService) private readonly identidad: IdentidadService,
   ) {}
 
   @Get("healthz")
@@ -403,10 +405,17 @@ export class WrapperController {
     try {
       // La huella corre EN PARALELO con la transcripción: Groq tarda ~1.1s, así que
       // saber quién habló no cuesta tiempo de reloj.
+      const usuario = actingUserIdFrom(req);
       const [result, speaker] = await Promise.all([
         this.voiceService.transcribe(audioBuffer, language, prompt),
-        this.speakerService.verify(actingUserIdFrom(req), audioBuffer),
+        this.speakerService.verify(usuario, audioBuffer),
       ]);
+      this.identidad.anotarVoz(usuario, {
+        registrado: speaker.enrolled,
+        coincide: speaker.enrolled ? speaker.match : null,
+        puntaje: speaker.score,
+        umbral: speaker.threshold ?? null,
+      });
       return { ...result, speaker };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -477,7 +486,17 @@ export class WrapperController {
     this.wrapperService.assertAuthorized(req);
     const frame = Buffer.from(String(body?.frame ?? ""), "base64");
     if (frame.length === 0) return { ok: false, error: "Falta el cuadro." };
-    const r = await this.faceService.verify(body?.userId?.trim() || actingUserIdFrom(req), frame);
+    const usuario = body?.userId?.trim() || actingUserIdFrom(req);
+    const r = await this.faceService.verify(usuario, frame);
+    // Se anota para que el agente lo sepa. Sin esto el veredicto moría en un punto verde
+    // del notch, que es reconocer a medias.
+    this.identidad.anotarCara(usuario, {
+      registrado: r.enrolled,
+      // `faceFound === false` es "miré y no había nadie", que no es "no sos vos".
+      coincide: !r.enrolled || r.faceFound === false ? null : r.match,
+      puntaje: r.score,
+      umbral: r.threshold ?? null,
+    });
     return { ok: true, ...r };
   }
 
@@ -489,6 +508,17 @@ export class WrapperController {
     const frame = Buffer.from(String(body?.frame ?? ""), "base64");
     if (frame.length === 0) return { ok: false, error: "Falta el cuadro." };
     return this.faceService.diagnostico(frame);
+  }
+
+  /** Quién está del otro lado, según la cara y la voz juntas. */
+  @Get("identidad")
+  identidadActual(@Req() req: Request) {
+    this.wrapperService.assertAuthorized(req);
+    return {
+      ok: true,
+      ...this.identidad.veredicto(actingUserIdFrom(req)),
+      disponible: this.identidad.disponibilidad(),
+    };
   }
 
   @Post("cara/olvidar")

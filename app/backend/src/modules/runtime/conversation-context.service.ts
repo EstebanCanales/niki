@@ -4,6 +4,7 @@ import type { NikiPersonaProfile, WorkItem } from "../../domain/contracts";
 import { AuditService } from "../audit/audit.service";
 
 import type { StoredMemoryEntry } from "../common/user-memory.service";
+import { IdentidadService } from "../identidad/identidad.service";
 import { UserMemoryService } from "../common/user-memory.service";
 import { IdentityService } from "../identity/identity.service";
 import { WorkItemsService } from "../work-items/work-items.service";
@@ -59,6 +60,8 @@ export class ConversationContextService {
     private readonly workItemsService: WorkItemsService,
     @Inject(UserMemoryService)
     private readonly userMemoryService: UserMemoryService,
+    @Inject(IdentidadService)
+    private readonly identidad: IdentidadService,
   ) {}
 
   /** Una sola lectura de memoria por turno, compartida entre captureUserTurn/getPersonaProfile/buildRuntimeContext. */
@@ -207,6 +210,11 @@ export class ConversationContextService {
           }
         : null,
       compliance: me?.compliance ?? null,
+      // Quién está del otro lado, según la cara y la voz. Hasta ahora este dato existía
+      // —los dos workers lo calculaban— y no llegaba a ningún lado: la cara pintaba un
+      // punto en el notch y la voz solo descartaba turnos en el cliente. Reconocer sin
+      // que el agente se entere es la mitad del trabajo.
+      identidad: this.identidad.veredicto(userId),
       session: this.getShortContext(userId, sessionId, channel) ?? null,
       activeWorkItems:
         (workItems?.items ?? []).slice(0, 12).map((item) => ({

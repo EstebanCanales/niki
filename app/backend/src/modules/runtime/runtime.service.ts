@@ -1119,8 +1119,15 @@ export class RuntimeService implements OnModuleDestroy {
     // agente con razonamiento y herramientas; una charla hablada no necesita nada de eso
     // y sí necesita contestar ya. Solo los turnos que piden trabajo real siguen de largo
     // hacia Hermes.
+    //
+    // Un turno con imagen nunca va por acá, y es el motivo por el que Niki seguía diciendo
+    // "no tengo acceso a la cámara" con la cámara prendida y la imagen adjunta: en
+    // videollamada se habla, o sea que el canal es de voz, o sea que lo atendía la ruta
+    // rápida — que es un modelo chico de conversación, sin visión — y contestaba antes de
+    // llegar a Hermes. La imagen viajaba entera hasta acá y moría a una línea del final.
     if (
       channel === "niki-voice" &&
+      !body.imagen &&
       this.voiceRuntime.isEnabled() &&
       !this.voiceRuntime.needsFullAgent(input)
     ) {

@@ -2179,6 +2179,13 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
     }
 
     /// Empieza a hablar con la cámara prendida.
+    /// Prendida el instante en que se le manda un cuadro al modelo.
+    ///
+    /// Es para que se vea en pantalla. Que Niki mire por la cámara sin ninguna señal
+    /// visible sería lo mismo que una cámara sin luz al lado: puede estar bien, pero no
+    /// hay forma de saberlo mirando.
+    @Published var mandandoCuadro = false
+
     /// Lo que ve la cámara, para que el modelo lo vea también — solo en videollamada.
     ///
     /// Faltaba esto entero. El cuadro se sacaba, se mandaba a reconocer la cara, y ahí
@@ -2192,6 +2199,15 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
         guard videollamada else { return nil }
         // La cámara ya está retenida por `empezarAMirarSeguido` mientras dura la
         // videollamada, así que esto no la prende ni la apaga: le pide un cuadro y listo.
+        mandandoCuadro = true
+        defer {
+            // Se apaga sola un momento después: el destello tiene que durar lo suficiente
+            // para verlo. La captura en sí son milisegundos y no se vería nunca.
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: 900_000_000)
+                self?.mandandoCuadro = false
+            }
+        }
         let datos: Data? = await withCheckedContinuation { cont in
             WebcamManager.shared.capturarCuadro(tiempoLimite: 3) { cont.resume(returning: $0) }
         }

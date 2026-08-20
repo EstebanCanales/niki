@@ -229,19 +229,52 @@ struct NikiNotchContentView: View {
                 if let sesion = webcam.sesion, webcam.isSessionRunning {
                     VistaDeCamara(sesion: sesion, radio: 16)
                 } else {
-                    Image(systemName: "video.slash")
-                        .font(.system(size: 20, weight: .light))
-                        .foregroundStyle(.white.opacity(0.25))
+                    // Prender la cámara lleva un segundo o dos —hay que esperar a que
+                    // exponga— y antes acá no había nada, así que ese rato parecía que
+                    // estaba rota. Decir que está prendiendo cuesta una línea.
+                    VStack(spacing: 6) {
+                        Image(systemName: "video.slash")
+                            .font(.system(size: 18, weight: .light))
+                            .foregroundStyle(.white.opacity(0.28))
+                        Text("Prendiendo…")
+                            .font(.system(size: 9.5, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.32))
+                    }
                 }
+
+                // El destello de cuando le manda el cuadro. Es la única forma de saber, en
+                // el momento, que lo que estás viendo también lo vio ella.
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(Color.white)
+                    .opacity(appModel.mandandoCuadro ? 0.13 : 0)
+                    .animation(.easeOut(duration: 0.25), value: appModel.mandandoCuadro)
+                    .allowsHitTesting(false)
 
                 // Te reconoció: el mismo borde que en el registro, verde y discreto.
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .stroke(appModel.cara.teReconocio == true
-                            ? Color.green.opacity(0.7) : Color.white.opacity(0.10),
-                            lineWidth: appModel.cara.teReconocio == true ? 2 : 1)
+                    .stroke(bordeDeLaCamara, lineWidth: appModel.cara.teReconocio == true ? 2 : 1)
                     .animation(.easeOut(duration: 0.3), value: appModel.cara.teReconocio)
+                    .animation(.easeOut(duration: 0.25), value: appModel.mandandoCuadro)
+
+                // El cartel de estado, abajo y sobre la imagen. Va acá y no al lado porque
+                // el estado es de la cámara: separarlo obliga a mirar dos lugares.
+                VStack {
+                    Spacer()
+                    Text(estadoDeLaCamara)
+                        .font(.system(size: 9.5, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.9))
+                        .lineLimit(1)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(Capsule().fill(Color.black.opacity(0.42)))
+                        .padding(.bottom, 7)
+                }
+                .allowsHitTesting(false)
             }
-            .frame(width: 132, height: 132)
+            // 4:3 y no un cuadrado. La cámara filma más ancho que alto, así que un marco
+            // cuadrado recortaba media escena — y lo recortado también es lo que Niki no
+            // ve, porque el cuadro que se le manda sale de esta misma cámara.
+            .frame(width: 176, height: 132)
 
             VStack(spacing: 10) {
                 OrbPanel(size: 76, calm: true)
@@ -274,6 +307,26 @@ struct NikiNotchContentView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// Qué está pasando con la cámara, en dos palabras.
+    ///
+    /// Antes esto era solo un borde verde o blanco, que dice "algo cambió" pero no qué.
+    /// La diferencia entre "no te reconozco" y "no registraste la cara" importa: en el
+    /// primer caso hay algo que corregir en la pose o la luz, en el segundo no hay nada
+    /// que corregir porque falta el registro.
+    private var estadoDeLaCamara: String {
+        if appModel.mandandoCuadro { return "Mirando" }
+        if !appModel.cara.hayPerfil { return "Sin cara registrada" }
+        if appModel.cara.teReconocio == true { return "Te reconozco" }
+        if appModel.cara.teReconocio == false { return "No te reconozco" }
+        return "Buscando tu cara…"
+    }
+
+    private var bordeDeLaCamara: Color {
+        if appModel.mandandoCuadro { return .white.opacity(0.5) }
+        if appModel.cara.teReconocio == true { return .green.opacity(0.7) }
+        return .white.opacity(0.10)
     }
 
     /// Modo llamada: orbe al centro, controles abajo. Sin input.

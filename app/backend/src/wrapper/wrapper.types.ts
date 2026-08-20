@@ -9,6 +9,16 @@ export type ChatRequestDto = {
   channel?: string;
   messages?: Array<{ role?: string; content?: string }>;
   agentPreferences?: AgentPreferencesDto;
+  /**
+   * Un cuadro de la cámara, como data URL, para que el modelo vea lo que ve la cámara.
+   *
+   * Va en un campo aparte y no dentro de `content` a propósito. El resto del backend
+   * —memoria, dataset, contexto, auditoría— da por hecho que `content` es un string, y
+   * hay `typeof m.content === "string"` desperdigados que descartarían el mensaje entero
+   * en silencio si le llegara un array. Acá la imagen solo se adjunta en el viaje al
+   * modelo; todo lo que se guarda sigue siendo el texto.
+   */
+  imagen?: string;
 };
 
 export type RuntimeCapabilityStateDto = "hidden" | "disabled" | "flagged" | "beta" | "ready";

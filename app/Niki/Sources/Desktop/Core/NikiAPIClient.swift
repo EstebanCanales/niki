@@ -383,14 +383,20 @@ struct NikiAPIClient {
         input: String,
         messages: [NikiHermesMessage],
         channel: String = "niki-agent",
+        imagen: String? = nil,
         onToken: @escaping @MainActor (String) -> Void
     ) async throws -> String {
-        let body = try JSONSerialization.data(withJSONObject: [
+        var cuerpo: [String: Any] = [
             "input": input,
             "sessionId": sessionID,
             "channel": channel,
             "messages": messages.map { ["role": $0.role, "content": $0.content] },
-        ])
+        ]
+        // Un cuadro de la cámara, cuando la videollamada está prendida. Va aparte de
+        // `messages` porque el historial se guarda y esto no: la imagen acompaña este
+        // turno y nada más.
+        if let imagen { cuerpo["imagen"] = imagen }
+        let body = try JSONSerialization.data(withJSONObject: cuerpo)
         let request = try request("/chat/stream", method: "POST", body: body)
         let (bytes, response) = try await URLSession.shared.bytes(for: request)
         guard let http = response as? HTTPURLResponse, (200 ..< 300).contains(http.statusCode) else {

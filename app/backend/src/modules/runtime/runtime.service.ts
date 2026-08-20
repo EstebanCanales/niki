@@ -359,6 +359,32 @@ function summarizeHermesPayloadShape(payload: unknown, depth = 0): unknown {
   );
 }
 
+/**
+ * La entrada para Hermes: texto solo, o texto más la imagen de la cámara.
+ *
+ * Sin imagen devuelve el string de siempre, que es lo que espera todo lo anterior.
+ * Con imagen devuelve un mensaje con las dos partes, que es el formato que `/v1/runs`
+ * ya entiende — `input` ahí es una lista de mensajes, no de partes, y confundir las dos
+ * cosas da "No user message found in input".
+ *
+ * Se descarta lo que no sea una data URL de imagen. Un `file://` o un `http://` acá
+ * serían el runtime yendo a buscar un archivo o saliendo a la red por pedido de quien
+ * mandó el turno, y esto tiene que poder recibir un cuadro sin ser también una forma de
+ * hacerle abrir cosas.
+ */
+export function construirEntrada(texto: string, imagen?: string): unknown {
+  if (!imagen || !/^data:image\/(png|jpeg|jpg|webp);base64,/.test(imagen)) return texto;
+  return [
+    {
+      role: "user",
+      content: [
+        { type: "text", text: texto },
+        { type: "image_url", image_url: { url: imagen } },
+      ],
+    },
+  ];
+}
+
 @Injectable()
 export class RuntimeService implements OnModuleDestroy {
   private readonly logger = new Logger(RuntimeService.name);
@@ -1180,7 +1206,7 @@ export class RuntimeService implements OnModuleDestroy {
             runtimeConfig.contextLengthOverride && runtimeConfig.contextLengthOverride > 0
               ? runtimeConfig.contextLengthOverride
               : undefined,
-          input: latestMessage?.content ?? input,
+          input: construirEntrada(latestMessage?.content ?? input, body.imagen),
           session_id: sessionId,
           conversation_history: conversationHistory.length > 0 ? conversationHistory : undefined,
           instructions: `${buildNikiRuntimeInstructions(channel, runtimeContext)} ${buildNikiPersonaInstructions(personaProfile)}`,

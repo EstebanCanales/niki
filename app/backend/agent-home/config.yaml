@@ -142,6 +142,24 @@ auxiliary:
     model: gpt-5.6-sol
     timeout: 180
 
+  # Visión: sin esto Niki no ve nada por la cámara, y lo dice — "falta un proveedor de
+  # visión configurado". No es que la cámara falle: la imagen llegaba hasta el runtime y
+  # ahí se moría.
+  #
+  # Kimi no puede ver. No es una limitación nuestra: el endpoint /coding del plan de Kimi
+  # no acepta imágenes, y el propio runtime lo saltea a propósito (hay un test que se
+  # llama TestVisionAutoSkipsKimiCoding). En "auto" cae a OpenRouter, que no tenemos.
+  #
+  # Codex, el mismo que hace la compactación, sí ve. El modelo hay que nombrarlo sí o sí:
+  # el runtime no elige uno por su cuenta porque la lista de Codex cambia seguido.
+  #
+  # El timeout es más alto que el de compresión porque una foto son cientos de miles de
+  # píxeles y el primer intento con 120 s se cortaba a la mitad.
+  vision:
+    provider: codex
+    model: gpt-5.6-sol
+    timeout: 240
+
 # El umbral de compactación queda en el 0,50 de fábrica, y esto es por qué — para no
 # volver a discutirlo dentro de dos meses.
 #

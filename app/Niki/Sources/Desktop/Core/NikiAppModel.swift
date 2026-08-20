@@ -884,7 +884,8 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
                 sessionID: sessionID,
                 input: modelInput,
                 messages: requestMessages,
-                channel: channel
+                channel: channel,
+                imagen: await cuadroParaElModelo()
             ) { [weak self] visible in
                 guard let self else { return }
                 if self.turn.firstToken == nil { self.turn.firstToken = Date() }
@@ -2178,6 +2179,29 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
     }
 
     /// Empieza a hablar con la cámara prendida.
+    /// Lo que ve la cámara, para que el modelo lo vea también — solo en videollamada.
+    ///
+    /// Faltaba esto entero. El cuadro se sacaba, se mandaba a reconocer la cara, y ahí
+    /// moría: al modelo no le llegaba nunca un píxel. Por eso a "¿me ves?" contestaba que
+    /// no tenía acceso a la cámara — era verdad. Reconocer quién sos y ver qué hay
+    /// delante son dos cosas distintas, y solo estaba la primera.
+    ///
+    /// Fuera de la videollamada devuelve nil: la cámara está apagada y prenderla para
+    /// mirar de prepo, en cada mensaje, es exactamente lo que no queremos.
+    private func cuadroParaElModelo() async -> String? {
+        guard videollamada else { return nil }
+        // La cámara ya está retenida por `empezarAMirarSeguido` mientras dura la
+        // videollamada, así que esto no la prende ni la apaga: le pide un cuadro y listo.
+        let datos: Data? = await withCheckedContinuation { cont in
+            WebcamManager.shared.capturarCuadro(tiempoLimite: 3) { cont.resume(returning: $0) }
+        }
+        guard let datos else {
+            sttLog("[verme] no se pudo sacar el cuadro — va sin imagen")
+            return nil
+        }
+        return "data:image/jpeg;base64,\(datos.base64EncodedString())"
+    }
+
     func startVideollamada() {
         guard !sttLabActive else {
             // Ya está hablando: se le prende la cámara sin cortar nada.

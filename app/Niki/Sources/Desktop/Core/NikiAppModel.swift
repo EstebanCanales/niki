@@ -2525,11 +2525,18 @@ final class NikiAppModel: NSObject, ObservableObject, AVAudioRecorderDelegate, @
                 // pasa igual. Fallar cerrado acá convertiría cualquier problema de esa
                 // pieza en "Niki no me escucha".
                 if let v = res.speaker, v.enrolled, !v.match {
-                    sttLog(String(format: "[STT] descartado: no sos vos (%.2f < %.2f)",
+                    // Se anota y se sigue. **No se descarta el turno acá**: quién decide
+                    // qué hacer cuando la voz no coincide es el backend, según el ajuste
+                    // que eligió Esteban —contestar sin sus datos, no contestar, o
+                    // contestar normal—.
+                    //
+                    // Descartarlo acá era un bug con una consecuencia fea: el sistema
+                    // rechazó a Esteban con su propia voz (0.51 contra un umbral de 0.55)
+                    // y Niki se quedó muda, sin que él pudiera saber por qué. Un
+                    // reconocimiento que se equivoca tiene que degradar la respuesta, no
+                    // hacerla desaparecer.
+                    sttLog(String(format: "[STT] la voz no coincide (%.2f < %.2f) — decide el backend",
                                   v.score ?? 0, v.threshold ?? 0))
-                    sttLabStatus = "Escuchando…"
-                    agentState = .listening
-                    continue
                 }
                 if text.isEmpty || Self.whisperHallucinations.contains(text.lowercased()) {
                     sttLabStatus = "No te entendí, hablá de nuevo…"

@@ -15,6 +15,10 @@ struct NikiNotchContentView: View {
     @EnvironmentObject var vm: NikiNotchViewModel
     @EnvironmentObject var appModel: NikiAppModel
     @ObservedObject private var coordinator = NikiNotchCoordinator.shared
+    /// Hay que observarla, no solo leerla. Sin esto la vista se dibujaba una vez con la
+    /// cámara todavía apagada y no se enteraba nunca de que había arrancado: se veía como
+    /// que la cámara "se prende y se apaga" cuando en realidad nunca se refrescaba.
+    @ObservedObject private var webcam = WebcamManager.shared
     @Namespace private var albumArtNamespace
     @FocusState private var promptFocused: Bool
     @State private var hoverTask: Task<Void, Never>?
@@ -222,7 +226,7 @@ struct NikiNotchContentView: View {
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .fill(Color.white.opacity(0.05))
 
-                if let sesion = WebcamManager.shared.sesion, WebcamManager.shared.isSessionRunning {
+                if let sesion = webcam.sesion, webcam.isSessionRunning {
                     VistaDeCamara(sesion: sesion, radio: 16)
                 } else {
                     Image(systemName: "video.slash")

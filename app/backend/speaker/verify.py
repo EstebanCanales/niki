@@ -33,12 +33,23 @@ MARGEN_UMBRAL = 0.08
 # Suelo y techo del umbral. Por debajo del suelo verifica cualquier cosa; por encima del
 # techo no pasa ni el dueño.
 #
-# El techo bajó de 0.65 a 0.55 con números medidos, no a ojo. Probado con habla de verdad:
-# la misma voz diciendo una frase NUEVA da 0.89, y otra persona da 0.32. Con 0.65 el
-# margen del dueño era de 0.24 y el del impostor 0.33 — o sea que el corte estaba más
-# cerca de rechazarlo a él que de aceptar a otro, al revés de lo que conviene en algo que
-# personaliza y no autoriza. Con 0.55 quedan 0.34 y 0.23.
-UMBRAL_MIN, UMBRAL_MAX = 0.25, 0.55
+# El techo es 0.42, y llegó ahí en dos pasos porque el primero se hizo con datos
+# equivocados. Primero bajó de 0.65 a 0.55 con voces de `say`, que son sintéticas. Después
+# Esteban habló de verdad y su propia voz dio **0.51**: el sistema lo rechazaba a él.
+#
+# Lo medido con habla real, que es lo único que vale acá:
+#
+#     otra persona            0.32
+#     Esteban en vivo         0.51
+#     sus tomas entre sí      0.80
+#
+# 0.42 es el punto que equilibra: le deja +0.09 a él y +0.10 contra un impostor. Más
+# arriba lo deja afuera —ya pasó—, más abajo empieza a parecerse a no tener umbral.
+#
+# La lección, escrita porque costó: las voces de `say` no varían, así que dan 0.99 entre
+# sí y cualquier umbral parece bien. Una voz humana en dos momentos distintos varía
+# mucho más de lo que uno supone.
+UMBRAL_MIN, UMBRAL_MAX = 0.25, 0.42
 
 _modelo = None
 
@@ -128,6 +139,17 @@ def enroll(user_id: str, samples: list) -> dict:
             "selfSimilarity": perfil["selfSimilarity"]}
 
 
+def umbral_vigente(perfil: dict) -> float:
+    """El umbral del perfil, pero acotado por los topes de hoy.
+
+    Un perfil guarda el umbral que se calculó el día que se registró. Si después se ajusta
+    el techo —como pasó al medir la voz real de Esteban y ver que su propio perfil lo
+    estaba rechazando— los perfiles viejos seguirían con el número viejo y habría que
+    volver a registrarse para nada. Se recorta al leerlo y listo.
+    """
+    return max(UMBRAL_MIN, min(UMBRAL_MAX, float(perfil.get("threshold", UMBRAL_MAX))))
+
+
 def verify(user_id: str, audio_b64: str) -> dict:
     import torch
 
@@ -139,12 +161,13 @@ def verify(user_id: str, audio_b64: str) -> dict:
 
     centro = torch.tensor(perfil["centroid"])
     score = float(torch.dot(embedding(audio_b64), centro))
+    umbral = umbral_vigente(perfil)
     return {
         "ok": True,
         "enrolled": True,
-        "match": score >= perfil["threshold"],
+        "match": score >= umbral,
         "score": score,
-        "threshold": perfil["threshold"],
+        "threshold": umbral,
     }
 
 
@@ -158,7 +181,7 @@ def manejar(pedido: dict) -> dict:
     if op == "status":
         perfil = cargar_perfil(user_id)
         return {"ok": True, "enrolled": bool(perfil),
-                "threshold": perfil.get("threshold") if perfil else None,
+                "threshold": umbral_vigente(perfil) if perfil else None,
                 "samples": perfil.get("samples") if perfil else 0}
     return {"ok": False, "error": f"operación desconocida: {op}"}
 
